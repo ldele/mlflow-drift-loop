@@ -1,0 +1,63 @@
+# Phase 3 — the drift loop, on a schedule.
+#
+# Every Monday this runs ONE incremental cycle (scripts/run_scheduled.py): the
+# first run bootstraps a champion, each later run monitors the latest window and
+# retrains/promotes if the model has decayed. The MLflow state must survive
+# between runs (each Action runs on a fresh VM), so we persist it back to the repo.
+#
+# Persistence tradeoff: committing the sqlite db + artifacts back to git is the
+# simplest zero-infra option and keeps the whole drift history versioned and
+# inspectable (pull, then `mlflow ui` or the dashboard's "Scheduled" profile). It
+# does grow the repo over time; for a weekly cadence that's fine for a long while.
+# For production you'd point MLFLOW_TRACKING_URI at a hosted tracking server with
+# an object-store artifact root instead, and drop the commit-back step.
+#
+# One-time setup: push this repo to GitHub, enable Actions, and make sure Actions
+# has write permission (Settings > Actions > General > Workflow permissions:
+# "Read and write"). Then it runs itself on the cron, or via "Run workflow".
+
+name: drift-loop
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: {} # manual "Run workflow" button
+
+permissions:
+  contents: write # to commit the persisted MLflow state back
+
+concurrency:
+  group: drift-loop # never let two scheduled runs overlap on the same state
+  cancel-in-progress: false
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ubuntu runners have a working OpenSSL and no TLS-intercepting proxy, so
+      # the Windows-local interpreter / --system-certs workarounds aren't needed.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up environment
+        run: |
+          uv venv --python 3.12
+          uv pip install -e .
+
+      - name: Run one scheduled drift cycle
+        run: uv run python scripts/run_scheduled.py
+
+      - name: Persist MLflow state back to the repo
+        run: |
+          git config user.name  "drift-loop-bot"
+          git config user.email "drift-loop-bot@users.noreply.github.com"
+          # These paths are gitignored for local dev; force-add so CI can persist them.
+          git add -f mlflow_scheduled.db mlartifacts_scheduled outputs/run_meta_scheduled.json
+          if git diff --cached --quiet; then
+            echo "No state changes to commit."
+          else
+            git commit -m "chore(drift-loop): scheduled cycle $(date -u +%F) [skip ci]"
+            git push
+          fi
