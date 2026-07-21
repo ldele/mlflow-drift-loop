@@ -1,0 +1,56 @@
+# Publish the interactive static dashboard to GitHub Pages.
+#
+# GitHub Pages can't run Streamlit (no server), but it serves the client-side
+# JavaScript charts that scripts/build_site.py bakes out. This regenerates the
+# demo data, builds site/index.html, and deploys it to Pages.
+#
+# The scheduled Phase 3 data comes from the committed mlflow_scheduled.db; the
+# Phase 1/2 demos are regenerated here (synthetic is instant, Open-Meteo fetches
+# a fresh span). The weekly cron rebuild picks up each new scheduled cycle.
+
+name: pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC, after the drift-loop cycle runs
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Set up environment
+        run: uv sync --python 3.12
+
+      - name: Regenerate the Phase 1/2 demo data (Phase 3 is committed)
+        run: |
+          uv run python scripts/run_simulation.py --fresh
+          uv run python scripts/run_openmeteo.py --fresh
+
+      - name: Build the static site
+        run: uv run python scripts/build_site.py
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v5
