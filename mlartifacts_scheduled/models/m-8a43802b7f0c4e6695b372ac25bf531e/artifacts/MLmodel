@@ -1,0 +1,23 @@
+artifact_path: file:///home/runner/work/mlflow-drift-loop/mlflow-drift-loop/mlartifacts_scheduled/models/m-8a43802b7f0c4e6695b372ac25bf531e/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.12.3
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.0
+    skops_trusted_types: null
+mlflow_version: 3.14.0
+model_id: m-8a43802b7f0c4e6695b372ac25bf531e
+model_size_bytes: 21726
+model_uuid: m-8a43802b7f0c4e6695b372ac25bf531e
+prompts: null
+run_id: 9ad2300ba0514f4287c286b2423bc244
+utc_time_created: '2026-07-21 09:14:31.812339'
