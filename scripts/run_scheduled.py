@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -48,6 +49,21 @@ def _resolve_as_of(args: argparse.Namespace) -> pd.Timestamp:
         return pd.Timestamp(args.as_of).normalize()
     # ERA5 / air-quality reanalysis lags real time; step back to a safe date.
     return pd.Timestamp.now().normalize() - pd.Timedelta(days=args.lag_days)
+
+
+def _emit_ci(*, promotion: bool, headline: str) -> None:
+    """Under GitHub Actions, expose a ``promotion`` step-output (for the notice
+    step to key on) and drop a line in the run's summary. A no-op locally."""
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as fh:
+            fh.write(f"promotion={'true' if promotion else 'false'}\n")
+            fh.write(f"headline={headline}\n")
+    step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary:
+        icon = "🔺" if promotion else "•"
+        with open(step_summary, "a", encoding="utf-8") as fh:
+            fh.write(f"{icon} {headline}\n\n")
 
 
 def main() -> None:
@@ -87,6 +103,7 @@ def main() -> None:
               f"{train_start.date()} .. {as_of.date()} (first deploy)")
         version = bootstrap_champion(source, train_start, as_of, cfg)
         print(f"  registered {cfg.registered_model_name} v{version} as @champion")
+        _emit_ci(promotion=False, headline=f"Bootstrapped champion v{version} on {as_of.date()} (first deploy)")
         return
 
     result = run_cycle(source, as_of, cfg)
@@ -99,6 +116,21 @@ def main() -> None:
         line += (f"  (challenger {result.challenger_rmse:.2f} vs "
                  f"champion {result.champion_rmse_holdout:.2f} on holdout)")
     print(line)
+
+    promoted = result.promotion_decision == "promoted"
+    if promoted:
+        headline = (
+            f"Champion promoted on {as_of.date()} — challenger {result.challenger_rmse:.2f} "
+            f"beat {result.champion_rmse_holdout:.2f} RMSE (gap {result.performance_gap:.2f}) "
+            f"on the held-out window"
+        )
+    else:
+        headline = (
+            f"{as_of.date()}: no promotion ({result.promotion_decision}) — "
+            f"champion v{result.champion_version}, PSI {result.data_drift_psi:.2f}, "
+            f"perf x{result.perf_drift_ratio:.2f}"
+        )
+    _emit_ci(promotion=promoted, headline=headline)
 
 
 if __name__ == "__main__":
