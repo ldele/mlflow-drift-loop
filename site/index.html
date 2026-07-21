@@ -6,119 +6,177 @@
     <title>MLflow drift loop</title>
     <meta
       name="description"
-      content="A model-monitoring loop that detects drift, retrains a challenger, and promotes it — running live on real Kraków air-quality data."
+      content="A model-monitoring loop that detects drift, retrains a challenger, and promotes it — running on real Kraków air-quality data."
     />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
     <style>
       :root {
-        --bg: #f7f6f3;
+        color-scheme: light;
+        --page: #f4f3f0;
         --surface: #ffffff;
-        --ink: #1a1917;
-        --ink2: #57544e;
+        --surface-2: #fbfaf8;
+        --ink: #14130f;
+        --ink2: #55534d;
         --muted: #8a867d;
-        --grid: #e7e5de;
-        --line: #d7d5cc;
+        --grid: #ebe9e3;
+        --axis: #d7d5cc;
+        --border: rgba(15, 14, 10, 0.09);
         --accent: #2a6fdb;
-        --shadow: 0 1px 2px rgba(24, 22, 18, 0.04), 0 6px 20px rgba(24, 22, 18, 0.05);
-        --radius: 14px;
+        --good: #0a9a2e;
+        --warn: #c98500;
+        --crit: #d03b3b;
+        --shadow: 0 1px 2px rgba(20, 19, 15, 0.04), 0 8px 24px rgba(20, 19, 15, 0.06);
+        --radius: 16px;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --page: #0c0c0d;
+        --surface: #17171a;
+        --surface-2: #1d1d20;
+        --ink: #f4f4f2;
+        --ink2: #b8b7b0;
+        --muted: #8b8983;
+        --grid: #29292c;
+        --axis: #3a3a3e;
+        --border: rgba(255, 255, 255, 0.09);
+        --accent: #5a9bff;
+        --good: #26c24a;
+        --warn: #f0b03a;
+        --crit: #e05656;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.45);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          color-scheme: dark;
+          --page: #0c0c0d;
+          --surface: #17171a;
+          --surface-2: #1d1d20;
+          --ink: #f4f4f2;
+          --ink2: #b8b7b0;
+          --muted: #8b8983;
+          --grid: #29292c;
+          --axis: #3a3a3e;
+          --border: rgba(255, 255, 255, 0.09);
+          --accent: #5a9bff;
+          --good: #26c24a;
+          --warn: #f0b03a;
+          --crit: #e05656;
+          --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
       }
       * { box-sizing: border-box; }
       html { -webkit-text-size-adjust: 100%; }
       body {
         margin: 0;
-        background: var(--bg);
+        background: var(--page);
         color: var(--ink);
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         line-height: 1.5;
         -webkit-font-smoothing: antialiased;
+        transition: background 0.2s ease, color 0.2s ease;
       }
-      .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
 
-      /* ---- header ---- */
-      header { padding: 40px 0 8px; }
-      h1 { margin: 0; font-size: 30px; letter-spacing: -0.02em; }
-      .tagline { margin: 12px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-      .tagline .step {
-        font-size: 13px; font-weight: 500; color: var(--ink2);
-        background: var(--surface); border: 1px solid var(--line);
-        padding: 4px 10px; border-radius: 999px;
+      /* ---------- header ---------- */
+      header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 36px 0 0; }
+      .title-row { display: flex; align-items: center; gap: 12px; }
+      h1 { margin: 0; font-size: 27px; letter-spacing: -0.02em; }
+      .live {
+        display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+        color: var(--good); border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px;
+        background: var(--surface);
       }
-      .tagline .arrow { color: var(--muted); font-size: 13px; }
-      .built { color: var(--muted); font-size: 12.5px; margin: 14px 0 0; }
+      .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+      .lede { margin: 10px 0 0; color: var(--ink2); font-size: 15.5px; max-width: 64ch; }
+      .built { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
+      .theme-btn {
+        flex: none; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border);
+        background: var(--surface); color: var(--ink2); cursor: pointer; font-size: 17px; line-height: 1;
+        display: grid; place-items: center; box-shadow: var(--shadow);
+      }
+      .theme-btn:hover { color: var(--ink); }
 
-      /* ---- controls + intro ---- */
-      .controls {
-        margin: 26px 0 0; display: flex; flex-wrap: wrap; gap: 14px 20px;
-        align-items: baseline; justify-content: space-between;
+      /* ---------- toolbar ---------- */
+      .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 24px 0 0; }
+      .segmented {
+        display: inline-flex; background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 12px; padding: 4px; gap: 2px;
       }
-      .field { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink2); }
-      select {
-        font: inherit; font-size: 14px; padding: 9px 34px 9px 13px;
-        border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
-        color: var(--ink); cursor: pointer; appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238a867d' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-        background-repeat: no-repeat; background-position: right 12px center;
+      .segmented button {
+        appearance: none; border: 0; background: transparent; color: var(--ink2);
+        font: inherit; font-size: 13.5px; font-weight: 500; padding: 7px 14px; border-radius: 9px;
+        cursor: pointer; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease;
       }
-      select:hover { border-color: var(--muted); }
-      .story { margin: 16px 0 0; font-size: 16px; color: var(--ink2); max-width: 68ch; }
+      .segmented button:hover { color: var(--ink); }
+      .segmented button[aria-selected="true"] {
+        background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-weight: 600;
+      }
+      .story { margin: 16px 0 0; color: var(--ink2); font-size: 15px; max-width: 78ch; }
 
-      /* ---- stat tiles ---- */
-      .tiles {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 14px; margin: 22px 0 6px;
-      }
+      /* ---------- KPI tiles ---------- */
+      .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 20px 0 4px; }
       .tile {
-        background: var(--surface); border: 1px solid var(--grid); border-radius: 12px;
-        padding: 14px 16px; box-shadow: var(--shadow);
+        background: var(--surface); border: 1px solid var(--border); border-radius: 13px;
+        padding: 15px 17px; box-shadow: var(--shadow);
       }
-      .tile-v { font-size: 27px; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
-      .tile-k { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+      .tile-v { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.05; }
+      .tile-k { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
+      .tile-k .accent { color: var(--ink2); font-weight: 600; }
 
-      /* ---- charts ---- */
-      .charts {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(470px, 1fr));
-        gap: 18px; margin: 18px 0 8px;
-      }
+      /* ---------- chart grid ---------- */
+      .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 18px; margin: 18px 0 10px; }
       .card {
-        background: var(--surface); border: 1px solid var(--grid); border-radius: var(--radius);
-        padding: 18px 18px 10px; box-shadow: var(--shadow); min-width: 0;
+        background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 18px 18px 12px; box-shadow: var(--shadow); min-width: 0; display: flex; flex-direction: column;
       }
-      .card h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
-      .card .desc { margin: 6px 0 4px; font-size: 13.5px; color: var(--ink2); }
-      .plot { margin-top: 4px; }
+      .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .card h3 { margin: 0; font-size: 16.5px; letter-spacing: -0.01em; }
+      .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+      .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); white-space: nowrap; }
+      .lg .swatch { width: 15px; height: 3px; border-radius: 2px; }
+      .lg .swatch.dot { width: 9px; height: 9px; border-radius: 50%; }
+      .lg .swatch.dash { width: 15px; height: 0; border-top: 2px dotted currentColor; opacity: 0.75; background: none; }
+      .lg .swatch.star { width: 0; height: 0; color: inherit; }
+      .desc { margin: 8px 0 2px; font-size: 13px; color: var(--muted); }
+      .plot { margin-top: 6px; }
 
       a { color: var(--accent); text-decoration: none; }
       a:hover { text-decoration: underline; }
 
-      /* ---- footer ---- */
-      footer { margin: 26px 0 48px; padding-top: 20px; border-top: 1px solid var(--grid); }
+      footer { margin: 22px 0 44px; padding-top: 18px; border-top: 1px solid var(--border); }
       .data-links { font-size: 13.5px; color: var(--ink2); }
       .data-links strong { color: var(--ink); font-weight: 600; }
       .foot-note { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
-      #error { color: #c0392b; padding: 16px 0; font-size: 14px; }
+      #error { color: var(--crit); padding: 16px 0; font-size: 14px; }
 
-      @media (max-width: 560px) {
-        header { padding-top: 28px; }
-        h1 { font-size: 25px; }
+      @media (max-width: 620px) {
+        header { flex-direction: row; padding-top: 26px; }
+        h1 { font-size: 23px; }
         .charts { grid-template-columns: 1fr; }
+        .segmented { width: 100%; }
+        .segmented button { flex: 1; padding: 8px 6px; }
       }
     </style>
   </head>
   <body>
     <div class="wrap">
       <header>
-        <h1>MLflow drift loop</h1>
-        <div class="tagline" aria-label="the loop">
-          <span class="step">track</span><span class="arrow">→</span>
-          <span class="step">detect drift</span><span class="arrow">→</span>
-          <span class="step">retrain a challenger</span><span class="arrow">→</span>
-          <span class="step">promote</span>
+        <div>
+          <div class="title-row">
+            <h1>MLflow drift loop</h1>
+            <span class="live"><span class="dot"></span> live</span>
+          </div>
+          <p class="lede">
+            A monitoring loop that catches a model going stale — it tracks a champion, measures drift,
+            and retrains a challenger, promoting it only when it wins on unseen data.
+          </p>
+          <p class="built" id="built"></p>
         </div>
-        <p class="built" id="built"></p>
+        <button class="theme-btn" id="theme" title="Toggle light / dark" aria-label="Toggle theme">◐</button>
       </header>
 
-      <div class="controls">
-        <label class="field">Data source&nbsp;<select id="profile"></select></label>
+      <div class="toolbar">
+        <div class="segmented" id="segmented" role="tablist" aria-label="Data source"></div>
       </div>
       <p class="story" id="story"></p>
 
@@ -129,8 +187,8 @@
       <footer>
         <div class="data-links" id="data-links"></div>
         <p class="foot-note">
-          Interactive snapshot — hover, zoom, and toggle series on any chart. Rebuilt weekly
-          from the MLflow backends. Source and the full Streamlit app on
+          Interactive — hover, zoom, and toggle series on any chart. Rebuilt weekly from the MLflow
+          backends. Source and the full Streamlit app on
           <a href="https://github.com/ldele/mlflow-drift-loop">GitHub</a>.
         </p>
       </footer>

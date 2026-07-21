@@ -30,9 +30,11 @@ from driftloop.config import FEATURES, PROFILES  # noqa: E402
 
 OUT = REPO_ROOT / "site"
 
-# Lead with the real data; the synthetic world is the controlled proof, and the
-# live schedule is the same loop running by itself over calendar time.
-DISPLAY_ORDER = ["openmeteo", "synthetic", "scheduled"]
+# Which sources the published page shows, in order. Only the real data is
+# showcased: the historical Kraków replay and the same loop running live. The
+# synthetic world stays an offline correctness proof (tests + sweep_knobs) and is
+# deliberately NOT published here.
+DISPLAY_ORDER = ["openmeteo", "scheduled"]
 
 STORY = {
     "openmeteo": "Real Kraków weather + air quality. A model trained on clean summer air "
@@ -165,8 +167,8 @@ def publish_raw_data() -> dict | None:
 
 
 def build() -> Path:
-    ordered = [*DISPLAY_ORDER, *(k for k in PROFILES if k not in DISPLAY_ORDER)]
-    profiles = [d for d in (profile_data(k) for k in ordered) if d is not None]
+    # Only the sources in DISPLAY_ORDER are published (synthetic is excluded).
+    profiles = [d for d in (profile_data(k) for k in DISPLAY_ORDER) if d is not None]
     if not profiles:
         raise SystemExit("No profiles have data — run the pipelines first.")
 

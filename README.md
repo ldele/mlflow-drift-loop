@@ -62,8 +62,8 @@ challenger on part of the window it was then scored on.)
 ## The data
 
 One swappable `get_data(start, end)` contract sits under the whole thing, so the
-loop, drift math, and dashboard never change — only the data does. Three sources
-implement it; the dashboard's selector switches between them.
+loop, drift math, and dashboard never change — only the data does. The dashboard
+showcases the real data, two ways:
 
 - **Kraków air quality — real.** Weather (temperature, wind, humidity) from the
   [Open-Meteo](https://open-meteo.com/) ERA5 archive, joined on the hour with
@@ -72,13 +72,16 @@ implement it; the dashboard's selector switches between them.
   (winter), the champion's RMSE climbs from **~4.5 to ~49**, and the loop fires
   **9 retrains and 7 promotions** across 23 runs (two early retrains were
   *rejected* — the challenger didn't clear the margin).
-- **Synthetic — controlled proof.** A deterministic world with two drift knobs,
-  used to prove detection fires exactly when — and only when — the data is made
-  to shift. This is where the two-signal independence is demonstrated.
-- **Live schedule — the loop running by itself.** The same loop, but run **one
-  incremental cycle at a time** against a **persistent** backend, driven weekly by
-  a GitHub Action. It bootstraps a champion on first run, then appends one
-  monitoring cycle per week, accruing its own history over calendar time.
+- **Live schedule — the loop running by itself.** The *same* Kraków source, but
+  run **one incremental cycle at a time** against a **persistent** backend, driven
+  weekly by a GitHub Action. It bootstraps a champion on first run, then appends
+  one monitoring cycle per week, accruing its own history over calendar time.
+
+A third source — a deterministic **synthetic** world with two drift knobs — backs
+the offline correctness checks (`tests/` and
+[`scripts/sweep_knobs.py`](scripts/sweep_knobs.py), which proves the two drift
+signals are independent). It isn't published to the dashboard; it's a proof, not a
+showcase.
 
 Each source logs to its own MLflow backend file (`mlflow.db`,
 `mlflow_openmeteo.db`, `mlflow_scheduled.db`) so they reset and browse

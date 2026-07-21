@@ -5,9 +5,9 @@
 # data, builds site/index.html, and deploys it to Pages.
 #
 # The live/scheduled history comes from the committed mlflow_scheduled.db. The
-# synthetic run is regenerated deterministically; the Kraków run rebuilds from
-# the committed data_cache parquet (no re-fetch), so the published charts always
-# match the raw data we've stored. The weekly cron picks up each new live cycle.
+# Kraków run rebuilds from the committed data_cache parquet (no re-fetch), so the
+# published charts always match the raw data we've stored. The weekly cron picks
+# up each new live cycle.
 
 name: pages
 
@@ -41,10 +41,8 @@ jobs:
       - name: Set up environment
         run: uv sync --python 3.12
 
-      - name: Rebuild the synthetic + Kraków runs (live history is committed)
-        run: |
-          uv run python scripts/run_simulation.py --fresh
-          uv run python scripts/run_openmeteo.py --fresh
+      - name: Rebuild the Kraków run from the committed cache (live history is committed)
+        run: uv run python scripts/run_openmeteo.py --fresh
 
       - name: Build the static site
         run: uv run python scripts/build_site.py
