@@ -11,6 +11,8 @@ detail panels don't touch the data generator -- they keep working in Phase 2.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -155,10 +157,30 @@ else:
     )
 
 if runs.empty:
+    if profile_key == "scheduled":
+        st.warning(
+            "No scheduled runs yet — the weekly GitHub Action populates this profile. "
+            "Locally: `python scripts/run_scheduled.py --as-of YYYY-MM-DD`."
+        )
+        st.stop()
+    # Phase 1/2 demo data isn't committed, so on a fresh host (e.g. Streamlit
+    # Cloud) it's absent. Offer to generate it in place — a no-op wherever the
+    # backend already has runs.
     script = "run_simulation.py" if IS_SYNTHETIC else "run_openmeteo.py"
-    st.warning(
-        f"No runs for this profile yet. Generate them first:\n\n```\npython scripts/{script} --fresh\n```"
-    )
+    est = "~30s" if IS_SYNTHETIC else "~1 min · fetches Open-Meteo"
+    st.warning(f"No data for **{PROFILE.label}** yet.")
+    if st.button(f"Generate it now ({est})", type="primary"):
+        with st.spinner("Running the pipeline — this populates the MLflow backend…"):
+            # The subprocess is a fresh interpreter; ensure it can import the
+            # package from src/ even where the project isn't pip-installed (Cloud).
+            subprocess.run(
+                [sys.executable, str(REPO_ROOT / "scripts" / script), "--fresh"],
+                check=True,
+                cwd=str(REPO_ROOT),
+                env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")},
+            )
+        st.cache_data.clear()
+        st.rerun()
     st.stop()
 
 promoted = runs[runs["tags.promotion_decision"] == "promoted"]
