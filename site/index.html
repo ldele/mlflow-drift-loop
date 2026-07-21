@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MLflow drift loop</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <style>
+      :root {
+        --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+        --grid: #e1e0d9; --line: #c3c2b7;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: var(--surface); color: var(--ink);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      header, nav, main, footer { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+      header { padding-top: 28px; }
+      h1 { margin: 0; font-size: 26px; }
+      .sub { color: var(--ink2); margin: 6px 0 0; }
+      .built { color: var(--muted); font-size: 12px; margin-top: 4px; }
+      nav { margin-top: 14px; }
+      select {
+        font: inherit; padding: 8px 12px; border: 1px solid var(--line);
+        border-radius: 8px; background: #fff; color: var(--ink);
+      }
+      main { margin-top: 8px; padding-bottom: 40px; }
+      .tiles { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0 4px; }
+      .tile { flex: 1; min-width: 130px; border: 1px solid var(--grid); border-radius: 10px; padding: 12px 14px; }
+      .tile-v { font-size: 26px; font-weight: 600; }
+      .tile-k { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .chart { border: 1px solid var(--grid); border-radius: 10px; margin: 14px 0; padding: 6px; }
+      a { color: #2a78d6; }
+      footer { color: var(--muted); font-size: 13px; }
+      #error { color: #d03b3b; padding: 16px 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>MLflow drift loop</h1>
+      <p class="sub">track → detect drift → retrain challenger → promote</p>
+      <p class="built" id="built"></p>
+    </header>
+    <nav>
+      <label>Data source&nbsp; <select id="profile"></select></label>
+    </nav>
+    <main>
+      <p class="sub" id="story"></p>
+      <div class="tiles" id="tiles"></div>
+      <div id="charts"></div>
+      <div id="error"></div>
+    </main>
+    <footer>
+      Interactive snapshot — hover, zoom, toggle series. Data (frozen at build time,
+      rebuilt weekly) is in <a href="data.json">data.json</a>. Source on
+      <a href="https://github.com/ldele/mlflow-drift-loop">GitHub</a>; the full live
+      app is the Streamlit dashboard in the repo.
+    </footer>
+    <script src="app.js" defer></script>
+  </body>
+</html>
