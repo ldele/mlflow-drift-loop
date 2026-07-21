@@ -1,4 +1,4 @@
-# Phase 3 — the drift loop, on a schedule.
+# The drift loop, on a schedule.
 #
 # Every Monday this runs ONE incremental cycle (scripts/run_scheduled.py): the
 # first run bootstraps a champion, each later run monitors the latest window and
@@ -52,12 +52,15 @@ jobs:
         if: steps.cycle.outputs.promotion == 'true'
         run: echo "::notice title=Drift loop — champion promoted::${{ steps.cycle.outputs.headline }}"
 
-      - name: Persist MLflow state back to the repo
+      - name: Persist MLflow state + gathered data back to the repo
         run: |
           git config user.name  "drift-loop-bot"
           git config user.email "drift-loop-bot@users.noreply.github.com"
-          # These paths are gitignored for local dev; force-add so CI can persist them.
+          # Persist the run history AND the raw Open-Meteo data this cycle fetched,
+          # so nothing we gather is lost between runs. The MLflow paths are
+          # gitignored for local dev, so force-add them; data_cache is tracked.
           git add -f mlflow_scheduled.db mlartifacts_scheduled outputs/run_meta_scheduled.json
+          git add data_cache
           if git diff --cached --quiet; then
             echo "No state changes to commit."
           else

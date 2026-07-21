@@ -41,7 +41,7 @@ def _full_timeline(cfg: SyntheticConfig) -> pd.DataFrame:
     humidity = 62.0 - 18.0 * season - 0.9 * diurnal + rng.normal(0, 6.0, n)
 
     # Ramp from 0 -> 1 over `transition_days` starting at `drift_date`.
-    days_since = (idx - cfg.drift_date) / pd.Timedelta(days=1)
+    days_since = (idx - cfg.drift_date) / pd.Timedelta(1, unit="D")
     ramp = np.clip(days_since.to_numpy(dtype=float) / max(cfg.transition_days, 1e-9), 0.0, 1.0)
 
     # Covariate drift: the world itself changes (stagnant, cooler, damper).

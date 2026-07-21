@@ -1,27 +1,27 @@
 /* Client-side renderer for the drift-loop dashboard.
  * Fetches data.json (written by scripts/build_site.py) and builds interactive
  * Plotly charts. Palette + chart shapes mirror dashboard/theme.py so the static
- * site matches the Streamlit app. */
+ * site matches the Streamlit app. Chart titles + descriptions live in the HTML
+ * card (below), not inside Plotly, so they stay crisp and readable. */
 
 const PAL = {
-  surface: "#fcfcfb", ink: "#0b0b0b", ink2: "#52514e", muted: "#898781",
-  grid: "#e1e0d9", line: "#c3c2b7",
+  surface: "#ffffff", ink: "#1a1917", ink2: "#57544e", muted: "#8a867d",
+  grid: "#e7e5de", line: "#d7d5cc",
   series: ["#2a78d6", "#008300", "#e87ba4", "#eda100"],
   good: "#0ca30c", warn: "#fab219", crit: "#d03b3b",
   drift: "rgba(236, 131, 90, 0.07)",
 };
 const FEATURES = ["temperature", "wind_speed", "humidity"];
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const CONFIG = { displayModeBar: false, responsive: true };
 const PSI_SIGNIFICANT = 0.25;
 const PERF_THRESHOLD = 1.25;
 
-function baseLayout(title, yTitle) {
+function baseLayout(yTitle) {
   return {
-    title: { text: title, font: { size: 15, color: PAL.ink } },
     paper_bgcolor: PAL.surface, plot_bgcolor: PAL.surface,
     font: { family: FONT, size: 12, color: PAL.ink2 },
-    margin: { l: 56, r: 24, t: 48, b: 40 }, height: 340, hovermode: "x unified",
+    margin: { l: 54, r: 18, t: 30, b: 38 }, height: 320, hovermode: "x unified",
     legend: { orientation: "h", yanchor: "bottom", y: 1.02, x: 0, font: { color: PAL.ink2 } },
     xaxis: { showgrid: false, linecolor: PAL.line, tickfont: { color: PAL.muted }, zeroline: false },
     yaxis: {
@@ -72,19 +72,25 @@ function annotated(layout, text) {
   });
 }
 
-/* One <div class="chart"> holding a Plotly plot. */
-function chartDiv(traces, layout) {
-  const wrap = document.createElement("div");
-  wrap.className = "chart";
+/* One <section class="card"> with a title, a description, and a Plotly plot. */
+function chartCard(title, desc, traces, layout) {
+  const card = document.createElement("section");
+  card.className = "card";
+  const h = document.createElement("h3");
+  h.textContent = title;
+  const p = document.createElement("p");
+  p.className = "desc";
+  p.textContent = desc;
   const plot = document.createElement("div");
-  wrap.appendChild(plot);
+  plot.className = "plot";
+  card.append(h, p, plot);
   Plotly.newPlot(plot, traces, layout, CONFIG);
-  return wrap;
+  return card;
 }
 
 function statTiles(stats) {
   const tiles = [
-    ["Scheduled runs", stats.runs],
+    ["Monitoring runs", stats.runs],
     ["Retrains", stats.retrains],
     ["Promotions", stats.promotions],
     ["Latest PSI", stats.latest_psi.toFixed(2)],
@@ -108,14 +114,18 @@ function renderProfile(p) {
   const xEnd = p.as_of[p.as_of.length - 1];
 
   // 1. Data drift — PSI per feature
-  let lay = baseLayout("Data drift — PSI per feature vs. the champion's training window", "PSI");
+  let lay = baseLayout("PSI");
   driftRegion(lay, p.drift_date, xEnd);
   let traces = FEATURES.filter((f) => p.psi[f]).map((f, i) => line(p.as_of, p.psi[f], f, PAL.series[i]));
   traces.push(threshold(p.as_of, PSI_SIGNIFICANT, `significant (${PSI_SIGNIFICANT})`));
-  charts.appendChild(chartDiv(traces, lay));
+  charts.appendChild(chartCard(
+    "Data drift",
+    "How far each feature's recent readings have drifted from the champion's training " +
+      "window, measured by PSI. The dotted line is the 0.25 “significant shift” mark.",
+    traces, lay));
 
   // 2. Performance drift — champion RMSE ratio
-  lay = baseLayout("Performance drift — champion RMSE now ÷ RMSE at training time", "ratio");
+  lay = baseLayout("ratio");
   driftRegion(lay, p.drift_date, xEnd);
   traces = [
     line(p.as_of, p.perf_ratio, "perf drift ratio", PAL.series[0]),
@@ -124,10 +134,14 @@ function renderProfile(p) {
   if (p.retrain.as_of.length) {
     traces.push(events(p.retrain.as_of, p.retrain.perf, "retrain triggered", PAL.warn, "circle"));
   }
-  charts.appendChild(chartDiv(traces, lay));
+  charts.appendChild(chartCard(
+    "Performance drift & retrains",
+    "The champion's error on fresh data ÷ its error at training time. Crossing 1.25 — the " +
+      "model is 25% worse — triggers a retrain (marked).",
+    traces, lay));
 
   // 3. Champion vs. challenger on the held-out window
-  lay = baseLayout("Champion vs. challenger on the held-out window (RMSE)", "RMSE");
+  lay = baseLayout("RMSE");
   if (p.holdout.as_of.length) {
     driftRegion(lay, p.drift_date, xEnd);
     traces = [
@@ -141,10 +155,14 @@ function renderProfile(p) {
     traces = [];
     annotated(lay, "No challenger trained yet — no retrain has fired.");
   }
-  charts.appendChild(chartDiv(traces, lay));
+  charts.appendChild(chartCard(
+    "Champion vs. challenger",
+    "When a retrain fires, both models are scored on a held-out week neither has seen. The " +
+      "challenger takes over only if it wins by a margin (★ = promoted).",
+    traces, lay));
 
   // 4. Coefficient evolution
-  lay = baseLayout("Coefficient evolution — the model's slopes across versions", "coefficient");
+  lay = baseLayout("coefficient");
   lay.hovermode = "closest";
   if (p.coef) {
     traces = FEATURES.map((f, i) => ({
@@ -161,7 +179,23 @@ function renderProfile(p) {
     traces = [];
     annotated(lay, "Only one model version so far.");
   }
-  charts.appendChild(chartDiv(traces, lay));
+  charts.appendChild(chartCard(
+    "Model coefficients",
+    "The Ridge model's learned slope per feature across versions. A slope crossing zero is the " +
+      "real-world relationship inverting — the concept drift each retrain has to chase.",
+    traces, lay));
+}
+
+function renderDataLinks(data) {
+  const raw = data.raw_data;
+  const parts = [];
+  if (raw) {
+    parts.push(
+      `<strong>Raw data:</strong> <a href="${raw.file}">${raw.rows.toLocaleString()} hourly ` +
+        `Kraków observations</a> (${raw.start} → ${raw.end}, CSV)`);
+  }
+  parts.push(`<strong>Chart data:</strong> <a href="data.json">data.json</a>`);
+  document.getElementById("data-links").innerHTML = parts.join(" &nbsp;·&nbsp; ");
 }
 
 async function main() {
@@ -176,8 +210,8 @@ async function main() {
     return;
   }
 
-  document.getElementById("built").innerHTML =
-    `Static snapshot · built ${data.built} · rebuilt weekly by GitHub Actions`;
+  document.getElementById("built").textContent = `Snapshot · built ${data.built}`;
+  renderDataLinks(data);
 
   const sel = document.getElementById("profile");
   const byKey = {};

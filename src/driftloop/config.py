@@ -67,7 +67,7 @@ class LoopConfig:
 
 @dataclass(frozen=True)
 class OpenMeteoConfig:
-    """Location + span for the real-data source (Phase 2).
+    """Location + span for the real-data source.
 
     Kraków sits in a basin and burns coal for winter heating, so PM2.5 is low and
     calm in summer and spikes under cold, still, inversion conditions once the
@@ -89,8 +89,8 @@ class OpenMeteoConfig:
 @dataclass(frozen=True)
 class Profile:
     """A self-contained run target: which loop config, which MLflow backend file,
-    and which run-metadata file the dashboard reads. Keeping Phase 1 and Phase 2
-    in separate backend files lets each be reset and browsed independently."""
+    and which run-metadata file the dashboard reads. Each data source gets its own
+    backend file so they can be reset and browsed independently."""
 
     key: str
     label: str
@@ -99,17 +99,12 @@ class Profile:
     meta_filename: str
 
 
+# Ordered lead-with-the-real-data first; the dashboard sidebar and the published
+# site both follow this order.
 PROFILES: dict[str, Profile] = {
-    "synthetic": Profile(
-        key="synthetic",
-        label="Synthetic (Phase 1)",
-        loop=LoopConfig(),
-        db_filename="mlflow.db",
-        meta_filename="run_meta.json",
-    ),
     "openmeteo": Profile(
         key="openmeteo",
-        label="Open-Meteo · Kraków (Phase 2)",
+        label="Kraków air quality",
         loop=LoopConfig(
             experiment_name="drift-loop-openmeteo",
             registered_model_name="pm25-ridge-krakow",
@@ -117,11 +112,18 @@ PROFILES: dict[str, Profile] = {
         db_filename="mlflow_openmeteo.db",
         meta_filename="run_meta_openmeteo.json",
     ),
-    # Phase 3: the live loop. Filled one cycle at a time by the scheduled job
+    "synthetic": Profile(
+        key="synthetic",
+        label="Synthetic",
+        loop=LoopConfig(),
+        db_filename="mlflow.db",
+        meta_filename="run_meta.json",
+    ),
+    # The live loop. Filled one cycle at a time by the scheduled job
     # (scripts/run_scheduled.py), against a backend that persists between runs.
     "scheduled": Profile(
         key="scheduled",
-        label="Scheduled · live (Phase 3)",
+        label="Live schedule",
         loop=LoopConfig(
             experiment_name="drift-loop-scheduled",
             registered_model_name="pm25-ridge-scheduled",

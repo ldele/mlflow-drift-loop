@@ -48,7 +48,7 @@ def _resolve_as_of(args: argparse.Namespace) -> pd.Timestamp:
     if args.as_of:
         return pd.Timestamp(args.as_of).normalize()
     # ERA5 / air-quality reanalysis lags real time; step back to a safe date.
-    return pd.Timestamp.now().normalize() - pd.Timedelta(days=args.lag_days)
+    return pd.Timestamp.now().normalize() - pd.Timedelta(args.lag_days, unit="D")
 
 
 def _emit_ci(*, promotion: bool, headline: str) -> None:
@@ -78,8 +78,8 @@ def main() -> None:
     tracking.setup(cfg.experiment_name, PROFILE.db_filename)
 
     om_cfg = OpenMeteoConfig(
-        origin=(as_of - pd.Timedelta(days=TRAILING_FETCH_DAYS)).normalize(),
-        horizon=(as_of + pd.Timedelta(days=1)).normalize(),
+        origin=(as_of - pd.Timedelta(TRAILING_FETCH_DAYS, unit="D")).normalize(),
+        horizon=(as_of + pd.Timedelta(1, unit="D")).normalize(),
     )
     source = OpenMeteoSource(om_cfg)
 
@@ -98,7 +98,7 @@ def main() -> None:
 
     champion = load_champion(cfg.registered_model_name)
     if champion is None:
-        train_start = as_of - pd.Timedelta(days=BOOTSTRAP_TRAIN_DAYS)
+        train_start = as_of - pd.Timedelta(BOOTSTRAP_TRAIN_DAYS, unit="D")
         print(f"[{as_of.date()}] no champion yet -> bootstrapping on "
               f"{train_start.date()} .. {as_of.date()} (first deploy)")
         version = bootstrap_champion(source, train_start, as_of, cfg)

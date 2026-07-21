@@ -59,8 +59,8 @@ def test_challenger_never_trains_on_the_holdout_window(isolated_mlflow):
     cfg = isolated_mlflow
     src = SyntheticSource()
     as_of = pd.Timestamp("2025-11-01")
-    holdout_start = as_of - pd.Timedelta(days=cfg.holdout_days)
-    challenger_start = as_of - pd.Timedelta(days=cfg.challenger_train_days)
+    holdout_start = as_of - pd.Timedelta(cfg.holdout_days, unit="D")
+    challenger_start = as_of - pd.Timedelta(cfg.challenger_train_days, unit="D")
 
     challenger_df = src.get_data(challenger_start, holdout_start)
     holdout = src.get_data(holdout_start, as_of)

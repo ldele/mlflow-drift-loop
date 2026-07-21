@@ -30,10 +30,17 @@ from driftloop.config import FEATURES, PROFILES  # noqa: E402
 
 OUT = REPO_ROOT / "site"
 
+# Lead with the real data; the synthetic world is the controlled proof, and the
+# live schedule is the same loop running by itself over calendar time.
+DISPLAY_ORDER = ["openmeteo", "synthetic", "scheduled"]
+
 STORY = {
-    "synthetic": "Phase 1 · synthetic data with a controllable drift knob.",
-    "openmeteo": "Phase 2 · real Kraków weather + air quality; a summer-trained model walking into winter smog.",
-    "scheduled": "Phase 3 · the live loop, one scheduled run appended each week.",
+    "openmeteo": "Real Kraków weather + air quality. A model trained on clean summer air "
+    "decays as the winter heating season fills the basin with smog — and the loop retrains to keep up.",
+    "synthetic": "A synthetic world with a controllable drift knob, so detection provably "
+    "fires exactly when — and only when — the data is made to shift.",
+    "scheduled": "The same loop running on its own: one monitoring cycle is appended "
+    "automatically each week, accruing its own history over calendar time.",
 }
 
 
@@ -131,13 +138,44 @@ def profile_data(key: str) -> dict | None:
     }
 
 
+def publish_raw_data() -> dict | None:
+    """Copy the raw gathered Kraków observations into the published site.
+
+    The chart data is a distilled summary; this makes the full hourly dataset the
+    charts are built from downloadable too, so nothing we gather is thrown away.
+    Reads the committed parquet cache directly (no network).
+    """
+    from driftloop.config import OpenMeteoConfig  # noqa: E402
+    from driftloop.data.openmeteo import OpenMeteoSource  # noqa: E402
+
+    cache_path = OpenMeteoSource(OpenMeteoConfig())._cache_path()
+    if not cache_path.exists():
+        print(f"  (no cached Kraków data at {cache_path.name}; skipping raw-data publish)")
+        return None
+
+    df = pd.read_parquet(cache_path)
+    OUT.mkdir(exist_ok=True)
+    (OUT / "krakow_hourly.csv").write_text(df.to_csv(index=False), encoding="utf-8")
+    return {
+        "file": "krakow_hourly.csv",
+        "rows": int(len(df)),
+        "start": pd.to_datetime(df["timestamp"]).min().strftime("%Y-%m-%d"),
+        "end": pd.to_datetime(df["timestamp"]).max().strftime("%Y-%m-%d"),
+    }
+
+
 def build() -> Path:
-    profiles = [d for d in (profile_data(k) for k in PROFILES) if d is not None]
+    ordered = [*DISPLAY_ORDER, *(k for k in PROFILES if k not in DISPLAY_ORDER)]
+    profiles = [d for d in (profile_data(k) for k in ordered) if d is not None]
     if not profiles:
         raise SystemExit("No profiles have data — run the pipelines first.")
 
-    payload = {"built": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"), "profiles": profiles}
     OUT.mkdir(exist_ok=True)
+    payload = {
+        "built": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+        "raw_data": publish_raw_data(),
+        "profiles": profiles,
+    }
     out = OUT / "data.json"
     out.write_text(json.dumps(payload, indent=None), encoding="utf-8")
     print(f"wrote {out}  ({out.stat().st_size // 1024} KB, "

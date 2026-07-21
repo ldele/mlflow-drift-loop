@@ -31,7 +31,7 @@ from driftloop.drift import DataDriftResult, compute_data_drift, compute_perf_dr
 from driftloop.model import error_metrics, predictions_frame, rmse, train
 from driftloop.tracking import CHALLENGER_ALIAS, CHAMPION_ALIAS, load_champion, log_and_register, promote
 
-HOUR = pd.Timedelta(hours=1)
+HOUR = pd.Timedelta(1, unit="h")
 
 
 @dataclass
@@ -95,7 +95,7 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
     if champion is None:
         raise RuntimeError("no champion registered -- run bootstrap_champion first")
 
-    monitor = source.get_data(as_of - pd.Timedelta(days=cfg.monitor_days), as_of)
+    monitor = source.get_data(as_of - pd.Timedelta(cfg.monitor_days, unit="D"), as_of)
     reference = source.get_data(champion.train_start, champion.train_end + HOUR)
 
     # --- Signal 1: data drift (no model involved) ---
@@ -126,8 +126,8 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
 
     challenger = None
     if perf.detected:
-        holdout_start = as_of - pd.Timedelta(days=cfg.holdout_days)
-        challenger_start = as_of - pd.Timedelta(days=cfg.challenger_train_days)
+        holdout_start = as_of - pd.Timedelta(cfg.holdout_days, unit="D")
+        challenger_start = as_of - pd.Timedelta(cfg.challenger_train_days, unit="D")
 
         # Leak guard: the judging window must post-date the champion's training.
         if champion.train_end >= holdout_start:
@@ -247,5 +247,5 @@ def run_simulation(
     as_of = first_run
     while as_of <= last_run:
         rows.append(run_cycle(source, as_of, cfg).as_row())
-        as_of = as_of + pd.Timedelta(days=step_days)
+        as_of = as_of + pd.Timedelta(step_days, unit="D")
     return pd.DataFrame(rows)
