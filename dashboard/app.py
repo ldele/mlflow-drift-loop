@@ -88,18 +88,34 @@ def load_run_meta(meta_filename: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _resolve_artifact(db_filename: str, run_id: str, rel: str) -> Path:
+    """Locate a run artifact. Prefer MLflow's resolver; fall back to the local
+    artifact tree when the stored URI is absolute for another machine — e.g. a
+    backend generated on the CI runner and pulled down here (the Scheduled
+    profile). The run_id is the on-disk artifact directory name."""
+    try:
+        return Path(mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path=rel))
+    except Exception:
+        local = tracking._artifact_dir(db_filename) / run_id / "artifacts" / rel
+        if local.exists():
+            return local
+        raise
+
+
 @st.cache_data(ttl=30)
 def load_monitoring(db_filename: str, experiment: str, run_id: str) -> tuple[pd.DataFrame, dict]:
-    """Download the per-run predictions CSV and feature-distribution JSON."""
+    """Per-run predictions CSV + feature-distribution JSON, resilient to
+    cross-machine absolute artifact paths."""
     tracking.setup(experiment, db_filename)
-    preds_path = mlflow.artifacts.download_artifacts(
-        run_id=run_id, artifact_path="monitoring/monitor_predictions.csv"
+    preds = pd.read_csv(
+        _resolve_artifact(db_filename, run_id, "monitoring/monitor_predictions.csv"),
+        parse_dates=["timestamp"],
     )
-    dist_path = mlflow.artifacts.download_artifacts(
-        run_id=run_id, artifact_path="monitoring/feature_distributions.json"
+    report = json.loads(
+        _resolve_artifact(db_filename, run_id, "monitoring/feature_distributions.json").read_text(
+            encoding="utf-8"
+        )
     )
-    preds = pd.read_csv(preds_path, parse_dates=["timestamp"])
-    report = json.loads(Path(dist_path).read_text(encoding="utf-8"))
     return preds, report
 
 
@@ -219,7 +235,12 @@ with tab_loop:
     st.plotly_chart(fig, width="stretch")
 
     fig = theme.base_figure("Champion vs. challenger on the held-out window (RMSE, lower is better)", "RMSE")
-    judged = runs.dropna(subset=["metrics.challenger_rmse"])
+    # The column only exists once at least one challenger has been trained; on a
+    # profile with only "none" cycles (e.g. a fresh Scheduled backend) it's absent.
+    if "metrics.challenger_rmse" in runs.columns:
+        judged = runs.dropna(subset=["metrics.challenger_rmse"])
+    else:
+        judged = runs.iloc[:0]
     if judged.empty:
         st.info("No challenger has been trained yet — performance drift never crossed the threshold.")
     else:
