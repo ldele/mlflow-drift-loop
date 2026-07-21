@@ -132,12 +132,14 @@ backend, viewable under the dashboard's **Scheduled** profile.
 Two ways to put the dashboard on the web, both free:
 
 - **GitHub Pages (live): <https://ldele.github.io/mlflow-drift-loop/>** — an
-  interactive static dashboard. [`scripts/build_site.py`](scripts/build_site.py)
-  bakes each profile's data into client-side Plotly charts (hover / zoom / profile
-  switch — no server), and [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
-  rebuilds and republishes it on every push and weekly, so it tracks the drift over
-  time. Pages can't run Streamlit itself (no server-side execution) but happily
-  serves the JavaScript.
+  interactive static dashboard. The data lives in a plain, inspectable
+  [`data.json`](https://ldele.github.io/mlflow-drift-loop/data.json) that
+  [`scripts/build_site.py`](scripts/build_site.py) distils from the MLflow
+  backends; the committed shell (`site/index.html` + `site/app.js`) fetches it and
+  renders the Plotly charts client-side (hover / zoom / profile switch — no server).
+  [`.github/workflows/pages.yml`](.github/workflows/pages.yml) rebuilds and
+  republishes on every push and weekly, so it tracks the drift over time. Pages
+  can't run Streamlit itself (no server-side execution) but happily serves the JS.
 - **Streamlit Community Cloud** — the full interactive app. Deploy it in a few
   clicks at <https://share.streamlit.io> → *New app* → this repo, branch `master`,
   main file `dashboard/app.py` (pick Python 3.12 under *Advanced*). `requirements.txt`
@@ -162,10 +164,12 @@ scripts/
   sweep_knobs.py     the two-knob independence demo (offline, no MLflow)
   run_openmeteo.py   Phase 2: fetch/cache real data, then run the same loop
   run_scheduled.py   Phase 3: one incremental cycle against the persistent backend
-  build_site.py      render the interactive static dashboard for GitHub Pages
+  build_site.py      distil the MLflow backends into site/data.json for Pages
 .github/workflows/
   drift-loop.yml     Phase 3: weekly cron that runs run_scheduled.py + persists state
-  pages.yml          build + publish the static dashboard to GitHub Pages
+  pages.yml          build data.json + publish the static dashboard to GitHub Pages
+site/
+  index.html, app.js committed static shell; fetches data.json, renders the charts
 dashboard/
   app.py             Streamlit dashboard, profile selector (Phase 1 / 2 / 3)
   theme.py           chart palette + shared Plotly layout
