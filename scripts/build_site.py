@@ -126,11 +126,28 @@ def profile_data(key: str) -> dict | None:
     bench_path = REPO_ROOT / "outputs" / f"benchmark_{key}.json"
     benchmark = json.loads(bench_path.read_text(encoding="utf-8")) if bench_path.exists() else None
 
+    # The thing actually being predicted, in the units it is predicted in. Without
+    # this the page is all monitoring machinery and never says what the model is
+    # for. Written by run_openmeteo.py; absent for the live profile.
+    recent, latest_actual = None, None
+    pred_path = REPO_ROOT / "outputs" / f"predictions_{key}.csv"
+    if pred_path.exists():
+        preds = pd.read_csv(pred_path, parse_dates=["timestamp"])
+        if not preds.empty:
+            recent = {
+                "timestamp": preds["timestamp"].dt.strftime("%Y-%m-%d %H:%M").tolist(),
+                "actual": _floats(preds["actual"]),
+                "predicted": _floats(preds["predicted"]),
+            }
+            latest_actual = round(float(preds["actual"].iloc[-1]), 1)
+
     loc = profile.location
     return {
         "key": key,
         "label": profile.label,
         "benchmark": benchmark,
+        "target": {"name": "PM2.5", "units": "µg/m³", "who_24h_guideline": 15},
+        "recent": recent,
         "story": STORY[key],
         "drift_date": drift_date,
         # Present only for profiles tied to a real place. The page plots one map
@@ -149,6 +166,10 @@ def profile_data(key: str) -> dict | None:
             "latest_psi": round(float(latest["metrics.data_drift_psi"]), 2),
             "latest_r2": (round(float(latest["metrics.champion_r2"]), 2)
                           if "metrics.champion_r2" in latest else None),
+            # In µg/m³, which is far more readable than R² for a headline number.
+            "latest_rmse": (round(float(latest["metrics.champion_rmse"]), 1)
+                            if "metrics.champion_rmse" in latest else None),
+            "latest_actual": latest_actual,
         },
         "as_of": _dates(runs["as_of"]),
         "psi": {f: _floats(runs[f"metrics.psi_{f}"]) for f in FEATURES if f"metrics.psi_{f}" in runs},

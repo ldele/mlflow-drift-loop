@@ -135,18 +135,38 @@ function chartCard(jobs, title, desc, chips, traces, layout) {
   jobs.push({ div: card.querySelector(".plot"), traces, layout });
 }
 
-function statTiles(stats) {
+function statTiles(stats, target) {
   const pal = P();
   const r2 = stats.latest_r2;
-  const r2color = r2 == null ? pal.ink : r2 >= 0.5 ? pal.good : r2 >= 0.2 ? pal.warn : pal.crit;
-  const tiles = [
+  const guide = target?.who_24h_guideline;
+  const air = stats.latest_actual;
+  // Lead with the physical quantity. Without it the page is all monitoring
+  // machinery and never says what is predicted or how bad the air actually is.
+  const airColor = air == null || guide == null ? pal.ink
+    : air >= guide * 3 ? pal.crit : air >= guide ? pal.warn : pal.good;
+
+  const tiles = [];
+  if (air != null) {
+    tiles.push({
+      v: air, sub: target.units, color: airColor,
+      k: `Latest ${target.name} reading${guide ? ` · WHO 24h guideline ${guide}` : ""}`,
+    });
+  }
+  if (stats.latest_rmse != null) {
+    tiles.push({
+      v: `±${stats.latest_rmse}`, sub: target?.units,
+      k: `Champion error${r2 == null ? "" : ` · R² ${r2.toFixed(2)}`}`,
+    });
+  }
+  tiles.push(
     { v: stats.runs, k: "Monitoring runs" },
     { v: stats.retrains, k: "Retrains" },
     { v: stats.promotions, k: "Promotions" },
-    { v: r2 == null ? "—" : r2.toFixed(2), k: "Latest champion R²", color: r2color },
-  ];
+  );
+
   document.getElementById("tiles").innerHTML = tiles.map((t) =>
-    `<div class="tile"><div class="tile-v"${t.color ? ` style="color:${t.color}"` : ""}>${t.v}</div>` +
+    `<div class="tile"><div class="tile-v"${t.color ? ` style="color:${t.color}"` : ""}>${t.v}` +
+    `${t.sub ? `<span class="tile-u">${t.sub}</span>` : ""}</div>` +
     `<div class="tile-k">${t.k}</div></div>`).join("");
 }
 
@@ -350,18 +370,44 @@ function render() {
   const pal = P();
   document.getElementById("story").textContent = p.story;
   renderMap();
-  statTiles(p.stats);
+  statTiles(p.stats, p.target);
   const charts = document.getElementById("charts");
   charts.innerHTML = "";
   const jobs = [];
   const xEnd = p.as_of[p.as_of.length - 1];
   const feat = FEATURES.filter((f) => p.psi[f]);
+  let lay, traces;
+
+  // 0. What the model predicts, in the units it predicts it in. This is the
+  // only card that shows the quantity itself; every other one shows a statistic
+  // about it, which is a lot to ask a reader to infer.
+  if (p.recent && p.recent.timestamp.length) {
+    const t = p.target || { name: "target", units: "" };
+    lay = plotBase(pal, `${t.name} (${t.units})`);
+    if (t.who_24h_guideline) {
+      thresholdLine(lay, pal, t.who_24h_guideline, `WHO 24h guideline · ${t.who_24h_guideline}`);
+    }
+    chartCard(jobs,
+      `What it predicts: ${t.name}`,
+      `Hourly ${t.name} in ${t.units} over the most recent monitoring window, with what the ` +
+      `serving champion predicted for the same hours from temperature, wind speed and humidity ` +
+      `alone. The gap between the two lines is the error every other chart summarises.`,
+      [
+        { label: `measured ${t.name}`, color: pal.series[0], kind: "line" },
+        { label: "champion prediction", color: pal.series[3], kind: "line" },
+      ],
+      [
+        lineT(p.recent.timestamp, p.recent.actual, `measured ${t.name}`, pal.series[0]),
+        lineT(p.recent.timestamp, p.recent.predicted, "champion prediction", pal.series[3], "dot"),
+      ],
+      lay);
+  }
 
   // 1. Data drift — PSI per feature
-  let lay = plotBase(pal, "PSI");
+  lay = plotBase(pal, "PSI");
   driftRegion(lay, pal, p.drift_date, xEnd);
   thresholdLine(lay, pal, PSI_SIGNIFICANT, "0.25 · significant");
-  let traces = feat.map((f, i) => lineT(p.as_of, p.psi[f], f, pal.series[i]));
+  traces = feat.map((f, i) => lineT(p.as_of, p.psi[f], f, pal.series[i]));
   chartCard(jobs,
     "Data drift",
     "Each feature's recent distribution against the champion's training window (Population Stability Index). Above 0.25 counts as a meaningful shift.",

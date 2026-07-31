@@ -25,6 +25,8 @@ from driftloop.config import CITY_CLI_NAMES as CITIES
 from driftloop.config import PROFILES, Profile
 from driftloop.data import OpenMeteoSource
 from driftloop.loop import bootstrap_champion, run_simulation
+from driftloop.model import predictions_frame
+from driftloop.tracking import load_champion
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
@@ -80,6 +82,12 @@ def run_city(profile: Profile, fresh: bool) -> pd.DataFrame:
     out = OUTPUTS / f"simulation_{profile.key}.csv"
     df.to_csv(out, index=False)
 
+    # What the model actually predicts, in the units it predicts them in. The
+    # loop logs this per run as an MLflow artifact, but build_site.py reads only
+    # metrics and tags so it stays immune to absolute artifact paths -- so write
+    # the final window to a known path it can pick up instead.
+    _write_last_window_predictions(profile, source, plan.last_run, loop_cfg.monitor_days)
+
     cols = ["as_of", "data_drift_psi", "perf_drift_ratio", "champion_rmse", "promotion_decision"]
     with pd.option_context("display.width", 120, "display.max_rows", None):
         print("\n" + df[cols].to_string(index=False, float_format=lambda v: f"{v:8.3f}"))
@@ -116,6 +124,21 @@ def main() -> None:
         for name, runs, retrains, proms in summary:
             print(f"  {name:<8} runs={runs:<4} retrains={retrains:<4} promotions={proms}")
     print("\nDashboard:  streamlit run dashboard/app.py   (the selector picks the city)")
+
+
+def _write_last_window_predictions(
+    profile: Profile, source: OpenMeteoSource, last_run: pd.Timestamp, monitor_days: int
+) -> None:
+    """Save the serving champion's predictions over the final monitoring window."""
+    champion = load_champion(profile.loop.registered_model_name)
+    if champion is None:
+        return
+    window = source.get_data(last_run - pd.Timedelta(days=monitor_days), last_run)
+    preds = predictions_frame(champion.pipeline, window)
+    out = OUTPUTS / f"predictions_{profile.key}.csv"
+    preds.to_csv(out, index=False)
+    print(f"  wrote {out.name}  ({len(preds)} hours, "
+          f"actual mean {preds['actual'].mean():.1f} µg/m³)")
 
 
 def _season_mean(df: pd.DataFrame, months: list[int]) -> float:

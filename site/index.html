@@ -130,6 +130,7 @@
         padding: 15px 17px; box-shadow: var(--shadow);
       }
       .tile-v { font-size: 30px; line-height: 1.05; }
+      .tile-u { font-family: system-ui, sans-serif; font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 4px; }
       .tile-k { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
       .tile-k .accent { color: var(--ink2); font-weight: 600; }
 
@@ -267,9 +268,10 @@
             <span class="live"><span class="dot"></span> live</span>
           </div>
           <p class="lede">
-            A monitoring loop that catches a model going stale. It tracks a champion, measures
-            drift, trains a challenger when the champion decays, and promotes it only if it wins
-            on data neither has seen.
+            A monitoring loop that catches a model going stale. The model predicts
+            <strong>hourly PM2.5</strong>, the fine-particulate pollution in a city's air, from
+            temperature, wind speed and humidity. The loop tracks it, measures drift, trains a
+            challenger when it decays, and promotes it only if it wins on data neither has seen.
           </p>
           <p class="built" id="built"></p>
         </div>
@@ -315,7 +317,7 @@
           <ol class="steps" id="steps"></ol>
           <p class="why">
             <strong>Why two signals:</strong> data drift needs no labels and no model, which makes it
-            the early warning. Performance drift is what actually triggers a retrain. Deciding
+            the early warning. Performance drift is what triggers a retrain. Deciding
             “has it drifted?” by comparing the champion to a challenger would be circular, since
             you would need a challenger before you were allowed to decide you needed one.
           </p>
