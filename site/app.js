@@ -164,6 +164,46 @@ function psiStatus(pal, psi) {
   return pal.good;
 }
 
+/* Spin the globe to a new centre instead of cutting to it. The rotation carries
+ * the information a cut throws away: how far apart two cities actually are, and
+ * which way round the world you travelled to get there. */
+let globeAnim = null;
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+function spinGlobeTo(gd, target) {
+  if (globeAnim) cancelAnimationFrame(globeAnim);
+  // Read the *live* rotation, so interrupting a spin — or spinning after the user
+  // has dragged the globe by hand — starts from where it actually is.
+  const from = { ...(gd.layout?.geo?.projection?.rotation || { lon: 0, lat: 0 }) };
+  // Normalise into (-180, 180] so we always take the short way round: Tokyo to
+  // Los Angeles crosses the Pacific, it doesn't wind back across Eurasia.
+  const dLon = ((target.lon - from.lon + 540) % 360) - 180;
+  const dLat = target.lat - from.lat;
+  if (Math.abs(dLon) < 0.01 && Math.abs(dLat) < 0.01) return;
+
+  const settle = (lon, lat) =>
+    Plotly.relayout(gd, { "geo.projection.rotation.lon": lon, "geo.projection.rotation.lat": lat });
+
+  if (reducedMotion()) return void settle(target.lon, target.lat);
+
+  // A neighbouring city shouldn't take as long as a half-world spin.
+  const duration = 380 + 620 * Math.min(1, Math.hypot(dLon, dLat) / 180);
+  // Baseline off the first frame's own timestamp rather than performance.now():
+  // the two are not guaranteed to share a time origin, and when they don't, t
+  // starts negative, the easing goes negative, and the globe creeps backwards
+  // instead of spinning.
+  let t0 = null;
+  const step = (now) => {
+    if (t0 === null) t0 = now;
+    const t = Math.min(1, Math.max(0, (now - t0) / duration));
+    const e = easeInOut(t);
+    settle(from.lon + dLon * e, from.lat + dLat * e);
+    globeAnim = t < 1 ? requestAnimationFrame(step) : null;
+  };
+  globeAnim = requestAnimationFrame(step);
+}
+
 function renderCityList(cities, pal) {
   document.getElementById("city-cap").textContent =
     `${cities.length} monitored ${cities.length === 1 ? "city" : "cities"}`;
@@ -186,6 +226,12 @@ function renderCityList(cities, pal) {
   });
 }
 
+/* The globe is rebuilt only when it genuinely has to be — a theme flip (colours
+ * are baked into the layout) or a change in which cities exist. A mere change of
+ * selection restyles and spins the plot that is already there, because tearing it
+ * down and re-plotting is what would make the spin impossible. */
+let globeState = { plotted: false, theme: null, sig: null };
+
 function renderMap() {
   const card = document.getElementById("map-card");
   const cities = cityProfiles();
@@ -195,6 +241,9 @@ function renderMap() {
   if (!cities.length) return;
 
   const pal = P();
+  const gd = document.getElementById("globe");
+  const theme = resolveTheme();
+  const sig = cities.map((c) => c.key).join("|");
   // -1 when the active profile has no location, which is a real state: the live
   // schedule is selected. Nothing is ringed, and the globe keeps a neutral centre.
   const sel = cities.findIndex((c) => c.key === current);
@@ -204,6 +253,15 @@ function renderMap() {
     lat: cities.reduce((s, c) => s + c.location.lat, 0) / cities.length,
     lon: cities.reduce((s, c) => s + c.location.lon, 0) / cities.length,
   };
+  const ringColor = cities.map((_, i) => (i === sel ? pal.ink : pal.surface));
+  const ringWidth = cities.map((_, i) => (i === sel ? 3 : 1.5));
+
+  if (globeState.plotted && globeState.theme === theme && globeState.sig === sig) {
+    Plotly.restyle(gd, { "marker.line.color": [ringColor], "marker.line.width": [ringWidth] }, [0]);
+    spinGlobeTo(gd, focus);
+    renderCityList(cities, pal);
+    return;
+  }
 
   const trace = {
     type: "scattergeo", mode: "markers",
@@ -215,10 +273,7 @@ function renderMap() {
       color: cities.map((c) => psiStatus(pal, c.stats.latest_psi)),
       // sqrt so the dot's *area* tracks run count rather than its radius
       size: cities.map((c) => 13 + 11 * Math.sqrt(c.stats.runs / maxRuns)),
-      line: {
-        color: cities.map((_, i) => (i === sel ? pal.ink : pal.surface)),
-        width: cities.map((_, i) => (i === sel ? 3 : 1.5)),
-      },
+      line: { color: ringColor, width: ringWidth },
     },
     hovertemplate:
       "<b>%{text}</b>, %{customdata[0]}<br>PSI %{customdata[1]} · %{customdata[2]} runs<extra></extra>",
@@ -248,12 +303,18 @@ function renderMap() {
     },
   };
 
-  Plotly.newPlot(document.getElementById("globe"), [trace], layout, CONFIG).then((gd) => {
+  // newPlot on a live div keeps previously bound handlers, which would stack a
+  // second click listener on every theme flip.
+  if (gd.removeAllListeners) gd.removeAllListeners("plotly_click");
+  if (globeAnim) { cancelAnimationFrame(globeAnim); globeAnim = null; }
+
+  Plotly.newPlot(gd, [trace], layout, CONFIG).then(() => {
     gd.on("plotly_click", (ev) => {
       const i = ev.points[0]?.pointIndex;
       if (i != null) selectProfile(cities[i].key);
     });
   });
+  globeState = { plotted: true, theme, sig };
 
   renderCityList(cities, pal);
 }

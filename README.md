@@ -95,6 +95,12 @@ many monitoring runs it has. Clicking a marker switches the whole dashboard to t
 city; the segmented control, the markers and the city list are three views of one
 selection, so moving any of them moves the other two.
 
+Selecting a city **spins** the globe to it rather than cutting, taking the short way
+round and easing in and out over a duration that scales with the distance. The
+rotation carries what a cut throws away: how far apart two cities are, and which way
+round the world you travelled. It honours `prefers-reduced-motion` by jumping
+straight there.
+
 It's a Plotly `scattergeo` orthographic projection, so the geography is vector data
 Plotly already ships — no tile server, no API key, nothing added to the page's
 dependencies. The city list beside the globe isn't decoration: it's the
