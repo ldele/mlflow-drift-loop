@@ -6,7 +6,7 @@
     <title>MLflow drift loop</title>
     <meta
       name="description"
-      content="A model-monitoring loop that detects drift, retrains a challenger, and promotes it — running on real Kraków air-quality data."
+      content="A model-monitoring loop that detects drift, retrains a challenger and promotes it, running on real air-quality data from three cities."
     />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
     <style>
@@ -25,8 +25,11 @@
         --good: #0a9a2e;
         --warn: #c98500;
         --crit: #d03b3b;
-        --shadow: 0 1px 2px rgba(20, 19, 15, 0.04), 0 8px 24px rgba(20, 19, 15, 0.06);
-        --radius: 16px;
+        /* No drop shadow. Nothing on this page floats above anything else, so a
+           shadow would be decoration pretending to be depth. Cards are separated
+           by a hairline and a change of surface, the way a printed table is. */
+        --shadow: none;
+        --radius: 6px;
       }
       :root[data-theme="dark"] {
         color-scheme: dark;
@@ -43,7 +46,7 @@
         --good: #26c24a;
         --warn: #f0b03a;
         --crit: #e05656;
-        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.45);
+        --shadow: none;
       }
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme="light"]) {
@@ -61,9 +64,17 @@
           --good: #26c24a;
           --warn: #f0b03a;
           --crit: #e05656;
-          --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.45);
+          --shadow: none;
         }
       }
+      /* Headings in a serif. system-ui everywhere is what you get when nobody
+         chose a typeface; a serif for headings against a sans for data is the
+         old newspaper split, and it costs nothing to load. */
+      :root {
+        --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+      }
+      h1, h2, h3, .tile-v, .verdict b { font-family: var(--serif); font-weight: 600; }
+
       * { box-sizing: border-box; }
       html { -webkit-text-size-adjust: 100%; }
       body {
@@ -80,17 +91,15 @@
       /* ---------- header ---------- */
       header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 36px 0 0; }
       .title-row { display: flex; align-items: center; gap: 12px; }
-      h1 { margin: 0; font-size: 27px; letter-spacing: -0.02em; }
-      .live {
-        display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
-        color: var(--good); border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px;
-        background: var(--surface);
-      }
-      .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+      h1 { margin: 0; font-size: 28px; }
+      /* A plain word, not a pill with a glowing dot. The page is rebuilt weekly,
+         which is worth stating and isn't worth a fake telemetry indicator. */
+      .live { font-size: 12.5px; color: var(--good); font-weight: 500; }
+      .live .dot { display: none; }
       .lede { margin: 10px 0 0; color: var(--ink2); font-size: 15.5px; max-width: 64ch; }
       .built { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
       .theme-btn {
-        flex: none; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border);
+        flex: none; width: 38px; height: 38px; border-radius: 6px; border: 1px solid var(--border);
         background: var(--surface); color: var(--ink2); cursor: pointer; font-size: 17px; line-height: 1;
         display: grid; place-items: center; box-shadow: var(--shadow);
       }
@@ -101,11 +110,11 @@
       /* wraps rather than overflowing once there are more cities than fit a row */
       .segmented {
         display: inline-flex; flex-wrap: wrap; background: var(--surface-2);
-        border: 1px solid var(--border); border-radius: 12px; padding: 4px; gap: 2px;
+        border: 1px solid var(--border); border-radius: 6px; padding: 3px; gap: 2px;
       }
       .segmented button {
         appearance: none; border: 0; background: transparent; color: var(--ink2);
-        font: inherit; font-size: 13.5px; font-weight: 500; padding: 7px 14px; border-radius: 9px;
+        font: inherit; font-size: 13.5px; font-weight: 500; padding: 7px 14px; border-radius: 4px;
         cursor: pointer; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease;
       }
       .segmented button:hover { color: var(--ink); }
@@ -117,10 +126,10 @@
       /* ---------- KPI tiles ---------- */
       .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 20px 0 4px; }
       .tile {
-        background: var(--surface); border: 1px solid var(--border); border-radius: 13px;
+        background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
         padding: 15px 17px; box-shadow: var(--shadow);
       }
-      .tile-v { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.05; }
+      .tile-v { font-size: 30px; line-height: 1.05; }
       .tile-k { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
       .tile-k .accent { color: var(--ink2); font-weight: 600; }
 
@@ -131,7 +140,7 @@
         padding: 18px 18px 12px; box-shadow: var(--shadow); min-width: 0; display: flex; flex-direction: column;
       }
       .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-      .card h3 { margin: 0; font-size: 16.5px; letter-spacing: -0.01em; }
+      .card h3 { margin: 0; font-size: 17px; }
       .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
       .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); white-space: nowrap; }
       .lg .swatch { width: 15px; height: 3px; border-radius: 2px; }
@@ -155,7 +164,7 @@
       .city-row {
         display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
         appearance: none; font: inherit; cursor: pointer; background: var(--surface);
-        border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px;
+        border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px;
         margin-bottom: 8px; transition: background 0.15s ease, border-color 0.15s ease;
       }
       .city-row:hover { border-color: var(--accent); }
@@ -168,7 +177,7 @@
       .city-row .csub { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
       .city-row .pill {
         flex: none; font-size: 11.5px; font-weight: 600; padding: 3px 9px;
-        border-radius: 999px; border: 1px solid; white-space: nowrap;
+        border-radius: 3px; border: 1px solid; white-space: nowrap;
       }
       @media (max-width: 760px) { .map-body { grid-template-columns: 1fr; } }
 
@@ -178,7 +187,7 @@
       table.bench { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 460px; }
       table.bench th {
         text-align: left; font-weight: 600; color: var(--muted); font-size: 11.5px;
-        text-transform: uppercase; letter-spacing: 0.05em; padding: 0 12px 7px 0;
+        padding: 0 12px 7px 0;
         border-bottom: 1px solid var(--border); white-space: nowrap;
       }
       table.bench th.num, table.bench td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -192,10 +201,10 @@
         padding-top: 14px; border-top: 1px solid var(--border);
       }
       .verdict div { font-size: 13px; color: var(--ink2); }
-      .verdict b { display: block; font-size: 19px; letter-spacing: -0.01em; margin-bottom: 1px; }
+      .verdict b { display: block; font-size: 20px; margin-bottom: 1px; }
 
       /* ---------- method section ---------- */
-      h2.method-h { margin: 36px 0 0; font-size: 22px; letter-spacing: -0.02em; }
+      h2.method-h { margin: 36px 0 0; font-size: 23px; }
       .method-sub { margin: 8px 0 0; color: var(--ink2); font-size: 14.5px; max-width: 84ch; }
       .method-card { margin: 16px 0 0; }
       .steps {
@@ -204,11 +213,11 @@
       }
       .step {
         background: var(--surface-2); border: 1px solid var(--border);
-        border-radius: 11px; padding: 12px 14px;
+        border-radius: var(--radius); padding: 12px 14px;
       }
       .step-n {
         font-size: 11px; font-weight: 700; color: var(--accent);
-        letter-spacing: 0.06em; text-transform: uppercase;
+        
       }
       .step-t { font-size: 14.5px; font-weight: 600; margin-top: 3px; }
       .step-d { font-size: 12.5px; color: var(--ink2); margin-top: 4px; line-height: 1.45; }
@@ -226,7 +235,7 @@
       .spec code {
         font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace;
         font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border);
-        border-radius: 5px; padding: 1px 5px;
+        border-radius: 3px; padding: 1px 5px;
       }
       .gloss { color: var(--muted); font-size: 12.5px; }
       @media (max-width: 620px) { .method-grid { grid-template-columns: 1fr; } }
@@ -258,8 +267,9 @@
             <span class="live"><span class="dot"></span> live</span>
           </div>
           <p class="lede">
-            A monitoring loop that catches a model going stale — it tracks a champion, measures drift,
-            and retrains a challenger, promoting it only when it wins on unseen data.
+            A monitoring loop that catches a model going stale. It tracks a champion, measures
+            drift, trains a challenger when the champion decays, and promotes it only if it wins
+            on data neither has seen.
           </p>
           <p class="built" id="built"></p>
         </div>
@@ -275,7 +285,7 @@
         <div class="card-head"><h3>Where the data comes from</h3></div>
         <p class="desc">
           One marker per monitored city, coloured by its latest data-drift reading and sized by how
-          many monitoring runs it has. Click a marker — or a row — to switch the dashboard to that city.
+          many monitoring runs it has. Click a marker, or a row, to switch the dashboard to that city.
           Drag to rotate the globe.
         </p>
         <div class="map-body">
@@ -304,10 +314,10 @@
           <p class="desc">One scheduled run, every week. Steps 3 and 4 only happen when step 2 says they should.</p>
           <ol class="steps" id="steps"></ol>
           <p class="why">
-            <strong>Why two signals:</strong> data drift needs no labels and no model, so it is the early
-            warning. Performance drift is the action signal. Deciding “has it drifted?” by comparing the
-            champion to a challenger would be circular — you would need a challenger before you were
-            allowed to decide you needed one.
+            <strong>Why two signals:</strong> data drift needs no labels and no model, which makes it
+            the early warning. Performance drift is what actually triggers a retrain. Deciding
+            “has it drifted?” by comparing the champion to a challenger would be circular, since
+            you would need a challenger before you were allowed to decide you needed one.
           </p>
         </section>
 
@@ -315,9 +325,10 @@
           <section class="card">
             <div class="card-head"><h3>The model</h3></div>
             <p class="desc">
-              Ridge regression on three weather features — deliberately boring. A simple model decays
-              legibly when the relationship shifts; a bigger one would absorb some of the drift and
-              blur the story.
+              Ridge regression on three weather features, kept small on purpose: a simple model
+              decays visibly when the relationship shifts, where a larger one would absorb some of
+              the drift and hide it. The modelling is not the interesting part here. The loop
+              around it is, and it would be unchanged if you swapped in something bigger.
             </p>
             <dl class="spec" id="model-spec"></dl>
           </section>
@@ -333,7 +344,7 @@
       <footer>
         <div class="data-links" id="data-links"></div>
         <p class="foot-note">
-          Interactive — hover, zoom, and toggle series on any chart. Rebuilt weekly from the MLflow
+          Hover, zoom and toggle series on any chart. Rebuilt weekly from the MLflow
           backends. Source and the full Streamlit app on
           <a href="https://github.com/ldele/mlflow-drift-loop">GitHub</a>.
         </p>

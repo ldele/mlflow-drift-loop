@@ -42,7 +42,7 @@ CITY_STORY = {
     "openmeteo": " Here it's a summer-trained model walking into the winter heating season, "
     "when basin inversions drive PM2.5 up several-fold.",
     "openmeteo_delhi": " Here it's a monsoon-trained model walking into the post-monsoon "
-    "burning season, which triples Delhi's PM2.5 — the most violent of the three.",
+    "burning season, which triples Delhi's PM2.5, the most violent of the three.",
     "openmeteo_la": " Los Angeles is the quiet one: barely a season at all, so the champion "
     "mostly holds and the loop mostly declines to retrain.",
 }
@@ -173,7 +173,7 @@ else:
 if runs.empty:
     if profile_key == "scheduled":
         st.warning(
-            "No scheduled runs yet — the weekly GitHub Action populates this profile. "
+            "No scheduled runs yet. The weekly GitHub Action populates this profile. "
             "Locally: `python scripts/run_scheduled.py --as-of YYYY-MM-DD`."
         )
         st.stop()
@@ -191,7 +191,7 @@ if runs.empty:
     ]
     st.warning(f"No data for **{PROFILE.label}** yet.")
     if st.button(f"Generate it now ({est})", type="primary"):
-        with st.spinner("Running the pipeline — this populates the MLflow backend…"):
+        with st.spinner("Running the pipeline, which populates the MLflow backend…"):
             # The subprocess is a fresh interpreter; ensure it can import the
             # package from src/ even where the project isn't pip-installed (Cloud).
             subprocess.run(
@@ -243,7 +243,7 @@ with tab_loop:
         story += " The shaded band is everything after the engineered regime shift."
     elif profile_key == "scheduled":
         story += (
-            " Each point is one **scheduled run** appended over calendar time — the live "
+            " Each point is one **scheduled run** appended over calendar time: the live "
             "loop accruing its own history, one cron fire at a time (Phase 3)."
         )
     else:  # one of the cities

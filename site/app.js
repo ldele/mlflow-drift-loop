@@ -364,7 +364,7 @@ function render() {
   let traces = feat.map((f, i) => lineT(p.as_of, p.psi[f], f, pal.series[i]));
   chartCard(jobs,
     "Data drift",
-    "Each feature's recent distribution vs. the champion's training window (Population Stability Index). Above 0.25 is a meaningful shift.",
+    "Each feature's recent distribution against the champion's training window (Population Stability Index). Above 0.25 counts as a meaningful shift.",
     feat.map((f, i) => ({ label: f, color: pal.series[i], kind: "line" })),
     traces, lay);
 
@@ -380,7 +380,7 @@ function render() {
   }
   chartCard(jobs,
     "Performance drift & retrains",
-    "The champion's live error divided by its error at training time. Crossing 1.25 (25% worse) triggers a retrain.",
+    "The champion's live error divided by its error at training time. Crossing 1.25, meaning 25% worse, triggers a retrain.",
     chips2, traces, lay);
 
   // 3. Champion vs. challenger on the held-out week
@@ -403,7 +403,7 @@ function render() {
   } else {
     traces = [];
     chips3 = [];
-    annotated(lay, pal, "No challenger trained yet — no retrain has fired.");
+    annotated(lay, pal, "No challenger trained yet, because no retrain has fired.");
   }
   chartCard(jobs,
     "Champion vs. challenger",
@@ -428,7 +428,7 @@ function render() {
   }
   chartCard(jobs,
     "Model coefficients",
-    "The Ridge model's learned slope per feature, across versions. A slope crossing zero is the real-world relationship inverting — concept drift.",
+    "The Ridge model's learned slope per feature, across versions. A slope crossing zero means the real-world relationship has inverted, which is concept drift.",
     chips4, traces, lay);
 
   renderBenchmark(p);
@@ -488,7 +488,7 @@ function renderBenchmark(p) {
   card.innerHTML =
     `<div class="card-head"><h3>Does the model beat anything?</h3></div>` +
     `<p class="desc">Median error across the ${b.windows} monitoring windows of ` +
-    `${b.monitor_days} days each — the same slices the charts above report on, so the ` +
+    `${b.monitor_days} days each, the same slices the charts above report on, so the ` +
     `served champion, the never-retrained champion and four predictors that need no ` +
     `training at all are directly comparable. Lower is better.</p>` +
     `<div class="bench-wrap"><table class="bench">` +
@@ -519,7 +519,7 @@ function renderMethod(m) {
   document.getElementById("method").hidden = false;
   document.getElementById("method-sub").textContent =
     "Everything above is produced by one loop of four steps, run once a week against a " +
-    "deliberately simple model. Nothing here is hand-tuned per city.";
+    "small model. Nothing here is hand-tuned per city.";
 
   const steps = [
     ["Monitor", `Score the live champion on the last ${days(p.monitor_days)} of data.`],
@@ -538,24 +538,24 @@ function renderMethod(m) {
     ["features", m.features.map(code).join(" ")],
     ["target", code(m.target), "µg/m³"],
     ["training", `chronological ${pct(1 - m.val_fraction)}/${pct(m.val_fraction)} tail split`,
-      "— then refit on the full window"],
-    ["baseline", "RMSE on the held-out tail", "— never a random split, so it is measured the same way production will be"],
+      "then refit on the full window"],
+    ["baseline", "RMSE on the held-out tail", "never a random split, so it is measured the same way production will be"],
   ]);
 
   document.getElementById("param-desc").textContent = m.params_uniform
-    ? "Every threshold the loop decides with, in one place — and identical for every city, so a city's " +
-      "behaviour is a property of its weather rather than of its tuning."
+    ? "Every threshold the loop decides with, in one place, and identical for every city so a city's " +
+      "behaviour reflects its weather and not its tuning."
     : "Every threshold the loop decides with. These are the values for the first source shown; they are " +
       "not currently identical across cities.";
 
   const b = m.psi_bands;
   specRows(document.getElementById("param-spec"), [
-    ["monitor window", code(days(p.monitor_days)), "— what the champion is scored on"],
-    ["challenger training", code(days(p.challenger_train_days)), "— recent history a challenger learns from"],
-    ["holdout", code(days(p.holdout_days)), "— judged on this, excluded from both"],
-    ["retrain trigger", code(`error ÷ baseline > ${p.perf_drift_threshold}`), `— ${pct(p.perf_drift_threshold - 1)} worse`],
-    ["PSI significant", code(`> ${p.psi_threshold}`), `— stable &lt; ${b.stable}, moderate ${b.stable}–${b.significant}`],
-    ["promotion margin", code(`> ${pct(p.promotion_margin)}`), "— or the challenger is rejected"],
+    ["monitor window", code(days(p.monitor_days)), "what the champion is scored on"],
+    ["challenger training", code(days(p.challenger_train_days)), "recent history a challenger learns from"],
+    ["holdout", code(days(p.holdout_days)), "judged on this, excluded from both"],
+    ["retrain trigger", code(`error ÷ baseline > ${p.perf_drift_threshold}`), `${pct(p.perf_drift_threshold - 1)} worse`],
+    ["PSI significant", code(`> ${p.psi_threshold}`), `stable below ${b.stable}, moderate ${b.stable} to ${b.significant}`],
+    ["promotion margin", code(`> ${pct(p.promotion_margin)}`), "or the challenger is rejected"],
   ]);
 }
 

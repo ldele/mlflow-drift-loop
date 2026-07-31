@@ -39,20 +39,20 @@ OUT = REPO_ROOT / "site"
 DISPLAY_ORDER = ["openmeteo", "openmeteo_delhi", "openmeteo_la", "scheduled"]
 
 STORY = {
-    "openmeteo": "Real Kraków weather + air quality. A model trained on clean summer air "
-    "decays as the winter heating season fills the basin with smog — its error peaks near "
-    "49 µg/m³ against 4.5 at training time, and the loop fires 9 retrains across 23 runs.",
+    "openmeteo": "Kraków weather and air quality. A model trained on clean summer air decays "
+    "once the winter heating season fills the basin with smog. Its error peaks near 49 µg/m³ "
+    "against 4.5 at training time, and the loop fires 9 retrains across 23 runs.",
     "openmeteo_delhi": "The violent case. Monsoon rain scrubs Delhi's air to a September "
     "minimum, then crop-residue burning and winter inversions triple PM2.5. The champion is "
-    "retrained on 7 of its 16 monitoring runs — the highest rate of the three.",
-    "openmeteo_la": "The counterexample, and it is one on the measurements rather than by "
-    "design. Los Angeles barely has a season — a 1.9× swing against Delhi's 3× — and a "
-    "champion trained on the autumn peak gets *better* as the year walks into a clean summer, "
-    "ending at 5.8 error against 17.3 at its worst. Across 37 runs the loop retrains 3 times: "
-    "mostly, correctly, it does nothing.",
-    "synthetic": "A synthetic world with a controllable drift knob, so detection provably "
-    "fires exactly when — and only when — the data is made to shift.",
-    "scheduled": "The same loop running on its own: one monitoring cycle is appended "
+    "retrained on 7 of its 16 monitoring runs, the highest rate of the three.",
+    "openmeteo_la": "The counterexample, chosen by the measurements after the plan said "
+    "otherwise. Los Angeles was meant to be the summer-smog city; its PM2.5 actually peaks in "
+    "November and swings only 1.9× against Delhi's 3×. A champion trained on the autumn peak "
+    "improves as the year walks into a clean summer, ending at 5.8 error against 17.3 at its "
+    "worst. Across 37 runs the loop retrains 3 times, and retraining leaves it worse off.",
+    "synthetic": "A synthetic world with a controllable drift knob, so detection can be shown "
+    "to fire exactly when the data is made to shift, and only then.",
+    "scheduled": "The same loop running on its own. One monitoring cycle is appended "
     "automatically each week, accruing its own history over calendar time.",
 }
 
@@ -251,7 +251,7 @@ def build() -> Path:
     # Only the sources in DISPLAY_ORDER are published (synthetic is excluded).
     profiles = [d for d in (profile_data(k) for k in DISPLAY_ORDER) if d is not None]
     if not profiles:
-        raise SystemExit("No profiles have data — run the pipelines first.")
+        raise SystemExit("No profiles have data. Run the pipelines first.")
 
     OUT.mkdir(exist_ok=True)
     payload = {
