@@ -28,10 +28,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import theme  # noqa: E402
 from driftloop import tracking  # noqa: E402
-from driftloop.config import FEATURES, PROFILES  # noqa: E402
+from driftloop.config import CITY_CLI_NAMES, FEATURES, PROFILES  # noqa: E402
 from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
 
 st.set_page_config(page_title="Drift loop", page_icon="~", layout="wide")
+
+# What each city's replay is a story *about*. Keyed by profile so a new city
+# without an entry degrades to the generic story rather than borrowing another
+# city's — or, worse, the live schedule's.
+CITY_STORY = {
+    "openmeteo": " Here it's a summer-trained model walking into the winter heating season, "
+    "when basin inversions drive PM2.5 up several-fold.",
+    "openmeteo_delhi": " Here it's a monsoon-trained model walking into the post-monsoon "
+    "burning season, which triples Delhi's PM2.5 — the most violent of the three.",
+    "openmeteo_la": " Los Angeles is the quiet one: barely a season at all, so the champion "
+    "mostly holds and the loop mostly declines to retrain.",
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -168,13 +180,20 @@ if runs.empty:
     # backend already has runs.
     script = "run_simulation.py" if IS_SYNTHETIC else "run_openmeteo.py"
     est = "~30s" if IS_SYNTHETIC else "~1 min · fetches Open-Meteo"
+    # Scope the run to the city being asked for. Without this the button would
+    # rebuild every city, so asking for Delhi would also re-run Kraków and LA.
+    city_args = [
+        f"--city={name}"
+        for name, key in CITY_CLI_NAMES.items()
+        if key == profile_key
+    ]
     st.warning(f"No data for **{PROFILE.label}** yet.")
     if st.button(f"Generate it now ({est})", type="primary"):
         with st.spinner("Running the pipeline — this populates the MLflow backend…"):
             # The subprocess is a fresh interpreter; ensure it can import the
             # package from src/ even where the project isn't pip-installed (Cloud).
             subprocess.run(
-                [sys.executable, str(REPO_ROOT / "scripts" / script), "--fresh"],
+                [sys.executable, str(REPO_ROOT / "scripts" / script), "--fresh", *city_args],
                 check=True,
                 cwd=str(REPO_ROOT),
                 env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")},
@@ -220,16 +239,13 @@ with tab_loop:
     )
     if profile_key == "synthetic":
         story += " The shaded band is everything after the engineered regime shift."
-    elif profile_key == "openmeteo":
-        story += (
-            " Here it's a summer-trained model walking into the winter heating season, "
-            "when basin inversions drive PM2.5 up several-fold."
-        )
-    else:  # scheduled
+    elif profile_key == "scheduled":
         story += (
             " Each point is one **scheduled run** appended over calendar time — the live "
             "loop accruing its own history, one cron fire at a time (Phase 3)."
         )
+    else:  # one of the cities
+        story += CITY_STORY.get(profile_key, "")
     st.markdown(story)
 
     fig = theme.base_figure("Data drift — PSI per feature vs. the champion's training window", "PSI")

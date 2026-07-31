@@ -7,9 +7,10 @@ recent data when the champion decays, and promotes the challenger only if it win
 on a window neither model has seen. Every decision — metrics, tags, and the model
 registry — is logged to MLflow, so the whole history is auditable.
 
-The worked example is air quality: a model that predicts Kraków's PM2.5 from the
-weather, trained on clean summer air, decaying as the winter heating season fills
-the basin with smog — and the loop keeping it accurate through the shift.
+The worked example is air quality: a model that predicts a city's PM2.5 from the
+weather, trained on clean air and decaying as the dirty season arrives — and the
+loop keeping it accurate through the shift. It runs over three cities that behave
+differently on purpose, including one where almost nothing happens.
 
 **Live dashboard → https://ldele.github.io/mlflow-drift-loop/** (interactive
 charts, rebuilt weekly).
@@ -65,13 +66,24 @@ One swappable `get_data(start, end)` contract sits under the whole thing, so the
 loop, drift math, and dashboard never change — only the data does. The dashboard
 showcases the real data, two ways:
 
-- **Kraków air quality — real.** Weather (temperature, wind, humidity) from the
+- **Three cities — real.** Weather (temperature, wind, humidity) from the
   [Open-Meteo](https://open-meteo.com/) ERA5 archive, joined on the hour with
-  PM2.5 from its air-quality API. A champion trained on summer 2025 is replayed
-  weekly into winter: PM2.5 mean rises from **~10 µg/m³** (summer) to **~54**
-  (winter), the champion's RMSE climbs from **~4.5 to ~49**, and the loop fires
-  **9 retrains and 7 promotions** across 23 runs (two early retrains were
-  *rejected* — the challenger didn't clear the margin).
+  PM2.5 from its air-quality API. Each city bootstraps a champion on a clean
+  season and replays weekly into the season that spoils it. They were chosen to
+  disagree with each other:
+
+  | | span | PM2.5 swing | champion RMSE | retrains / runs |
+  |---|---|---|---|---|
+  | **Kraków** | May 25 → Feb 26 | ~10 → ~54 (winter smog in a basin) | 4.5 → peak 49.1 | 9 / 23 |
+  | **Delhi** | May 25 → Feb 26 | 42 → 127 (post-monsoon burning) | 20.2 → peak 66.4 | 7 / 16 |
+  | **Los Angeles** | Sep 25 → Jul 26 | 15 → 29 (a mild winter bump) | peak 17.3, **ends at 5.8** | 3 / 37 |
+
+  Los Angeles is the control, and it earns that role on the measurements rather
+  than by design: it is popularly a summer-smog city, but hourly PM2.5 over
+  2025-26 actually peaks in November–December and bottoms out in June. Its
+  champion trains on the autumn peak and gets *better* as the year walks into a
+  clean summer. Across 37 runs the loop retrains 3 times — a drift detector that
+  correctly declines to act is as much of a result as one that fires.
 - **Live schedule — the loop running by itself.** The *same* Kraków source, but
   run **one incremental cycle at a time** against a **persistent** backend, driven
   weekly by a GitHub Action. It bootstraps a champion on first run, then appends
@@ -84,8 +96,8 @@ signals are independent). It isn't published to the dashboard; it's a proof, not
 showcase.
 
 Each source logs to its own MLflow backend file (`mlflow.db`,
-`mlflow_openmeteo.db`, `mlflow_scheduled.db`) so they reset and browse
-independently.
+`mlflow_openmeteo.db`, `mlflow_openmeteo_delhi.db`, `mlflow_openmeteo_la.db`,
+`mlflow_scheduled.db`) so they reset and browse independently.
 
 ### Where the data comes from
 
@@ -154,7 +166,8 @@ Model Registry — an auditable version history.
 uv venv -p "C:\Users\LDELEZ\AppData\Local\Python\pythoncore-3.12-64\python.exe"
 uv pip install --system-certs -e ".[dev]"
 
-# Kraków air quality — fetch/cache the real span, then run the loop
+# Real air quality — fetch/cache each span, then run the loop.
+# Defaults to all three cities; --city krakow|delhi|la runs just one.
 .venv\Scripts\python.exe scripts\run_openmeteo.py --fresh
 
 # Synthetic — the controlled proof
@@ -194,7 +207,7 @@ src/driftloop/
   tracking.py        MLflow setup, registry, champion alias, per-source backend/reset
   loop.py            one scheduled run: detect → maybe retrain → maybe promote
 scripts/
-  run_openmeteo.py   real Kraków data: fetch/cache, then run the loop
+  run_openmeteo.py   real city data: fetch/cache, then run the loop (--city)
   run_simulation.py  synthetic: bootstrap + replay weekly runs across the shift
   sweep_knobs.py     the two-knob independence demo (offline, no MLflow)
   run_scheduled.py   one incremental cycle against the persistent backend

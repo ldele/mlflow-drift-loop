@@ -412,11 +412,14 @@ function render() {
 }
 
 function renderDataLinks(data) {
-  const raw = data.raw_data;
+  // One raw CSV per monitored city, so the list grows with the cities.
+  const raw = data.raw_data || [];
   const parts = [];
-  if (raw) parts.push(
-    `<strong>Raw data:</strong> <a href="${raw.file}">${raw.rows.toLocaleString()} hourly Kraków observations</a> ` +
-    `(${raw.start} → ${raw.end}, CSV)`);
+  if (raw.length) {
+    const links = raw.map((r) =>
+      `<a href="${r.file}" title="${r.start} → ${r.end}">${r.city} (${r.rows.toLocaleString()} h)</a>`);
+    parts.push(`<strong>Raw hourly data:</strong> ${links.join(", ")}`);
+  }
   parts.push(`<strong>Chart data:</strong> <a href="data.json">data.json</a>`);
   document.getElementById("data-links").innerHTML = parts.join(" &nbsp;·&nbsp; ");
 }

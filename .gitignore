@@ -18,6 +18,7 @@ mlruns/
 outputs/
 
 # Static site: the shell (index.html, app.js) is committed; the data files
-# (data.json, the raw-data CSV) are generated at build time and published.
+# (data.json, one raw-data CSV per city) are generated at build time and
+# published. The glob covers cities added later without another edit here.
 site/data.json
-site/krakow_hourly.csv
+site/*_hourly.csv

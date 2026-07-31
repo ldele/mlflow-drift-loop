@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import sys
+import unicodedata
 from pathlib import Path
 
 import mlflow
@@ -34,11 +35,20 @@ OUT = REPO_ROOT / "site"
 # showcased: the historical Kraków replay and the same loop running live. The
 # synthetic world stays an offline correctness proof (tests + sweep_knobs) and is
 # deliberately NOT published here.
-DISPLAY_ORDER = ["openmeteo", "scheduled"]
+DISPLAY_ORDER = ["openmeteo", "openmeteo_delhi", "openmeteo_la", "scheduled"]
 
 STORY = {
     "openmeteo": "Real Kraków weather + air quality. A model trained on clean summer air "
-    "decays as the winter heating season fills the basin with smog — and the loop retrains to keep up.",
+    "decays as the winter heating season fills the basin with smog — its error peaks near "
+    "49 µg/m³ against 4.5 at training time, and the loop fires 9 retrains across 23 runs.",
+    "openmeteo_delhi": "The violent case. Monsoon rain scrubs Delhi's air to a September "
+    "minimum, then crop-residue burning and winter inversions triple PM2.5. The champion is "
+    "retrained on 7 of its 16 monitoring runs — the highest rate of the three.",
+    "openmeteo_la": "The counterexample, and it is one on the measurements rather than by "
+    "design. Los Angeles barely has a season — a 1.9× swing against Delhi's 3× — and a "
+    "champion trained on the autumn peak gets *better* as the year walks into a clean summer, "
+    "ending at 5.8 error against 17.3 at its worst. Across 37 runs the loop retrains 3 times: "
+    "mostly, correctly, it does nothing.",
     "synthetic": "A synthetic world with a controllable drift knob, so detection provably "
     "fires exactly when — and only when — the data is made to shift.",
     "scheduled": "The same loop running on its own: one monitoring cycle is appended "
@@ -150,30 +160,42 @@ def profile_data(key: str) -> dict | None:
     }
 
 
-def publish_raw_data() -> dict | None:
-    """Copy the raw gathered Kraków observations into the published site.
+def _slug(name: str) -> str:
+    """'Kraków' -> 'krakow', 'Los Angeles' -> 'los_angeles' (ASCII, filename-safe)."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return "_".join(ascii_name.lower().split())
 
-    The chart data is a distilled summary; this makes the full hourly dataset the
+
+def publish_raw_data() -> list[dict]:
+    """Copy each city's raw gathered observations into the published site.
+
+    The chart data is a distilled summary; this makes the full hourly datasets the
     charts are built from downloadable too, so nothing we gather is thrown away.
-    Reads the committed parquet cache directly (no network).
+    Reads the committed parquet caches directly (no network).
     """
-    from driftloop.config import OpenMeteoConfig  # noqa: E402
     from driftloop.data.openmeteo import OpenMeteoSource  # noqa: E402
 
-    cache_path = OpenMeteoSource(OpenMeteoConfig())._cache_path()
-    if not cache_path.exists():
-        print(f"  (no cached Kraków data at {cache_path.name}; skipping raw-data publish)")
-        return None
-
-    df = pd.read_parquet(cache_path)
     OUT.mkdir(exist_ok=True)
-    (OUT / "krakow_hourly.csv").write_text(df.to_csv(index=False), encoding="utf-8")
-    return {
-        "file": "krakow_hourly.csv",
-        "rows": int(len(df)),
-        "start": pd.to_datetime(df["timestamp"]).min().strftime("%Y-%m-%d"),
-        "end": pd.to_datetime(df["timestamp"]).max().strftime("%Y-%m-%d"),
-    }
+    published = []
+    for key in DISPLAY_ORDER:
+        location = PROFILES[key].location
+        if location is None:  # not a place -- nothing raw of its own to publish
+            continue
+        cache_path = OpenMeteoSource(location)._cache_path()
+        if not cache_path.exists():
+            print(f"  (no cached {location.name} data at {cache_path.name}; skipping)")
+            continue
+        df = pd.read_parquet(cache_path)
+        filename = f"{_slug(location.name)}_hourly.csv"
+        (OUT / filename).write_text(df.to_csv(index=False), encoding="utf-8")
+        published.append({
+            "city": location.name,
+            "file": filename,
+            "rows": int(len(df)),
+            "start": pd.to_datetime(df["timestamp"]).min().strftime("%Y-%m-%d"),
+            "end": pd.to_datetime(df["timestamp"]).max().strftime("%Y-%m-%d"),
+        })
+    return published
 
 
 def build() -> Path:

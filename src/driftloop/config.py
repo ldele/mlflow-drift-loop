@@ -87,10 +87,56 @@ class OpenMeteoConfig:
     timezone: str = "GMT"
 
 
-# The monitored locations. One today; adding a city means adding a config here and
-# a Profile below that carries it, and everything downstream follows -- the site's
-# map plots one marker per profile that has a `location`.
+# The monitored locations. Adding a city means adding a config here and a Profile
+# below that carries it; everything downstream follows -- the site's map plots one
+# marker per profile that has a `location`.
+#
+# Each span is chosen to contain a clean training season *and* the season that
+# spoils it, because that is the regime shift the loop exists to catch.
 KRAKOW = OpenMeteoConfig()
+
+# Monsoon rain scrubs the air to a September minimum, then crop-residue burning
+# and winter inversions take PM2.5 from ~42 to ~127 ug/m3. The most violent of
+# the three by a wide margin.
+DELHI = OpenMeteoConfig(
+    name="Delhi",
+    country="IN",
+    latitude=28.6139,
+    longitude=77.2090,
+    origin=pd.Timestamp("2025-05-01"),
+    horizon=pd.Timestamp("2026-02-01"),
+)
+
+# The counterexample, and it is one on the measurements rather than by design.
+# LA is popularly a summer-smog city, but hourly PM2.5 over 2025-26 peaks in
+# November-December (~29 ug/m3) and bottoms out in June (~15) -- mildly *winter*
+# -bad, and only a ~1.9x swing against Delhi's 3x and Krakow's 5x. Its span
+# covers a whole annual cycle so the loop is watched through the world drifting
+# up and back down again, and mostly declining to act.
+LOS_ANGELES = OpenMeteoConfig(
+    name="Los Angeles",
+    country="US",
+    latitude=34.0522,
+    longitude=-118.2437,
+    origin=pd.Timestamp("2025-09-01"),
+    horizon=pd.Timestamp("2026-07-20"),
+)
+
+
+@dataclass(frozen=True)
+class ReplayWindows:
+    """Which slice bootstraps the champion, and the weekly replay that follows it.
+
+    Per city, because the seasons don't line up: Krakow and Delhi train on clean
+    summer air and walk into winter, while Los Angeles has no season worth the
+    name and is replayed across a full year instead.
+    """
+
+    champion_train_start: pd.Timestamp
+    champion_train_end: pd.Timestamp
+    first_run: pd.Timestamp
+    last_run: pd.Timestamp
+    step_days: int = 7
 
 
 @dataclass(frozen=True)
@@ -110,6 +156,10 @@ class Profile:
     # `openmeteo`, so giving it a location would stack two markers on one point.
     # It is a *mode* (the loop running live), not a separate place.
     location: OpenMeteoConfig | None = None
+    # How to replay this city's history. Set for the historical city profiles;
+    # None for the synthetic world and for the live loop, which advances one
+    # real cycle at a time rather than replaying a fixed span.
+    replay: ReplayWindows | None = None
 
 
 # Ordered lead-with-the-real-data first; the dashboard sidebar and the published
@@ -117,7 +167,7 @@ class Profile:
 PROFILES: dict[str, Profile] = {
     "openmeteo": Profile(
         key="openmeteo",
-        label="Kraków air quality",
+        label="Kraków",
         loop=LoopConfig(
             experiment_name="drift-loop-openmeteo",
             registered_model_name="pm25-ridge-krakow",
@@ -125,6 +175,49 @@ PROFILES: dict[str, Profile] = {
         db_filename="mlflow_openmeteo.db",
         meta_filename="run_meta_openmeteo.json",
         location=KRAKOW,
+        replay=ReplayWindows(
+            champion_train_start=pd.Timestamp("2025-06-01"),
+            champion_train_end=pd.Timestamp("2025-08-01"),
+            first_run=pd.Timestamp("2025-08-15"),
+            last_run=pd.Timestamp("2026-01-20"),
+        ),
+    ),
+    "openmeteo_delhi": Profile(
+        key="openmeteo_delhi",
+        label="Delhi",
+        loop=LoopConfig(
+            experiment_name="drift-loop-openmeteo-delhi",
+            registered_model_name="pm25-ridge-delhi",
+        ),
+        db_filename="mlflow_openmeteo_delhi.db",
+        meta_filename="run_meta_openmeteo_delhi.json",
+        location=DELHI,
+        # Train on the monsoon-scrubbed minimum, walk into the burning season.
+        replay=ReplayWindows(
+            champion_train_start=pd.Timestamp("2025-07-15"),
+            champion_train_end=pd.Timestamp("2025-09-30"),
+            first_run=pd.Timestamp("2025-10-10"),
+            last_run=pd.Timestamp("2026-01-25"),
+        ),
+    ),
+    "openmeteo_la": Profile(
+        key="openmeteo_la",
+        label="Los Angeles",
+        loop=LoopConfig(
+            experiment_name="drift-loop-openmeteo-la",
+            registered_model_name="pm25-ridge-la",
+        ),
+        db_filename="mlflow_openmeteo_la.db",
+        meta_filename="run_meta_openmeteo_la.json",
+        location=LOS_ANGELES,
+        # A full annual cycle rather than one season: the world drifts up into
+        # the mild winter peak and back down again.
+        replay=ReplayWindows(
+            champion_train_start=pd.Timestamp("2025-09-01"),
+            champion_train_end=pd.Timestamp("2025-10-25"),
+            first_run=pd.Timestamp("2025-11-05"),
+            last_run=pd.Timestamp("2026-07-15"),
+        ),
     ),
     "synthetic": Profile(
         key="synthetic",
@@ -135,6 +228,7 @@ PROFILES: dict[str, Profile] = {
     ),
     # The live loop. Filled one cycle at a time by the scheduled job
     # (scripts/run_scheduled.py), against a backend that persists between runs.
+    # (see CITY_CLI_NAMES below for the short names the run script accepts)
     "scheduled": Profile(
         key="scheduled",
         label="Live schedule",
@@ -145,4 +239,13 @@ PROFILES: dict[str, Profile] = {
         db_filename="mlflow_scheduled.db",
         meta_filename="run_meta_scheduled.json",
     ),
+}
+
+# Short CLI names for the city profiles -> profile key, in dashboard order. One
+# source of truth so `run_openmeteo.py --city` and the Streamlit "generate it
+# now" button can't drift apart.
+CITY_CLI_NAMES: dict[str, str] = {
+    "krakow": "openmeteo",
+    "delhi": "openmeteo_delhi",
+    "la": "openmeteo_la",
 }
