@@ -44,6 +44,9 @@ jobs:
       - name: Rebuild every city run from the committed cache (live history is committed)
         run: uv run python scripts/run_openmeteo.py --fresh --city all
 
+      - name: Score the champions against the baselines and tune alpha
+        run: uv run python scripts/benchmark.py --city all
+
       - name: Build the static site
         run: uv run python scripts/build_site.py
 

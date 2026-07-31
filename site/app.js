@@ -168,11 +168,19 @@ function psiStatus(pal, psi) {
  * the information a cut throws away: how far apart two cities actually are, and
  * which way round the world you travelled to get there. */
 let globeAnim = null;
+// Bumped on every new spin. A spin chained onto a relayout promise can't be
+// stopped with cancelAnimationFrame, so each frame checks it still owns the
+// globe before doing anything.
+let globeSpin = 0;
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 function spinGlobeTo(gd, target) {
-  if (globeAnim) cancelAnimationFrame(globeAnim);
+  const spin = ++globeSpin;
+  if (globeAnim) {
+    cancelAnimationFrame(globeAnim);
+    globeAnim = null;
+  }
   // Read the *live* rotation, so interrupting a spin — or spinning after the user
   // has dragged the globe by hand — starts from where it actually is.
   const from = { ...(gd.layout?.geo?.projection?.rotation || { lon: 0, lat: 0 }) };
@@ -189,19 +197,35 @@ function spinGlobeTo(gd, target) {
 
   // A neighbouring city shouldn't take as long as a half-world spin.
   const duration = 380 + 620 * Math.min(1, Math.hypot(dLon, dLat) / 180);
-  // Baseline off the first frame's own timestamp rather than performance.now():
-  // the two are not guaranteed to share a time origin, and when they don't, t
-  // starts negative, the easing goes negative, and the globe creeps backwards
-  // instead of spinning.
-  let t0 = null;
-  const step = (now) => {
-    if (t0 === null) t0 = now;
-    const t = Math.min(1, Math.max(0, (now - t0) / duration));
+  // One clock for the baseline and for every reading of it. Mixing
+  // performance.now() with the timestamp requestAnimationFrame hands the
+  // callback is a bug: the two need not share a time origin, and when they
+  // don't the easing goes negative and the globe creeps backwards.
+  const t0 = performance.now();
+
+  const frame = () => {
+    if (spin !== globeSpin) return; // a newer spin owns the globe now
+    const t = Math.min(1, Math.max(0, (performance.now() - t0) / duration));
     const e = easeInOut(t);
-    settle(from.lon + dLon * e, from.lat + dLat * e);
-    globeAnim = t < 1 ? requestAnimationFrame(step) : null;
+    // Wait for the projection to finish before asking for the next position.
+    // Relayout on a geo subplot re-projects the whole topojson, which takes
+    // longer than a frame; firing one per rAF queues them faster than they can
+    // render and the backlog is what makes the spin tear. Pacing on the promise
+    // renders as many intermediate positions as the browser can sustain, evenly
+    // — and the easing stays time-based, so the duration is unchanged.
+    settle(from.lon + dLon * e, from.lat + dLat * e)
+      .then(() => {
+        if (spin !== globeSpin || t >= 1) {
+          globeAnim = null;
+          return;
+        }
+        globeAnim = requestAnimationFrame(frame);
+      })
+      .catch(() => {
+        globeAnim = null;
+      });
   };
-  globeAnim = requestAnimationFrame(step);
+  globeAnim = requestAnimationFrame(frame);
 }
 
 function renderCityList(cities, pal) {
@@ -407,8 +431,70 @@ function render() {
     "The Ridge model's learned slope per feature, across versions. A slope crossing zero is the real-world relationship inverting — concept drift.",
     chips4, traces, lay);
 
+  renderBenchmark(p);
+
   // All cards are in the DOM now and the grid has settled — plot at the real width.
   jobs.forEach((j) => Plotly.newPlot(j.div, j.traces, j.layout, CONFIG));
+}
+
+/* ---------- benchmark card ---------- */
+
+const BENCH_LABEL = {
+  champion_served: "Champion (loop)",
+  champion_frozen: "Champion (never retrained)",
+  persistence: "Persistence",
+  seasonal_naive: "Seasonal naive",
+  climatology: "Climatology",
+  train_mean: "Training mean",
+};
+
+/* Per city, so this renders with the charts rather than in the static method
+ * section above the footer. Dropped entirely when scripts/benchmark.py hasn't
+ * run, rather than showing an empty frame. */
+function renderBenchmark(p) {
+  const card = document.getElementById("bench");
+  const b = p.benchmark;
+  card.hidden = !b || !b.scored?.length;
+  if (card.hidden) return;
+
+  const served = b.scored.find((s) => s.name === "champion_served");
+  const frozen = b.scored.find((s) => s.name === "champion_frozen");
+  const best = b.scored[0];
+  const gain = served && frozen ? (1 - served.median_rmse / frozen.median_rmse) * 100 : null;
+
+  const rows = b.scored.map((s) => {
+    const isModel = s.name.startsWith("champion");
+    return `<tr${isModel ? ' class="is-model"' : ""}>` +
+      `<td>${BENCH_LABEL[s.name] || s.name}</td>` +
+      `<td class="num">${s.median_rmse.toFixed(2)}</td>` +
+      `<td class="bench-note">${s.detail}${s.uses_past_target ? " · sees past PM2.5" : ""}</td>` +
+      `</tr>`;
+  }).join("");
+
+  const a = b.alpha;
+  const verdict = [];
+  if (gain != null) {
+    verdict.push(`<div><b style="color:${gain >= 0 ? "var(--good)" : "var(--crit)"}">` +
+      `${gain >= 0 ? "+" : ""}${gain.toFixed(1)}%</b>` +
+      `${gain >= 0 ? "better for retraining" : "worse for retraining"}</div>`);
+  }
+  verdict.push(`<div><b>${BENCH_LABEL[best.name] || best.name}</b>lowest error overall</div>`);
+  if (a) {
+    verdict.push(`<div><b>alpha ${a.shipped}</b>shipped; ${a.best} scored best on ` +
+      `${a.n_splits}-fold forward CV, costing ` +
+      `${a.penalty_pct == null ? "—" : `${a.penalty_pct.toFixed(1)}%`} error</div>`);
+  }
+
+  card.innerHTML =
+    `<div class="card-head"><h3>Does the model beat anything?</h3></div>` +
+    `<p class="desc">Median error across the ${b.windows} monitoring windows of ` +
+    `${b.monitor_days} days each — the same slices the charts above report on, so the ` +
+    `served champion, the never-retrained champion and four predictors that need no ` +
+    `training at all are directly comparable. Lower is better.</p>` +
+    `<div class="bench-wrap"><table class="bench">` +
+    `<thead><tr><th>Predictor</th><th class="num">Median RMSE</th><th>What it does</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table></div>` +
+    `<div class="verdict">${verdict.join("")}</div>`;
 }
 
 /* ---------- method section ---------- */

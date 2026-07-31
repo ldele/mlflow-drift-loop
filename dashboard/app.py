@@ -10,6 +10,7 @@ detail panels don't touch the data generator -- they keep working in Phase 2.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import subprocess
@@ -28,8 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import theme  # noqa: E402
 from driftloop import tracking  # noqa: E402
-from driftloop.config import CITY_CLI_NAMES, FEATURES, PROFILES  # noqa: E402
+from driftloop.config import CITY_CLI_NAMES, FEATURES, PROFILES, TARGET  # noqa: E402
 from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
+from driftloop.model import build_pipeline, train as train_model  # noqa: E402
 
 st.set_page_config(page_title="Drift loop", page_icon="~", layout="wide")
 
@@ -331,6 +333,119 @@ with tab_dist:
 # --------------------------------------------------------------------------- #
 with tab_model:
     versions = load_versions(DB, CFG.experiment_name, CFG.registered_model_name)
+
+    # --- what the model actually is, read out of the code rather than retyped ---
+    _pipeline = build_pipeline()
+    _val_fraction = inspect.signature(train_model).parameters["val_fraction"].default
+    _estimator = " → ".join(type(step).__name__ for _, step in _pipeline.steps)
+
+    st.markdown("#### The model")
+    spec_col, param_col = st.columns(2)
+    with spec_col:
+        st.markdown(
+            f"""
+| | |
+|---|---|
+| estimator | `{_estimator}(alpha={_pipeline.named_steps["ridge"].alpha:g})` |
+| features | `{"`, `".join(FEATURES)}` |
+| target | `{TARGET}` (µg/m³) |
+| training | chronological {(1 - _val_fraction):.0%}/{_val_fraction:.0%} tail split, refit on the full window |
+| baseline | RMSE on the held-out tail, never a random split |
+"""
+        )
+        st.caption(
+            "Ridge on three weather features, kept simple on purpose: a small model decays "
+            "visibly when the relationship shifts, where a larger one would absorb some of "
+            "the drift and hide it."
+        )
+    with param_col:
+        st.markdown(
+            f"""
+| | |
+|---|---|
+| monitor window | `{CFG.monitor_days} days` |
+| challenger training | `{CFG.challenger_train_days} days` |
+| holdout | `{CFG.holdout_days} days` |
+| retrain trigger | `error ÷ baseline > {CFG.perf_drift_threshold}` |
+| PSI significant | `> {CFG.psi_threshold}` (stable < {PSI_STABLE}) |
+| promotion margin | `> {CFG.promotion_margin:.0%}` |
+"""
+        )
+        st.caption(
+            "Identical for every city, so a city's behaviour reflects its weather and not "
+            "its tuning."
+        )
+
+    # --- baselines + alpha sweep, from scripts/benchmark.py ---
+    bench_path = REPO_ROOT / "outputs" / f"benchmark_{profile_key}.json"
+    if bench_path.exists():
+        bench = json.loads(bench_path.read_text(encoding="utf-8"))
+        st.markdown("#### Does it beat anything?")
+        st.markdown(
+            f"Median error across the {bench['windows']} monitoring windows of "
+            f"{bench['monitor_days']} days each, so the served champion, the "
+            "never-retrained champion and four predictors that need no training at all "
+            "are directly comparable. Lower is better."
+        )
+        table = pd.DataFrame(
+            [
+                {
+                    "predictor": s["name"],
+                    "median RMSE": round(s["median_rmse"], 2),
+                    "sees past PM2.5": "yes" if s["uses_past_target"] else "",
+                    "what it does": s["detail"],
+                }
+                for s in bench["scored"]
+            ]
+        )
+        st.dataframe(table, hide_index=True, width="stretch")
+
+        served = next((s for s in bench["scored"] if s["name"] == "champion_served"), None)
+        frozen = next((s for s in bench["scored"] if s["name"] == "champion_frozen"), None)
+        if served and frozen:
+            gain = (1 - served["median_rmse"] / frozen["median_rmse"]) * 100
+            if gain >= 0:
+                st.success(f"Retraining is worth **{gain:+.1f}%** here against never retraining.")
+            else:
+                st.warning(
+                    f"Retraining costs **{gain:.1f}%** here: the champion was better left alone. "
+                    "Retraining a city whose world barely moves fits noise."
+                )
+
+        alpha = bench.get("alpha")
+        if alpha and alpha.get("curve"):
+            st.markdown("#### Choosing alpha")
+            st.markdown(
+                f"Forward-chaining {alpha['n_splits']}-fold CV over the training window. "
+                f"`TimeSeriesSplit` never lets a fold train on rows that follow the ones it "
+                f"scores; a random split would leak badly on autocorrelated hourly data and "
+                f"make every alpha look fine."
+            )
+            curve = pd.DataFrame(alpha["curve"], columns=["alpha", "cv_rmse"])
+            fig = theme.base_figure(None, "CV RMSE", height=280)
+            fig.add_scatter(
+                x=curve["alpha"], y=curve["cv_rmse"], mode="lines+markers", name="CV RMSE"
+            )
+            fig.update_xaxes(type="log", title_text="alpha (log scale)")
+            fig.add_vline(x=alpha["shipped"], line_dash="dot",
+                          annotation_text=f"shipped {alpha['shipped']:g}")
+            fig.add_vline(x=alpha["best"], line_dash="dash",
+                          annotation_text=f"best {alpha['best']:g}")
+            st.plotly_chart(fig, width="stretch")
+            penalty = alpha.get("penalty_pct")
+            caption = f"Shipped alpha {alpha['shipped']:g}; {alpha['best']:g} scored best"
+            if penalty is not None:
+                caption += (
+                    f", costing {penalty:.1f}% error. The curve is nearly flat, which says the "
+                    "model is limited by what three weather features can express, not by "
+                    "regularisation."
+                )
+            st.caption(caption)
+    else:
+        st.info(
+            f"No benchmark for **{PROFILE.label}** yet — run "
+            f"`python scripts/benchmark.py --city all` to score it against the baselines."
+        )
 
     st.markdown("#### Coefficient evolution — a direct picture of concept drift")
     st.markdown(

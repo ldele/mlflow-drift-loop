@@ -121,10 +121,16 @@ def profile_data(key: str) -> dict | None:
         for f in [*FEATURES, "intercept"]:
             coef[f] = _floats(versions[f"coef_{f}"])
 
+    # Written by scripts/benchmark.py. Absent until that has run, which is fine:
+    # the page drops the card rather than inventing numbers for it.
+    bench_path = REPO_ROOT / "outputs" / f"benchmark_{key}.json"
+    benchmark = json.loads(bench_path.read_text(encoding="utf-8")) if bench_path.exists() else None
+
     loc = profile.location
     return {
         "key": key,
         "label": profile.label,
+        "benchmark": benchmark,
         "story": STORY[key],
         "drift_date": drift_date,
         # Present only for profiles tied to a real place. The page plots one map
