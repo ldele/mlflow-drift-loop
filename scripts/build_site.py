@@ -14,6 +14,7 @@ backends and is immune to the absolute-artifact-path issue.
 
 from __future__ import annotations
 
+import inspect
 import json
 import sys
 import unicodedata
@@ -198,6 +199,48 @@ def publish_raw_data() -> list[dict]:
     return published
 
 
+def method_block() -> dict:
+    """The page's "how this works" section, read out of the code that runs.
+
+    Every number here is introspected rather than retyped, so the published
+    description of the method cannot quietly drift away from the method. If
+    someone changes the retrain threshold, the page changes with it.
+    """
+    from driftloop.config import TARGET  # noqa: E402
+    from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
+    from driftloop.model import build_pipeline, train  # noqa: E402
+
+    pipeline = build_pipeline()
+
+    def _thresholds(cfg) -> dict:
+        return {
+            "monitor_days": cfg.monitor_days,
+            "challenger_train_days": cfg.challenger_train_days,
+            "holdout_days": cfg.holdout_days,
+            "perf_drift_threshold": cfg.perf_drift_threshold,
+            "psi_threshold": cfg.psi_threshold,
+            "promotion_margin": cfg.promotion_margin,
+        }
+
+    shown = [PROFILES[k].loop for k in DISPLAY_ORDER]
+    params = _thresholds(shown[0])
+    # The page says these thresholds are the same for every city -- which is what
+    # makes the cities comparable at all. Check it rather than assert it, so
+    # tuning one city later can't leave the claim stranded.
+    uniform = all(_thresholds(cfg) == params for cfg in shown)
+
+    return {
+        "estimator": " → ".join(type(step).__name__ for _, step in pipeline.steps),
+        "alpha": float(pipeline.named_steps["ridge"].alpha),
+        "features": list(FEATURES),
+        "target": TARGET,
+        "val_fraction": float(inspect.signature(train).parameters["val_fraction"].default),
+        "params": params,
+        "params_uniform": uniform,
+        "psi_bands": {"stable": PSI_STABLE, "significant": PSI_SIGNIFICANT},
+    }
+
+
 def build() -> Path:
     # Only the sources in DISPLAY_ORDER are published (synthetic is excluded).
     profiles = [d for d in (profile_data(k) for k in DISPLAY_ORDER) if d is not None]
@@ -208,6 +251,7 @@ def build() -> Path:
     payload = {
         "built": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
         "raw_data": publish_raw_data(),
+        "method": method_block(),
         "profiles": profiles,
     }
     out = OUT / "data.json"

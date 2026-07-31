@@ -216,6 +216,7 @@ scripts/
   drift-loop.yml     weekly cron: one live cycle, persist state + gathered data
   pages.yml          build the data + publish the static dashboard to GitHub Pages
 site/                committed shell (index.html, app.js); fetches data.json, renders charts
+docs/wireframes/     the drawings each UI was built from (.excalidraw + .png)
 dashboard/           Streamlit dashboard (app.py) + shared chart theme (theme.py)
 tests/               data contract, drift math, no-leak guards, Open-Meteo (mocked)
 ```

@@ -411,6 +411,68 @@ function render() {
   jobs.forEach((j) => Plotly.newPlot(j.div, j.traces, j.layout, CONFIG));
 }
 
+/* ---------- method section ---------- */
+
+/* Rendered from data.json rather than written into the HTML, because
+ * build_site.py introspects these values out of the running code. Retyping them
+ * here would let the page describe a model the loop stopped being. */
+function specRows(el, rows) {
+  el.innerHTML = rows
+    .map(([k, v, gloss]) =>
+      `<dt>${k}</dt><dd>${v}${gloss ? ` <span class="gloss">${gloss}</span>` : ""}</dd>`)
+    .join("");
+}
+
+function renderMethod(m) {
+  if (!m) return;
+  const p = m.params;
+  const days = (n) => `${n} day${n === 1 ? "" : "s"}`;
+  const pct = (f) => `${Math.round(f * 100)}%`;
+  const code = (s) => `<code>${s}</code>`;
+
+  document.getElementById("method").hidden = false;
+  document.getElementById("method-sub").textContent =
+    "Everything above is produced by one loop of four steps, run once a week against a " +
+    "deliberately simple model. Nothing here is hand-tuned per city.";
+
+  const steps = [
+    ["Monitor", `Score the live champion on the last ${days(p.monitor_days)} of data.`],
+    ["Detect", "Two independent signals: PSI on the feature distributions, and the champion's error against its error at training time."],
+    ["Retrain", `If error crosses ${p.perf_drift_threshold}×, train a challenger on the last ${days(p.challenger_train_days)}.`],
+    ["Promote", `Both models scored on a held-out ${days(p.holdout_days)} neither has seen. The challenger must win by ${pct(p.promotion_margin)} or it is rejected.`],
+  ];
+  document.getElementById("steps").innerHTML = steps
+    .map(([title, desc], i) =>
+      `<li class="step"><div class="step-n">Step ${i + 1}</div>` +
+      `<div class="step-t">${title}</div><div class="step-d">${desc}</div></li>`)
+    .join("");
+
+  specRows(document.getElementById("model-spec"), [
+    ["estimator", code(`${m.estimator}(alpha=${m.alpha})`)],
+    ["features", m.features.map(code).join(" ")],
+    ["target", code(m.target), "µg/m³"],
+    ["training", `chronological ${pct(1 - m.val_fraction)}/${pct(m.val_fraction)} tail split`,
+      "— then refit on the full window"],
+    ["baseline", "RMSE on the held-out tail", "— never a random split, so it is measured the same way production will be"],
+  ]);
+
+  document.getElementById("param-desc").textContent = m.params_uniform
+    ? "Every threshold the loop decides with, in one place — and identical for every city, so a city's " +
+      "behaviour is a property of its weather rather than of its tuning."
+    : "Every threshold the loop decides with. These are the values for the first source shown; they are " +
+      "not currently identical across cities.";
+
+  const b = m.psi_bands;
+  specRows(document.getElementById("param-spec"), [
+    ["monitor window", code(days(p.monitor_days)), "— what the champion is scored on"],
+    ["challenger training", code(days(p.challenger_train_days)), "— recent history a challenger learns from"],
+    ["holdout", code(days(p.holdout_days)), "— judged on this, excluded from both"],
+    ["retrain trigger", code(`error ÷ baseline > ${p.perf_drift_threshold}`), `— ${pct(p.perf_drift_threshold - 1)} worse`],
+    ["PSI significant", code(`> ${p.psi_threshold}`), `— stable &lt; ${b.stable}, moderate ${b.stable}–${b.significant}`],
+    ["promotion margin", code(`> ${pct(p.promotion_margin)}`), "— or the challenger is rejected"],
+  ]);
+}
+
 function renderDataLinks(data) {
   // One raw CSV per monitored city, so the list grows with the cities.
   const raw = data.raw_data || [];
@@ -482,6 +544,8 @@ async function main() {
     return;
   }
   document.getElementById("built").textContent = `Snapshot · built ${DATA.built}`;
+  // Static across profiles, so it is rendered once rather than per selection.
+  renderMethod(DATA.method);
   renderDataLinks(DATA);
   buildSegmented();
   if (DATA.profiles.length) {

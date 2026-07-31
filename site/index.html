@@ -172,6 +172,43 @@
       }
       @media (max-width: 760px) { .map-body { grid-template-columns: 1fr; } }
 
+      /* ---------- method section ---------- */
+      h2.method-h { margin: 36px 0 0; font-size: 22px; letter-spacing: -0.02em; }
+      .method-sub { margin: 8px 0 0; color: var(--ink2); font-size: 14.5px; max-width: 84ch; }
+      .method-card { margin: 16px 0 0; }
+      .steps {
+        list-style: none; margin: 12px 0 0; padding: 0; display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px;
+      }
+      .step {
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 11px; padding: 12px 14px;
+      }
+      .step-n {
+        font-size: 11px; font-weight: 700; color: var(--accent);
+        letter-spacing: 0.06em; text-transform: uppercase;
+      }
+      .step-t { font-size: 14.5px; font-weight: 600; margin-top: 3px; }
+      .step-d { font-size: 12.5px; color: var(--ink2); margin-top: 4px; line-height: 1.45; }
+      .why { margin: 14px 0 2px; font-size: 12.5px; color: var(--muted); max-width: 96ch; }
+      .method-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+        gap: 18px; margin: 18px 0 0;
+      }
+      .spec {
+        margin: 12px 0 2px; display: grid; grid-template-columns: max-content 1fr;
+        gap: 8px 18px; font-size: 13px; align-items: baseline;
+      }
+      .spec dt { color: var(--muted); white-space: nowrap; }
+      .spec dd { margin: 0; color: var(--ink); min-width: 0; }
+      .spec code {
+        font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace;
+        font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 5px; padding: 1px 5px;
+      }
+      .gloss { color: var(--muted); font-size: 12.5px; }
+      @media (max-width: 620px) { .method-grid { grid-template-columns: 1fr; } }
+
       a { color: var(--accent); text-decoration: none; }
       a:hover { text-decoration: underline; }
 
@@ -231,6 +268,44 @@
       <div class="tiles" id="tiles"></div>
       <div class="charts" id="charts"></div>
       <div id="error"></div>
+
+      <!-- After the evidence, before the footer: the charts make the claim,
+           this says how it was made. Every value is rendered from data.json,
+           which build_site.py reads out of the running code. -->
+      <section id="method" hidden>
+        <h2 class="method-h">How this works</h2>
+        <p class="method-sub" id="method-sub"></p>
+
+        <section class="card method-card">
+          <div class="card-head"><h3>The loop</h3></div>
+          <p class="desc">One scheduled run, every week. Steps 3 and 4 only happen when step 2 says they should.</p>
+          <ol class="steps" id="steps"></ol>
+          <p class="why">
+            <strong>Why two signals:</strong> data drift needs no labels and no model, so it is the early
+            warning. Performance drift is the action signal. Deciding “has it drifted?” by comparing the
+            champion to a challenger would be circular — you would need a challenger before you were
+            allowed to decide you needed one.
+          </p>
+        </section>
+
+        <div class="method-grid">
+          <section class="card">
+            <div class="card-head"><h3>The model</h3></div>
+            <p class="desc">
+              Ridge regression on three weather features — deliberately boring. A simple model decays
+              legibly when the relationship shifts; a bigger one would absorb some of the drift and
+              blur the story.
+            </p>
+            <dl class="spec" id="model-spec"></dl>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><h3>Parameters</h3></div>
+            <p class="desc" id="param-desc"></p>
+            <dl class="spec" id="param-spec"></dl>
+          </section>
+        </div>
+      </section>
 
       <footer>
         <div class="data-links" id="data-links"></div>
