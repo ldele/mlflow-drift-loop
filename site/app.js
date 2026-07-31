@@ -7,6 +7,9 @@
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const FEATURES = ["temperature", "wind_speed", "humidity"];
 const PSI_SIGNIFICANT = 0.25;
+// The lower band boundary, used only to colour map markers. Industry convention:
+// <0.10 stable, 0.10–0.25 moderate, >0.25 significant.
+const PSI_MODERATE = 0.1;
 const PERF_THRESHOLD = 1.25;
 const CONFIG = { displayModeBar: false, responsive: true };
 
@@ -147,12 +150,121 @@ function statTiles(stats) {
     `<div class="tile-k">${t.k}</div></div>`).join("");
 }
 
+/* ---------- map ---------- */
+
+/* Profiles tied to a real place. A profile without a location (the live schedule,
+ * which reads the same Kraków source as its historical twin) gets no marker rather
+ * than stacking a second one on the same point. */
+const cityProfiles = () => DATA.profiles.filter((p) => p.location);
+
+function psiStatus(pal, psi) {
+  if (psi == null) return pal.muted;
+  if (psi >= PSI_SIGNIFICANT) return pal.crit;
+  if (psi >= PSI_MODERATE) return pal.warn;
+  return pal.good;
+}
+
+function renderCityList(cities, pal) {
+  document.getElementById("city-cap").textContent =
+    `${cities.length} monitored ${cities.length === 1 ? "city" : "cities"}`;
+  const list = document.getElementById("city-list");
+  list.innerHTML = "";
+  cities.forEach((c) => {
+    const color = psiStatus(pal, c.stats.latest_psi);
+    const loc = c.location;
+    const b = document.createElement("button");
+    b.className = "city-row";
+    b.setAttribute("aria-selected", String(c.key === current));
+    b.innerHTML =
+      `<span class="cmain"><span class="cname">${loc.name}</span>` +
+      `<span class="csub">${loc.country} · ${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)}</span></span>` +
+      `<span class="pill" style="color:${color};border-color:${color};` +
+      `background:color-mix(in srgb, ${color} 14%, transparent)">` +
+      `PSI ${c.stats.latest_psi == null ? "—" : c.stats.latest_psi.toFixed(2)}</span>`;
+    b.addEventListener("click", () => selectProfile(c.key));
+    list.appendChild(b);
+  });
+}
+
+function renderMap() {
+  const card = document.getElementById("map-card");
+  const cities = cityProfiles();
+  // Nothing placeable (e.g. a synthetic-only build) — drop the card entirely
+  // rather than showing an empty globe.
+  card.hidden = cities.length === 0;
+  if (!cities.length) return;
+
+  const pal = P();
+  // -1 when the active profile has no location, which is a real state: the live
+  // schedule is selected. Nothing is ringed, and the globe keeps a neutral centre.
+  const sel = cities.findIndex((c) => c.key === current);
+  const maxRuns = Math.max(...cities.map((c) => c.stats.runs), 1);
+
+  const focus = sel >= 0 ? cities[sel].location : {
+    lat: cities.reduce((s, c) => s + c.location.lat, 0) / cities.length,
+    lon: cities.reduce((s, c) => s + c.location.lon, 0) / cities.length,
+  };
+
+  const trace = {
+    type: "scattergeo", mode: "markers",
+    lat: cities.map((c) => c.location.lat),
+    lon: cities.map((c) => c.location.lon),
+    text: cities.map((c) => c.location.name),
+    customdata: cities.map((c) => [c.location.country, c.stats.latest_psi, c.stats.runs]),
+    marker: {
+      color: cities.map((c) => psiStatus(pal, c.stats.latest_psi)),
+      // sqrt so the dot's *area* tracks run count rather than its radius
+      size: cities.map((c) => 13 + 11 * Math.sqrt(c.stats.runs / maxRuns)),
+      line: {
+        color: cities.map((_, i) => (i === sel ? pal.ink : pal.surface)),
+        width: cities.map((_, i) => (i === sel ? 3 : 1.5)),
+      },
+    },
+    hovertemplate:
+      "<b>%{text}</b>, %{customdata[0]}<br>PSI %{customdata[1]} · %{customdata[2]} runs<extra></extra>",
+  };
+
+  const layout = {
+    paper_bgcolor: pal.surface,
+    font: { family: FONT, size: 12, color: pal.ink2 },
+    margin: { l: 0, r: 0, t: 0, b: 0 },
+    // An orthographic globe is a circle, so it fills its box by height, not width.
+    // Tall enough that the card doesn't read as mostly empty.
+    height: 380,
+    showlegend: false,
+    hoverlabel: { bgcolor: pal.surface, bordercolor: pal.border, font: { family: FONT, color: pal.ink } },
+    geo: {
+      // Orthographic = an actual globe, and it is draggable. Vector geography
+      // ships with Plotly, so this needs no tile server and no API key.
+      projection: { type: "orthographic", rotation: { lon: focus.lon, lat: focus.lat } },
+      bgcolor: pal.surface,
+      showland: true, landcolor: pal.grid,
+      showocean: true, oceancolor: pal.surface,
+      showcountries: true, countrycolor: pal.axis,
+      showcoastlines: true, coastlinecolor: pal.axis,
+      showframe: true, framecolor: pal.axis,
+      lataxis: { showgrid: true, gridcolor: pal.grid },
+      lonaxis: { showgrid: true, gridcolor: pal.grid },
+    },
+  };
+
+  Plotly.newPlot(document.getElementById("globe"), [trace], layout, CONFIG).then((gd) => {
+    gd.on("plotly_click", (ev) => {
+      const i = ev.points[0]?.pointIndex;
+      if (i != null) selectProfile(cities[i].key);
+    });
+  });
+
+  renderCityList(cities, pal);
+}
+
 /* ---------- render ---------- */
 
 function render() {
   const p = byKey[current];
   const pal = P();
   document.getElementById("story").textContent = p.story;
+  renderMap();
   statTiles(p.stats);
   const charts = document.getElementById("charts");
   charts.innerHTML = "";
@@ -250,6 +362,21 @@ function renderDataLinks(data) {
 
 /* ---------- boot ---------- */
 
+/* The one place selection changes. The segmented control, the map markers and the
+ * city rows are three views of the same state, so they all route through here and
+ * re-read it rather than each tracking their own. */
+function selectProfile(key) {
+  if (key === current) return;
+  current = key;
+  syncSegmented();
+  render();
+}
+
+function syncSegmented() {
+  [...document.getElementById("segmented").children].forEach((c) =>
+    c.setAttribute("aria-selected", String(c.dataset.key === current)));
+}
+
 function buildSegmented() {
   const seg = document.getElementById("segmented");
   seg.innerHTML = "";
@@ -257,14 +384,10 @@ function buildSegmented() {
     byKey[p.key] = p;
     const b = document.createElement("button");
     b.textContent = p.label;
+    b.dataset.key = p.key;
     b.setAttribute("role", "tab");
     b.setAttribute("aria-selected", String(i === 0));
-    b.addEventListener("click", () => {
-      current = p.key;
-      [...seg.children].forEach((c) => c.setAttribute("aria-selected", "false"));
-      b.setAttribute("aria-selected", "true");
-      render();
-    });
+    b.addEventListener("click", () => selectProfile(p.key));
     seg.appendChild(b);
   });
 }

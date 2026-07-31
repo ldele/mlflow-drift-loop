@@ -87,6 +87,28 @@ Each source logs to its own MLflow backend file (`mlflow.db`,
 `mlflow_openmeteo.db`, `mlflow_scheduled.db`) so they reset and browse
 independently.
 
+### Where the data comes from
+
+The published page opens on a globe — one marker per monitored city, coloured by
+its latest PSI (green stable / amber moderate / red significant) and sized by how
+many monitoring runs it has. Clicking a marker switches the whole dashboard to that
+city; the segmented control, the markers and the city list are three views of one
+selection, so moving any of them moves the other two.
+
+It's a Plotly `scattergeo` orthographic projection, so the geography is vector data
+Plotly already ships — no tile server, no API key, nothing added to the page's
+dependencies. The city list beside the globe isn't decoration: it's the
+keyboard-reachable equivalent of clicking a marker, and it still reads correctly if
+the map fails to draw.
+
+A profile earns a marker by having a `location`. The live schedule deliberately has
+none — it reads the *same* Kraków source as the historical replay, so giving it one
+would stack a second marker on the same point. It is a mode, not a place.
+
+**Adding a city** is one `OpenMeteoConfig` in `config.py` plus one `Profile` that
+carries it as its `location`. The marker, the list row and the switcher entry all
+follow; the page needs no change.
+
 ## Everything we gather is stored
 
 Nothing fetched or computed is thrown away:

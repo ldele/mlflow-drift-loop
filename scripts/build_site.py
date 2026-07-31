@@ -110,11 +110,21 @@ def profile_data(key: str) -> dict | None:
         for f in [*FEATURES, "intercept"]:
             coef[f] = _floats(versions[f"coef_{f}"])
 
+    loc = profile.location
     return {
         "key": key,
         "label": profile.label,
         "story": STORY[key],
         "drift_date": drift_date,
+        # Present only for profiles tied to a real place. The page plots one map
+        # marker per profile that has one, so a location-less profile (the live
+        # schedule, which reads the same Kraków source) simply gets no marker.
+        "location": None if loc is None else {
+            "name": loc.name,
+            "country": loc.country,
+            "lat": loc.latitude,
+            "lon": loc.longitude,
+        },
         "stats": {
             "runs": int(len(runs)),
             "retrains": int(len(retr)),

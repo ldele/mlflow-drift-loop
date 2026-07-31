@@ -79,11 +79,18 @@ class OpenMeteoConfig:
     """
 
     name: str = "Kraków"
+    country: str = "PL"
     latitude: float = 50.0647
     longitude: float = 19.9450
     origin: pd.Timestamp = pd.Timestamp("2025-05-01")
     horizon: pd.Timestamp = pd.Timestamp("2026-02-01")
     timezone: str = "GMT"
+
+
+# The monitored locations. One today; adding a city means adding a config here and
+# a Profile below that carries it, and everything downstream follows -- the site's
+# map plots one marker per profile that has a `location`.
+KRAKOW = OpenMeteoConfig()
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,12 @@ class Profile:
     loop: LoopConfig
     db_filename: str
     meta_filename: str
+    # Where this profile's data physically comes from, if anywhere. Drives the
+    # published map: a profile with a location gets a marker, one without doesn't.
+    # `scheduled` is deliberately None -- it reads the same Kraków source as
+    # `openmeteo`, so giving it a location would stack two markers on one point.
+    # It is a *mode* (the loop running live), not a separate place.
+    location: OpenMeteoConfig | None = None
 
 
 # Ordered lead-with-the-real-data first; the dashboard sidebar and the published
@@ -111,6 +124,7 @@ PROFILES: dict[str, Profile] = {
         ),
         db_filename="mlflow_openmeteo.db",
         meta_filename="run_meta_openmeteo.json",
+        location=KRAKOW,
     ),
     "synthetic": Profile(
         key="synthetic",

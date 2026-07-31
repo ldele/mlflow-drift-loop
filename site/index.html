@@ -98,9 +98,10 @@
 
       /* ---------- toolbar ---------- */
       .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 24px 0 0; }
+      /* wraps rather than overflowing once there are more cities than fit a row */
       .segmented {
-        display: inline-flex; background: var(--surface-2); border: 1px solid var(--border);
-        border-radius: 12px; padding: 4px; gap: 2px;
+        display: inline-flex; flex-wrap: wrap; background: var(--surface-2);
+        border: 1px solid var(--border); border-radius: 12px; padding: 4px; gap: 2px;
       }
       .segmented button {
         appearance: none; border: 0; background: transparent; color: var(--ink2);
@@ -139,6 +140,37 @@
       .lg .swatch.star { width: 0; height: 0; color: inherit; }
       .desc { margin: 8px 0 2px; font-size: 13px; color: var(--muted); }
       .plot { margin-top: 6px; }
+
+      /* ---------- map card ---------- */
+      /* Globe left, city list right. The list is not decoration: it is the
+         keyboard-reachable equivalent of clicking a marker, and it still works
+         if Plotly's topojson assets fail to load. */
+      .map-card { margin: 20px 0 0; }
+      .map-body {
+        display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 0.62fr);
+        gap: 16px; align-items: start; margin-top: 8px;
+      }
+      #globe { min-width: 0; }
+      .city-cap { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+      .city-row {
+        display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+        appearance: none; font: inherit; cursor: pointer; background: var(--surface);
+        border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px;
+        margin-bottom: 8px; transition: background 0.15s ease, border-color 0.15s ease;
+      }
+      .city-row:hover { border-color: var(--accent); }
+      .city-row[aria-selected="true"] {
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+        border-color: var(--accent);
+      }
+      .city-row .cmain { flex: 1; min-width: 0; }
+      .city-row .cname { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+      .city-row .csub { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+      .city-row .pill {
+        flex: none; font-size: 11.5px; font-weight: 600; padding: 3px 9px;
+        border-radius: 999px; border: 1px solid; white-space: nowrap;
+      }
+      @media (max-width: 760px) { .map-body { grid-template-columns: 1fr; } }
 
       a { color: var(--accent); text-decoration: none; }
       a:hover { text-decoration: underline; }
@@ -179,6 +211,22 @@
         <div class="segmented" id="segmented" role="tablist" aria-label="Data source"></div>
       </div>
       <p class="story" id="story"></p>
+
+      <section class="card map-card" id="map-card" hidden>
+        <div class="card-head"><h3>Where the data comes from</h3></div>
+        <p class="desc">
+          One marker per monitored city, coloured by its latest data-drift reading and sized by how
+          many monitoring runs it has. Click a marker — or a row — to switch the dashboard to that city.
+          Drag to rotate the globe.
+        </p>
+        <div class="map-body">
+          <div class="plot" id="globe"></div>
+          <div>
+            <p class="city-cap" id="city-cap"></p>
+            <div id="city-list"></div>
+          </div>
+        </div>
+      </section>
 
       <div class="tiles" id="tiles"></div>
       <div class="charts" id="charts"></div>
