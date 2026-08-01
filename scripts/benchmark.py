@@ -1,6 +1,8 @@
 """Score the loop's champion against no-training baselines, and tune its alpha.
 
-    python scripts/benchmark.py [--city krakow|delhi|la|all]
+    python scripts/benchmark.py [--city <name>|all]
+
+The city names come from config.CITY_CLI_NAMES; --help lists the current set.
 
 Scoring happens per monitoring window -- the same 14-day slices the loop reports
 on -- so the served champion, the never-retrained champion and the baselines all
@@ -48,8 +50,11 @@ def benchmark_city(profile: Profile) -> dict | None:
     offset = pd.Timedelta(days=cfg.monitor_days)
     windows = [(stamp - offset, stamp) for stamp in sim["as_of"]]
 
-    columns = predictor_columns(timeline, train)
-    scored = score_windows(columns, windows, served_rmse=sim["champion_rmse"].tolist())
+    lead = location.forecast_lead_days
+    columns = predictor_columns(timeline, train, lead_days=lead)
+    scored = score_windows(
+        columns, windows, served_rmse=sim["champion_rmse"].tolist(), lead_days=lead
+    )
     sweep = tune_alpha(train)
 
     print(f"\n=== {location.name} ===")
@@ -72,6 +77,7 @@ def benchmark_city(profile: Profile) -> dict | None:
         "city": location.name,
         "windows": len(windows),
         "monitor_days": cfg.monitor_days,
+        "lead_days": lead,
         "scored": [asdict(s) for s in scored],
         "alpha": {
             "shipped": sweep.shipped,

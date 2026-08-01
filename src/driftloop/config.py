@@ -65,17 +65,30 @@ class LoopConfig:
     registered_model_name: str = "pm25-ridge"
 
 
+# How far ahead the model predicts. At 7 the weather features are the forecast
+# for the target hour *as it was issued seven days earlier*, so the model is a
+# real forecaster and inherits the weather forecast's own error. At 0 it reads
+# analysed weather for the target hour instead, which makes it a same-hour
+# estimate rather than a forecast.
+#
+# Open-Meteo publishes previous model runs only out to day 7, so 7 is the
+# ceiling, not an arbitrary choice.
+FORECAST_LEAD_DAYS = 7
+
+
 @dataclass(frozen=True)
 class OpenMeteoConfig:
-    """Location + span for the real-data source.
+    """Location, span, and forecast lead for the real-data source.
 
     Kraków sits in a basin and burns coal for winter heating, so PM2.5 is low and
     calm in summer and spikes under cold, still, inversion conditions once the
     heating season starts -- a genuine, narratable regime shift for a
     summer-trained model to decay through.
 
-    The two Open-Meteo endpoints (weather archive + air quality) are fetched
-    separately and joined on time; both offer hourly history for free.
+    Two Open-Meteo endpoints are fetched separately and joined on time. The
+    target is always *observed* PM2.5 from the air-quality API. The features come
+    from the archived forecast runs when ``forecast_lead_days`` is set, and from
+    the ERA5 analysis when it is 0.
     """
 
     name: str = "Kraków"
@@ -85,6 +98,7 @@ class OpenMeteoConfig:
     origin: pd.Timestamp = pd.Timestamp("2025-05-01")
     horizon: pd.Timestamp = pd.Timestamp("2026-02-01")
     timezone: str = "GMT"
+    forecast_lead_days: int = FORECAST_LEAD_DAYS
 
 
 # The monitored locations. Adding a city means adding a config here and a Profile
@@ -120,6 +134,52 @@ LOS_ANGELES = OpenMeteoConfig(
     longitude=-118.2437,
     origin=pd.Timestamp("2025-09-01"),
     horizon=pd.Timestamp("2026-07-20"),
+)
+
+# --- Southern hemisphere -----------------------------------------------------
+#
+# The three above all peak in *northern* winter, which leaves open the question
+# of whether the loop's thresholds quietly encode a calendar. These three peak in
+# June-August, when Krakow and Delhi are at their cleanest, and are run on
+# identical settings. Each was chosen on the measurements, not on reputation:
+# eighteen candidate cities were fetched and ranked by their PM2.5 swing first.
+
+# Krakow's twin, six months out of phase: a coastal basin that traps winter
+# inversions. The widest swing of every city measured -- ~18 ug/m3 in December
+# to ~94 in June, a 5.1x walk -- which makes it the strongest evidence that the
+# detection is reading the world and not the date.
+SANTIAGO = OpenMeteoConfig(
+    name="Santiago",
+    country="CL",
+    latitude=-33.4489,
+    longitude=-70.6693,
+    origin=pd.Timestamp("2025-10-15"),
+    horizon=pd.Timestamp("2026-07-15"),
+)
+
+# Highveld winter: cold, still nights trap domestic coal and wood smoke under an
+# inversion. ~23 ug/m3 in January to ~84 in July, a 3.6x swing.
+JOHANNESBURG = OpenMeteoConfig(
+    name="Johannesburg",
+    country="ZA",
+    latitude=-26.2041,
+    longitude=28.0473,
+    origin=pd.Timestamp("2025-11-01"),
+    horizon=pd.Timestamp("2026-07-15"),
+)
+
+# Winter wood-heater smoke, and the Los Angeles lesson repeating: Sydney is the
+# reputationally obvious Australian city and its PM2.5 is flat (1.5x). Melbourne
+# swings 3.1x. The catch is that it does so between ~5 and ~15 ug/m3, so the
+# drift is real in ratio while the air stays close to the WHO guideline
+# throughout -- a clean city whose model still goes stale.
+MELBOURNE = OpenMeteoConfig(
+    name="Melbourne",
+    country="AU",
+    latitude=-37.8136,
+    longitude=144.9631,
+    origin=pd.Timestamp("2025-09-01"),
+    horizon=pd.Timestamp("2026-07-15"),
 )
 
 
@@ -219,6 +279,61 @@ PROFILES: dict[str, Profile] = {
             last_run=pd.Timestamp("2026-07-15"),
         ),
     ),
+    "openmeteo_santiago": Profile(
+        key="openmeteo_santiago",
+        label="Santiago",
+        loop=LoopConfig(
+            experiment_name="drift-loop-openmeteo-santiago",
+            registered_model_name="pm25-ridge-santiago",
+        ),
+        db_filename="mlflow_openmeteo_santiago.db",
+        meta_filename="run_meta_openmeteo_santiago.json",
+        location=SANTIAGO,
+        # Train on the southern summer minimum, replay into the winter inversion.
+        # The same shape as Krakow's replay, on the opposite half of the year.
+        replay=ReplayWindows(
+            champion_train_start=pd.Timestamp("2025-11-15"),
+            champion_train_end=pd.Timestamp("2026-02-01"),
+            first_run=pd.Timestamp("2026-02-10"),
+            last_run=pd.Timestamp("2026-07-10"),
+        ),
+    ),
+    "openmeteo_joburg": Profile(
+        key="openmeteo_joburg",
+        label="Johannesburg",
+        loop=LoopConfig(
+            experiment_name="drift-loop-openmeteo-joburg",
+            registered_model_name="pm25-ridge-joburg",
+        ),
+        db_filename="mlflow_openmeteo_joburg.db",
+        meta_filename="run_meta_openmeteo_joburg.json",
+        location=JOHANNESBURG,
+        replay=ReplayWindows(
+            champion_train_start=pd.Timestamp("2025-12-01"),
+            champion_train_end=pd.Timestamp("2026-02-15"),
+            first_run=pd.Timestamp("2026-02-25"),
+            last_run=pd.Timestamp("2026-07-10"),
+        ),
+    ),
+    "openmeteo_melbourne": Profile(
+        key="openmeteo_melbourne",
+        label="Melbourne",
+        loop=LoopConfig(
+            experiment_name="drift-loop-openmeteo-melbourne",
+            registered_model_name="pm25-ridge-melbourne",
+        ),
+        db_filename="mlflow_openmeteo_melbourne.db",
+        meta_filename="run_meta_openmeteo_melbourne.json",
+        location=MELBOURNE,
+        # A longer replay than the other two: the swing is real but narrow, so the
+        # loop is watched over ~30 weekly runs rather than ~20.
+        replay=ReplayWindows(
+            champion_train_start=pd.Timestamp("2025-09-15"),
+            champion_train_end=pd.Timestamp("2025-12-01"),
+            first_run=pd.Timestamp("2025-12-10"),
+            last_run=pd.Timestamp("2026-07-10"),
+        ),
+    ),
     "synthetic": Profile(
         key="synthetic",
         label="Synthetic",
@@ -248,4 +363,7 @@ CITY_CLI_NAMES: dict[str, str] = {
     "krakow": "openmeteo",
     "delhi": "openmeteo_delhi",
     "la": "openmeteo_la",
+    "santiago": "openmeteo_santiago",
+    "joburg": "openmeteo_joburg",
+    "melbourne": "openmeteo_melbourne",
 }

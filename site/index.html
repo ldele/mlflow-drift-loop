@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MLflow drift loop</title>
+    <title>Air quality drift watch</title>
     <meta
       name="description"
-      content="A model-monitoring loop that detects drift, retrains a challenger and promotes it, running on real air-quality data from three cities."
+      content="Hourly PM2.5 predicted from weather in three cities, and a loop that watches the model go stale: it measures drift, retrains a challenger when the error grows, and promotes it only if it wins on data neither model has seen."
     />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
     <style>
@@ -122,6 +122,9 @@
         background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-weight: 600;
       }
       .story { margin: 16px 0 0; color: var(--ink2); font-size: 15px; max-width: 78ch; }
+      /* Says out loud when a source has too little history to read much into,
+         rather than letting a two-point chart pass for a trend. */
+      .story-caveat { color: var(--muted); }
 
       /* ---------- KPI tiles ---------- */
       .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 20px 0 4px; }
@@ -136,6 +139,11 @@
 
       /* ---------- chart grid ---------- */
       .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 18px; margin: 18px 0 10px; }
+      /* The UA stylesheet's `[hidden] { display: none }` loses to any author rule
+         that sets display, and .card below sets display:flex. Without this, a card
+         the renderer hid stayed on screen: the benchmark card kept showing the
+         previously selected city's numbers on a source that has no benchmark. */
+      [hidden] { display: none !important; }
       .card {
         background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
         padding: 18px 18px 12px; box-shadow: var(--shadow); min-width: 0; display: flex; flex-direction: column;
@@ -197,6 +205,15 @@
       table.bench tr.is-model td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
       table.bench tr.is-model td:first-child { font-weight: 600; color: var(--ink); }
       .bench-note { color: var(--muted); font-size: 12.5px; }
+      /* Predictors are grouped by what they are allowed to see, because a model
+         given past PM2.5 and one given only weather are not answering the same
+         question. Ranking them in one list would read as a verdict it isn't. */
+      table.bench td.bench-group {
+        padding: 16px 0 6px; font-size: 11.5px; font-weight: 600;
+        color: var(--ink2); border-bottom: 1px solid var(--border);
+      }
+      table.bench tr:first-child td.bench-group { padding-top: 2px; }
+      table.bench td.bench-group span { font-weight: 400; color: var(--muted); }
       .verdict {
         display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 14px 0 0;
         padding-top: 14px; border-top: 1px solid var(--border);
@@ -264,14 +281,16 @@
       <header>
         <div>
           <div class="title-row">
-            <h1>MLflow drift loop</h1>
+            <h1>Air quality drift watch</h1>
             <span class="live"><span class="dot"></span> live</span>
           </div>
           <p class="lede">
-            A monitoring loop that catches a model going stale. The model predicts
-            <strong>hourly PM2.5</strong>, the fine-particulate pollution in a city's air, from
-            temperature, wind speed and humidity. The loop tracks it, measures drift, trains a
-            challenger when it decays, and promotes it only if it wins on data neither has seen.
+            A monitoring loop that catches a model going stale. The model forecasts a city's
+            <strong>hourly PM2.5</strong>, the fine-particulate pollution in its air,
+            <strong>seven days ahead</strong>, using the weather forecast for that hour as it stood
+            a week earlier. It inherits that forecast's error before adding any of its own. The loop
+            watches it across six cities, measures drift, trains a challenger when it decays, and
+            promotes it only if it wins on data neither has seen.
           </p>
           <p class="built" id="built"></p>
         </div>
@@ -327,8 +346,11 @@
           <section class="card">
             <div class="card-head"><h3>The model</h3></div>
             <p class="desc">
-              Ridge regression on three weather features, kept small on purpose: a simple model
-              decays visibly when the relationship shifts, where a larger one would absorb some of
+              A Ridge regression answering one question: given the weather we expect in a week,
+              how dirty will the air be? Its inputs are Open-Meteo's own archived forecasts, so the
+              weather error a real operator would have faced is carried through rather than assumed
+              away. It reads no past pollution. Kept small on purpose, because a simple model
+              decays visibly when the relationship shifts where a larger one would absorb some of
               the drift and hide it. The modelling is not the interesting part here. The loop
               around it is, and it would be unchanged if you swapped in something bigger.
             </p>

@@ -27,6 +27,11 @@ from driftloop.config import COLUMNS, OpenMeteoConfig
 from driftloop.data.base import validate_frame
 
 WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
+# Archived *forecasts*, not archived observations: for a target hour it can
+# return what the model run from N days earlier predicted for that hour. That is
+# what makes a genuine forecasting chain possible from historical data -- the
+# features are what a forecaster would actually have had in hand, errors and all.
+FORECAST_ARCHIVE_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -38,6 +43,10 @@ WEATHER_VARS = {
     "wind_speed_10m": "wind_speed",
     "relative_humidity_2m": "humidity",
 }
+
+# Open-Meteo archives previous model runs out to seven days, so that is the
+# longest lead this source can honestly serve.
+MAX_LEAD_DAYS = 7
 
 _TRUSTSTORE_INJECTED = False
 
@@ -61,8 +70,31 @@ def _get_json(url: str, params: dict) -> dict:
     return response.json()
 
 
+def _weather_request(cfg: OpenMeteoConfig) -> tuple[str, list[str], dict[str, str]]:
+    """Which endpoint and variables supply the features, given the lead time.
+
+    Returns ``(url, hourly_variables, rename_map)``. At a lead of N days the
+    variables carry Open-Meteo's ``_previous_dayN`` suffix, which selects the
+    model run issued N days before each target hour -- so a row's features are
+    the forecast a real operator would have had N days out, not hindsight.
+    """
+    lead = cfg.forecast_lead_days
+    if lead <= 0:
+        return WEATHER_URL, list(WEATHER_VARS), dict(WEATHER_VARS)
+    if lead > MAX_LEAD_DAYS:
+        raise ValueError(
+            f"forecast_lead_days={lead} exceeds Open-Meteo's previous-run archive "
+            f"(max {MAX_LEAD_DAYS} days)"
+        )
+    suffixed = {f"{api}_previous_day{lead}": col for api, col in WEATHER_VARS.items()}
+    return FORECAST_ARCHIVE_URL, list(suffixed), suffixed
+
+
 def _fetch_span(cfg: OpenMeteoConfig) -> pd.DataFrame:
-    """Fetch and join the whole [origin, horizon] span from both endpoints."""
+    """Fetch and join the whole [origin, horizon] span from both endpoints.
+
+    The target is always observed PM2.5. Only the features move with the lead.
+    """
     date_params = {
         "latitude": cfg.latitude,
         "longitude": cfg.longitude,
@@ -71,13 +103,14 @@ def _fetch_span(cfg: OpenMeteoConfig) -> pd.DataFrame:
         "timezone": cfg.timezone,
     }
 
+    url, hourly_vars, rename = _weather_request(cfg)
     weather = _get_json(
-        WEATHER_URL,
-        {**date_params, "hourly": ",".join(WEATHER_VARS), "wind_speed_unit": "ms"},
+        url,
+        {**date_params, "hourly": ",".join(hourly_vars), "wind_speed_unit": "ms"},
     )["hourly"]
     air = _get_json(AIR_QUALITY_URL, {**date_params, "hourly": "pm2_5"})["hourly"]
 
-    weather_df = pd.DataFrame(weather).rename(columns={"time": "timestamp", **WEATHER_VARS})
+    weather_df = pd.DataFrame(weather).rename(columns={"time": "timestamp", **rename})
     air_df = pd.DataFrame(air).rename(columns={"time": "timestamp", "pm2_5": "pm25"})
     for frame in (weather_df, air_df):
         frame["timestamp"] = pd.to_datetime(frame["timestamp"])
@@ -99,9 +132,12 @@ class OpenMeteoSource:
 
     def _cache_path(self) -> Path:
         cfg = self.config
+        # The lead is part of the identity of the data: the same place over the
+        # same span holds different features at lead 0 and lead 7, so they must
+        # not share a cache file.
         stem = (
             f"openmeteo_{cfg.latitude}_{cfg.longitude}_"
-            f"{cfg.origin.date()}_{cfg.horizon.date()}"
+            f"{cfg.origin.date()}_{cfg.horizon.date()}_lead{cfg.forecast_lead_days}d"
         ).replace(".", "p")
         return self.cache_dir / f"{stem}.parquet"
 

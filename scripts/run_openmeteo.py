@@ -5,7 +5,10 @@ champion on a clean training season, then replays weekly scheduled runs into the
 season that spoils it -- the windows live on the Profile, because the seasons
 don't line up between cities.
 
-    python scripts/run_openmeteo.py [--fresh] [--city krakow|delhi|la|all]
+    python scripts/run_openmeteo.py [--fresh] [--city <name>|all]
+
+The city names come from config.CITY_CLI_NAMES (krakow, santiago, delhi, joburg,
+melbourne, la), so --help always lists the current set.
 
 First run fetches each span from Open-Meteo and caches it to data_cache/; later
 runs reuse the cache. Each city logs to its own MLflow backend so they reset and

@@ -68,7 +68,37 @@ class Scored:
     uses_past_target: bool
 
 
-def predictor_columns(timeline: pd.DataFrame, train: pd.DataFrame, alpha: float = 1.0) -> pd.DataFrame:
+def autoregressive_lags(lead_days: int) -> tuple[int, int]:
+    """Positional lags for the two baselines that are allowed to see past PM2.5.
+
+    A forecaster issuing at T for T+lead may use observations up to T and no
+    later. So persistence repeats the reading from *issue time* rather than the
+    one an hour before the target -- the difference between a fair baseline and
+    one handed the answer. Seasonal naive steps back a further day, because at a
+    whole-day lead it would otherwise land on exactly the persistence row and
+    stop being a separate predictor.
+    """
+    if lead_days <= 0:
+        return 1, 24
+    lead_hours = lead_days * 24
+    return lead_hours, lead_hours + 24
+
+
+def detail_map(lead_days: int) -> dict[str, str]:
+    """Predictor descriptions, which depend on whether this is a forecast."""
+    if lead_days <= 0:
+        return DETAIL
+    return {
+        **DETAIL,
+        "champion_frozen": "the first champion, never retrained",
+        "persistence": "repeat the last reading available when the forecast was issued",
+        "seasonal_naive": "the same hour, the day before the forecast was issued",
+    }
+
+
+def predictor_columns(
+    timeline: pd.DataFrame, train: pd.DataFrame, alpha: float = 1.0, lead_days: int = 0
+) -> pd.DataFrame:
     """Every predictor's output for every row of the timeline, computed once.
 
     Lags run over the whole timeline rather than per window, so a window's first
@@ -81,8 +111,9 @@ def predictor_columns(timeline: pd.DataFrame, train: pd.DataFrame, alpha: float 
     frozen = build_pipeline(alpha).fit(train[FEATURES], train[TARGET])
     out["champion_frozen"] = frozen.predict(timeline[FEATURES])
 
-    out["persistence"] = timeline[TARGET].shift(1).to_numpy(dtype=float)
-    out["seasonal_naive"] = timeline[TARGET].shift(24).to_numpy(dtype=float)
+    persistence_lag, seasonal_lag = autoregressive_lags(lead_days)
+    out["persistence"] = timeline[TARGET].shift(persistence_lag).to_numpy(dtype=float)
+    out["seasonal_naive"] = timeline[TARGET].shift(seasonal_lag).to_numpy(dtype=float)
     out["train_mean"] = float(train[TARGET].mean())
 
     by_hour = train.groupby(pd.to_datetime(train["timestamp"]).dt.hour)[TARGET].mean()
@@ -94,6 +125,7 @@ def score_windows(
     columns: pd.DataFrame,
     windows: list[tuple[pd.Timestamp, pd.Timestamp]],
     served_rmse: list[float] | None = None,
+    lead_days: int = 0,
 ) -> list[Scored]:
     """Median RMSE per predictor across the monitoring windows.
 
@@ -113,16 +145,17 @@ def score_windows(
         for name in names:
             per_window[name].append(_rmse(actual, slice_[name].to_numpy(dtype=float)))
 
+    detail = detail_map(lead_days)
     scored = []
     if served_rmse:
         clean = [v for v in served_rmse if v is not None and not np.isnan(v)]
         if clean:
-            scored.append(Scored("champion_served", DETAIL["champion_served"],
+            scored.append(Scored("champion_served", detail["champion_served"],
                                  float(np.median(clean)), len(clean), False))
     for name in names:
         values = [v for v in per_window[name] if not np.isnan(v)]
         if values:
-            scored.append(Scored(name, DETAIL[name], float(np.median(values)),
+            scored.append(Scored(name, detail[name], float(np.median(values)),
                                  len(values), name in USES_PAST_TARGET))
     return sorted(scored, key=lambda s: s.median_rmse)
 

@@ -1,5 +1,12 @@
 """Open-Meteo source tests. No network: the two endpoint responses are mocked,
-so we exercise the join, NaN handling, caching, and the column contract."""
+so we exercise the join, NaN handling, caching, and the column contract.
+
+The source has two modes. At ``forecast_lead_days=0`` the features come from the
+ERA5 analysis for the target hour. Above 0 they come from the archived forecast
+run issued that many days earlier, which arrives under ``_previous_dayN`` names
+and has to be mapped back onto the contract. Both are covered, because the
+renaming is exactly the kind of thing that breaks silently and leaves the model
+training on the wrong columns."""
 
 import pandas as pd
 import pytest
@@ -9,16 +16,17 @@ from driftloop.data import openmeteo
 from driftloop.data.openmeteo import OpenMeteoSource
 
 
-def _fake_responses():
+def _fake_responses(lead_days: int):
     """Six hourly rows. The air-quality feed is missing hour 2 (NaN pm2_5) and
     lacks hour 5 entirely, so the join + dropna should yield four clean rows."""
     times = [f"2025-06-01T0{h}:00" for h in range(6)]
+    suffix = f"_previous_day{lead_days}" if lead_days > 0 else ""
     weather = {
         "hourly": {
             "time": times,
-            "temperature_2m": [15.0, 15.5, 16.0, 16.5, 17.0, 17.5],
-            "wind_speed_10m": [2.0, 2.1, 2.2, 2.3, 2.4, 2.5],
-            "relative_humidity_2m": [60, 61, 62, 63, 64, 65],
+            f"temperature_2m{suffix}": [15.0, 15.5, 16.0, 16.5, 17.0, 17.5],
+            f"wind_speed_10m{suffix}": [2.0, 2.1, 2.2, 2.3, 2.4, 2.5],
+            f"relative_humidity_2m{suffix}": [60, 61, 62, 63, 64, 65],
         }
     }
     air = {
@@ -30,14 +38,23 @@ def _fake_responses():
     return weather, air
 
 
-@pytest.fixture()
-def mocked_source(tmp_path, monkeypatch):
-    weather, air = _fake_responses()
+def _install(monkeypatch, lead_days: int) -> list[tuple[str, dict]]:
+    """Patch the HTTP layer and hand back the calls it received."""
+    weather, air = _fake_responses(lead_days)
+    calls: list[tuple[str, dict]] = []
 
     def fake_get_json(url, params):
-        return weather if "archive" in url else air
+        calls.append((url, params))
+        return air if "air-quality" in url else weather
 
     monkeypatch.setattr(openmeteo, "_get_json", fake_get_json)
+    return calls
+
+
+@pytest.fixture()
+def mocked_source(tmp_path, monkeypatch):
+    """The shipped configuration: a seven-day-ahead forecast."""
+    _install(monkeypatch, OpenMeteoConfig().forecast_lead_days)
     return OpenMeteoSource(OpenMeteoConfig(), cache_dir=tmp_path)
 
 
@@ -53,25 +70,60 @@ def test_join_drops_missing_target_rows_and_keeps_contract(mocked_source):
     assert df["pm25"].iloc[0] == 20.0
 
 
+def test_forecast_mode_requests_the_previous_run_and_renames_it(tmp_path, monkeypatch):
+    """At lead N the features must come from the run issued N days earlier."""
+    calls = _install(monkeypatch, 7)
+    cfg = OpenMeteoConfig(forecast_lead_days=7)
+    df = OpenMeteoSource(cfg, cache_dir=tmp_path).timeline()
+
+    weather_call = next(c for c in calls if "air-quality" not in c[0])
+    url, params = weather_call
+    assert "historical-forecast-api" in url
+    assert params["hourly"] == (
+        "temperature_2m_previous_day7,wind_speed_10m_previous_day7,"
+        "relative_humidity_2m_previous_day7"
+    )
+    # The suffixed names must not survive into the frame the model trains on.
+    assert list(df.columns) == COLUMNS
+
+
+def test_nowcast_mode_reads_the_analysis_instead(tmp_path, monkeypatch):
+    calls = _install(monkeypatch, 0)
+    cfg = OpenMeteoConfig(forecast_lead_days=0)
+    df = OpenMeteoSource(cfg, cache_dir=tmp_path).timeline()
+
+    url, params = next(c for c in calls if "air-quality" not in c[0])
+    assert "archive-api" in url
+    assert "previous_day" not in params["hourly"]
+    assert list(df.columns) == COLUMNS
+
+
+def test_lead_is_part_of_the_cache_identity(tmp_path):
+    """Same place, same span, different lead -> different data, different file."""
+    a = OpenMeteoSource(OpenMeteoConfig(forecast_lead_days=0), cache_dir=tmp_path)
+    b = OpenMeteoSource(OpenMeteoConfig(forecast_lead_days=7), cache_dir=tmp_path)
+    assert a._cache_path() != b._cache_path()
+
+
+def test_lead_beyond_the_archive_is_rejected(tmp_path, monkeypatch):
+    _install(monkeypatch, openmeteo.MAX_LEAD_DAYS + 1)
+    cfg = OpenMeteoConfig(forecast_lead_days=openmeteo.MAX_LEAD_DAYS + 1)
+    with pytest.raises(ValueError, match="previous-run archive"):
+        OpenMeteoSource(cfg, cache_dir=tmp_path).timeline()
+
+
 def test_timeline_is_cached_to_disk_and_not_refetched(tmp_path, monkeypatch):
-    weather, air = _fake_responses()
-    calls = {"n": 0}
-
-    def counting_get_json(url, params):
-        calls["n"] += 1
-        return weather if "archive" in url else air
-
-    monkeypatch.setattr(openmeteo, "_get_json", counting_get_json)
+    calls = _install(monkeypatch, OpenMeteoConfig().forecast_lead_days)
     source = OpenMeteoSource(OpenMeteoConfig(), cache_dir=tmp_path)
 
     source.timeline()  # two endpoint calls
-    assert calls["n"] == 2
+    assert len(calls) == 2
     assert source._cache_path().exists()
 
     # A fresh instance reads the parquet cache instead of hitting the API.
     fresh = OpenMeteoSource(OpenMeteoConfig(), cache_dir=tmp_path)
     fresh.timeline()
-    assert calls["n"] == 2  # unchanged
+    assert len(calls) == 2  # unchanged
 
 
 def test_get_data_slices_the_window(mocked_source):

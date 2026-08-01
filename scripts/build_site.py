@@ -36,24 +36,52 @@ OUT = REPO_ROOT / "site"
 # showcased: the historical Kraków replay and the same loop running live. The
 # synthetic world stays an offline correctness proof (tests + sweep_knobs) and is
 # deliberately NOT published here.
-DISPLAY_ORDER = ["openmeteo", "openmeteo_delhi", "openmeteo_la", "scheduled"]
+#
+# Ordered as an argument rather than geographically: Kraków states the case and
+# Santiago immediately answers "is this just northern winter?", then the cities
+# walk down the scale of what retraining is worth, from +47.3% (Delhi) through
+# indifference (Johannesburg, Melbourne) to actively harmful (Los Angeles).
+DISPLAY_ORDER = [
+    "openmeteo",
+    "openmeteo_santiago",
+    "openmeteo_delhi",
+    "openmeteo_joburg",
+    "openmeteo_melbourne",
+    "openmeteo_la",
+    "scheduled",
+]
 
 STORY = {
-    "openmeteo": "Kraków weather and air quality. A model trained on clean summer air decays "
-    "once the winter heating season fills the basin with smog. Its error peaks near 49 µg/m³ "
-    "against 4.5 at training time, and the loop fires 9 retrains across 23 runs.",
-    "openmeteo_delhi": "The violent case. Monsoon rain scrubs Delhi's air to a September "
-    "minimum, then crop-residue burning and winter inversions triple PM2.5. The champion is "
-    "retrained on 7 of its 16 monitoring runs, the highest rate of the three.",
-    "openmeteo_la": "The counterexample, chosen by the measurements after the plan said "
-    "otherwise. Los Angeles was meant to be the summer-smog city; its PM2.5 actually peaks in "
-    "November and swings only 1.9× against Delhi's 3×. A champion trained on the autumn peak "
-    "improves as the year walks into a clean summer, ending at 5.8 error against 17.3 at its "
-    "worst. Across 37 runs the loop retrains 3 times, and retraining leaves it worse off.",
+    "openmeteo": "The basin this started with. A champion trained on clean summer air decays from "
+    "5.2 to 53.3 µg/m³ of error once the heating season fills the valley with winter smog, and the "
+    "loop retrains 8 times across 23 runs. Retraining is worth only +4.4% here, because a week-old "
+    "weather forecast is noisy enough to blunt what a fresh model can learn from it.",
+    "openmeteo_delhi": "The violent case. Monsoon rain scrubs Delhi's air to a September minimum, "
+    "then crop-residue burning and winter inversions triple PM2.5. Feature drift peaks at PSI 9.37 "
+    "and the champion's error runs from 20.1 to 71.8 µg/m³. Retraining is worth +47.3%, the "
+    "largest payoff on this page, and the never-retrained champion ends up worse than a constant.",
+    "openmeteo_la": "The control, chosen by the measurements after the plan said otherwise. Los "
+    "Angeles was meant to be the summer-smog city; its PM2.5 actually peaks in November and swings "
+    "only 1.9× against Delhi's 3×. The loop retrains twice across 37 runs and promotes once, and "
+    "retraining costs it 11.6%. A drift loop needs drift.",
+    "openmeteo_santiago": "Kraków's twin, half a year out of phase. Santiago sits in a coastal "
+    "basin that traps winter inversions the same way, so a champion trained on clean December air "
+    "decays from 8.0 to 60.8 µg/m³ as June arrives. Identical thresholds fire the same 8 retrains "
+    "here as in Kraków, in the opposite season, and this time they are worth +30.6%.",
+    "openmeteo_joburg": "Drift the loop can see and cannot fix. Highveld winter traps coal and "
+    "wood smoke under a nightly inversion, and the champion's error climbs from 14.2 to 89.6 "
+    "µg/m³, the worst here. Eight retrains across 20 runs buy −1.9%. Climatology, which is the "
+    "training mean for that hour of day and nothing more, beats the served model outright.",
+    "openmeteo_melbourne": "The quiet city that goes stale anyway. Sydney is the obvious "
+    "Australian choice and its PM2.5 barely moves; Melbourne swings 3.1× on winter wood smoke "
+    "while staying near the WHO guideline all year. Its champion still decays to 2.16× its "
+    "training error across 31 runs, and retraining buys −1.8%.",
     "synthetic": "A synthetic world with a controllable drift knob, so detection can be shown "
     "to fire exactly when the data is made to shift, and only then.",
-    "scheduled": "The same loop running on its own. One monitoring cycle is appended "
-    "automatically each week, accruing its own history over calendar time.",
+    "scheduled": "The same loop running unattended, and not a city at all: this is the Kraków "
+    "source again, with one monitoring cycle appended automatically by a weekly GitHub Action. "
+    "What it shows is that the machinery still runs with nobody starting it, accruing its own "
+    "history over calendar time.",
 }
 
 
@@ -249,6 +277,12 @@ def method_block() -> dict:
             "promotion_margin": cfg.promotion_margin,
         }
 
+    located = [PROFILES[k].location for k in DISPLAY_ORDER if PROFILES[k].location]
+    leads = {loc.forecast_lead_days for loc in located}
+    # None when the cities disagree, which the page renders as "mixed" rather
+    # than picking one and quietly misdescribing the others.
+    horizon_days = leads.pop() if len(leads) == 1 else None
+
     shown = [PROFILES[k].loop for k in DISPLAY_ORDER]
     params = _thresholds(shown[0])
     # The page says these thresholds are the same for every city -- which is what
@@ -261,6 +295,12 @@ def method_block() -> dict:
         "alpha": float(pipeline.named_steps["ridge"].alpha),
         "features": list(FEATURES),
         "target": TARGET,
+        # Features and the target share one timestamp in the column contract, so
+        # the horizon lives entirely in *which* weather the source fetches: at a
+        # lead of N days the features are the forecast issued N days before the
+        # target hour. Read off the configs rather than retyped, for the same
+        # reason as the thresholds below.
+        "horizon_days": horizon_days,
         "val_fraction": float(inspect.signature(train).parameters["val_fraction"].default),
         "params": params,
         "params_uniform": uniform,

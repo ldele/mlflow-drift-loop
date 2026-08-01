@@ -13,6 +13,10 @@ const PSI_MODERATE = 0.1;
 const PERF_THRESHOLD = 1.25;
 const CONFIG = { displayModeBar: false, responsive: true };
 
+// Used by both the method spec and the benchmark card, which describe the same
+// horizon and should not word it differently.
+const days = (n) => `${n} day${n === 1 ? "" : "s"}`;
+
 const THEMES = {
   light: {
     surface: "#ffffff", ink: "#14130f", ink2: "#55534d", muted: "#8a867d",
@@ -365,10 +369,29 @@ function renderMap() {
 
 /* ---------- render ---------- */
 
+/* A source with a handful of cycles can't support the readings its charts invite:
+ * two points still draw a line, and a line reads as a trend. The live schedule
+ * starts from nothing and accrues one cycle a week, so it says how young it is
+ * until it isn't — the caveat clears itself as the history fills in. */
+const YOUNG_RUNS = 8;
+
+function renderStory(p) {
+  const el = document.getElementById("story");
+  el.textContent = p.story;
+  const n = p.stats.runs;
+  if (n >= YOUNG_RUNS) return;
+  const caveat = document.createElement("span");
+  caveat.className = "story-caveat";
+  caveat.textContent =
+    ` Only ${n} cycle${n === 1 ? " has" : "s have"} run so far, so the charts below are` +
+    ` sparse and none of this is a trend yet.`;
+  el.appendChild(caveat);
+}
+
 function render() {
   const p = byKey[current];
   const pal = P();
-  document.getElementById("story").textContent = p.story;
+  renderStory(p);
   renderMap();
   statTiles(p.stats, p.target);
   const charts = document.getElementById("charts");
@@ -388,10 +411,11 @@ function render() {
       thresholdLine(lay, pal, t.who_24h_guideline, `WHO 24h guideline · ${t.who_24h_guideline}`);
     }
     chartCard(jobs,
-      `What it predicts: ${t.name}`,
-      `Hourly ${t.name} in ${t.units} over the most recent monitoring window, with what the ` +
-      `serving champion predicted for the same hours from temperature, wind speed and humidity ` +
-      `alone. The gap between the two lines is the error every other chart summarises.`,
+      `What the model forecasts: ${t.name}`,
+      `Measured hourly ${t.name} in ${t.units} over the most recent monitoring window, against ` +
+      `what the serving champion forecast for those hours <em>a week before they happened</em>, ` +
+      `from the weather forecast alone and no past ${t.name}. The gap between the two lines is ` +
+      `the error every other chart summarises.`,
       [
         { label: `measured ${t.name}`, color: pal.series[0], kind: "line" },
         { label: "champion prediction", color: pal.series[3], kind: "line" },
@@ -459,7 +483,11 @@ function render() {
   // 4. Model coefficients
   lay = plotBase(pal, "coefficient", { hovermode: "closest" });
   let chips4 = [];
-  if (p.coef) {
+  // Two versions is the least that can show a coefficient moving, and plotting
+  // one is worse than plotting none: a single point gives Plotly a zero-width
+  // time axis, which it fills with millisecond ticks. Say "not yet" instead.
+  const coefPts = p.coef?.train_end?.length ?? 0;
+  if (coefPts > 1) {
     lay.shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: 0, y1: 0, line: { color: pal.axis, width: 1 } });
     traces = FEATURES.map((f, i) => ({
       x: p.coef.train_end, y: p.coef[f], name: f, mode: "lines+markers", type: "scatter",
@@ -470,7 +498,9 @@ function render() {
     chips4 = FEATURES.map((f, i) => ({ label: f, color: pal.series[i], kind: "dot" }));
   } else {
     traces = [];
-    annotated(lay, pal, "Only one model version so far.");
+    annotated(lay, pal, coefPts === 1
+      ? "Only one model version so far, so there is no movement to trace yet."
+      : "No model versions recorded yet.");
   }
   chartCard(jobs,
     "Model coefficients",
@@ -496,26 +526,50 @@ const BENCH_LABEL = {
 
 /* Per city, so this renders with the charts rather than in the static method
  * section above the footer. Dropped entirely when scripts/benchmark.py hasn't
- * run, rather than showing an empty frame. */
+ * run, rather than showing an empty frame.
+ *
+ * Grouped by information set, not ranked in one list. Persistence and seasonal
+ * naive are handed the recent PM2.5; the champion only ever sees weather. In a
+ * single ranking the two autoregressive baselines win in every city, which reads
+ * as "the model loses" when what it actually says is that the groups are
+ * answering different questions. Within-group order is the comparison that
+ * means something. The gap between the groups is still reported, in its own
+ * verdict tile, because it is a real result and burying it would be the same
+ * dishonesty pointing the other way. */
 function renderBenchmark(p) {
   const card = document.getElementById("bench");
   const b = p.benchmark;
   card.hidden = !b || !b.scored?.length;
   if (card.hidden) return;
 
+  const byRmse = (x, y) => x.median_rmse - y.median_rmse;
+  const weatherOnly = b.scored.filter((s) => !s.uses_past_target).sort(byRmse);
+  const seesPast = b.scored.filter((s) => s.uses_past_target).sort(byRmse);
+
   const served = b.scored.find((s) => s.name === "champion_served");
   const frozen = b.scored.find((s) => s.name === "champion_frozen");
-  const best = b.scored[0];
   const gain = served && frozen ? (1 - served.median_rmse / frozen.median_rmse) * 100 : null;
 
-  const rows = b.scored.map((s) => {
-    const isModel = s.name.startsWith("champion");
-    return `<tr${isModel ? ' class="is-model"' : ""}>` +
-      `<td>${BENCH_LABEL[s.name] || s.name}</td>` +
-      `<td class="num">${s.median_rmse.toFixed(2)}</td>` +
-      `<td class="bench-note">${s.detail}${s.uses_past_target ? " · sees past PM2.5" : ""}</td>` +
-      `</tr>`;
-  }).join("");
+  const label = (s) => BENCH_LABEL[s.name] || s.name;
+  const row = (s) =>
+    `<tr${s.name.startsWith("champion") ? ' class="is-model"' : ""}>` +
+    `<td>${label(s)}</td>` +
+    `<td class="num">${s.median_rmse.toFixed(2)}</td>` +
+    `<td class="bench-note">${s.detail}</td>` +
+    `</tr>`;
+  const group = (title, gloss, list) =>
+    (list.length
+      ? `<tr><td class="bench-group" colspan="3">${title}: <span>${gloss}</span></td></tr>` +
+        list.map(row).join("")
+      : "");
+
+  const rows =
+    group("Weather forecast only",
+      "temperature, wind speed and humidity as forecast for the target hour. What the champion sees.",
+      weatherOnly) +
+    group("Sees past PM2.5",
+      "the readings available when the forecast was issued, a week before the target hour.",
+      seesPast);
 
   const a = b.alpha;
   const verdict = [];
@@ -524,7 +578,22 @@ function renderBenchmark(p) {
       `${gain >= 0 ? "+" : ""}${gain.toFixed(1)}%</b>` +
       `${gain >= 0 ? "better for retraining" : "worse for retraining"}</div>`);
   }
-  verdict.push(`<div><b>${BENCH_LABEL[best.name] || best.name}</b>lowest error overall</div>`);
+  if (weatherOnly.length) {
+    verdict.push(`<div><b>${label(weatherOnly[0])}</b>lowest on the forecast alone</div>`);
+  }
+  if (weatherOnly.length && seesPast.length) {
+    // Which group wins flips with the horizon: repeating the last reading is
+    // nearly unbeatable an hour out and nearly useless a week out. Report the
+    // gap in whichever direction it actually runs.
+    const w = weatherOnly[0], s = seesPast[0];
+    const forecastWins = w.median_rmse <= s.median_rmse;
+    const ratio = forecastWins ? s.median_rmse / w.median_rmse : w.median_rmse / s.median_rmse;
+    verdict.push(`<div><b>${ratio.toFixed(1)}×</b>` +
+      (forecastWins
+        ? `${label(w)} below ${label(s)}, the best that past readings manage`
+        : `${label(s)} below ${label(w)}, and it sees past PM2.5`) +
+      `</div>`);
+  }
   if (a) {
     verdict.push(`<div><b>alpha ${a.shipped}</b>shipped; ${a.best} scored best on ` +
       `${a.n_splits}-fold forward CV, costing ` +
@@ -534,9 +603,10 @@ function renderBenchmark(p) {
   card.innerHTML =
     `<div class="card-head"><h3>Does the model beat anything?</h3></div>` +
     `<p class="desc">Median error across the ${b.windows} monitoring windows of ` +
-    `${b.monitor_days} days each, the same slices the charts above report on, so the ` +
-    `served champion, the never-retrained champion and four predictors that need no ` +
-    `training at all are directly comparable. Lower is better.</p>` +
+    `${b.monitor_days} days each, the same slices the charts above report on. Grouped by what ` +
+    `each predictor is allowed to see: a forecaster issuing ${days(b.lead_days)} out may use ` +
+    `readings up to that moment and no later, so the baselines below repeat a week-old ` +
+    `observation rather than yesterday's. Lower is better.</p>` +
     `<div class="bench-wrap"><table class="bench">` +
     `<thead><tr><th>Predictor</th><th class="num">Median RMSE</th><th>What it does</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div>` +
@@ -558,7 +628,6 @@ function specRows(el, rows) {
 function renderMethod(m) {
   if (!m) return;
   const p = m.params;
-  const days = (n) => `${n} day${n === 1 ? "" : "s"}`;
   const pct = (f) => `${Math.round(f * 100)}%`;
   const code = (s) => `<code>${s}</code>`;
 
@@ -583,6 +652,13 @@ function renderMethod(m) {
     ["estimator", code(`${m.estimator}(alpha=${m.alpha})`)],
     ["features", m.features.map(code).join(" ")],
     ["target", code(m.target), "µg/m³"],
+    ["horizon",
+      m.horizon_days == null ? "mixed across cities"
+        : m.horizon_days > 0 ? `${days(m.horizon_days)} ahead`
+        : "none, a same-hour estimate",
+      m.horizon_days > 0
+        ? "the features are the weather forecast for the target hour as it was issued that far ahead, so the forecast's own error is carried into the prediction"
+        : "this hour's weather maps to this hour's pollution, so it is not a forecast"],
     ["training", `chronological ${pct(1 - m.val_fraction)}/${pct(m.val_fraction)} tail split`,
       "then refit on the full window"],
     ["baseline", "RMSE on the held-out tail", "never a random split, so it is measured the same way production will be"],

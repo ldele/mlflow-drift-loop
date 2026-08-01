@@ -161,7 +161,7 @@ runs = load_runs(DB, CFG.experiment_name)
 meta = load_run_meta(PROFILE.meta_filename)
 drift_date = meta.get("drift_date")
 
-st.title("MLflow drift loop")
+st.title("Air quality drift watch")
 if IS_SYNTHETIC:
     st.caption("track → detect drift → retrain challenger → promote &nbsp;·&nbsp; Phase 1, synthetic data")
 else:
