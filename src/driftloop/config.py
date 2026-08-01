@@ -8,7 +8,35 @@ import pandas as pd
 
 # The data-layer contract: every implementation returns exactly these columns.
 TIMESTAMP = "timestamp"
-FEATURES = ["temperature", "wind_speed", "humidity"]
+
+# Observed weather, and the only things that can drift: covariate drift here
+# means these distributions moved. Chosen for the physics of how pollution
+# accumulates and clears rather than for what is easy to fetch --
+# shortwave_radiation drives the daytime convective mixing that dilutes PM2.5,
+# surface_pressure catches the subsidence inversions that trap it, and
+# precipitation scavenges it out of the air.
+#
+# Boundary layer height would be the single best feature here and is not in the
+# list, because Open-Meteo does not archive previous model runs for it. At a
+# seven-day lead it comes back null, so it cannot be used without abandoning the
+# forecast framing.
+DRIFT_FEATURES = [
+    "temperature",
+    "wind_speed",
+    "humidity",
+    "precipitation",
+    "surface_pressure",
+    "shortwave_radiation",
+]
+
+# The clock, on a circle so hour 23 sits next to hour 0. Derived from the
+# timestamp rather than observed, so it cannot drift: every monitoring window
+# contains all 24 hours, and a PSI on it would be flat forever. That is why it
+# is excluded from DRIFT_FEATURES and present in FEATURES -- the diurnal cycle
+# is most of what the climatology baseline was beating the model with.
+CYCLICAL_FEATURES = ["hour_sin", "hour_cos"]
+
+FEATURES = [*DRIFT_FEATURES, *CYCLICAL_FEATURES]
 TARGET = "pm25"
 COLUMNS = [TIMESTAMP, *FEATURES, TARGET]
 

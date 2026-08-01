@@ -28,7 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from driftloop import tracking  # noqa: E402
-from driftloop.config import FEATURES, PROFILES  # noqa: E402
+from driftloop.config import DRIFT_FEATURES, FEATURES, PROFILES  # noqa: E402
 
 OUT = REPO_ROOT / "site"
 
@@ -39,7 +39,7 @@ OUT = REPO_ROOT / "site"
 #
 # Ordered as an argument rather than geographically: Kraków states the case and
 # Santiago immediately answers "is this just northern winter?", then the cities
-# walk down the scale of what retraining is worth, from +47.3% (Delhi) through
+# walk down the scale of what retraining is worth, from +66.7% (Delhi) through
 # indifference (Johannesburg, Melbourne) to actively harmful (Los Angeles).
 DISPLAY_ORDER = [
     "openmeteo",
@@ -51,31 +51,46 @@ DISPLAY_ORDER = [
     "scheduled",
 ]
 
+# Templates, not prose. Every number a city's story quotes is a `{placeholder}`
+# filled from that city's own run and benchmark output at build time.
+#
+# This is the same rule the method block already followed ("introspected rather
+# than retyped") applied to the narrative, and it exists because the narrative
+# broke that rule repeatedly: widening the feature set or changing the forecast
+# lead moves every one of these figures at once, and hand-editing seven
+# paragraphs afterwards leaves a stale number behind sooner or later.
+#
+# What stays hardcoded is only what a re-run cannot change: geography, season,
+# and why a city was chosen. If a sentence would be falsified by a re-run, it
+# belongs in a placeholder. See _story_facts for the available names.
 STORY = {
     "openmeteo": "The basin this started with. A champion trained on clean summer air decays from "
-    "5.2 to 53.3 µg/m³ of error once the heating season fills the valley with winter smog, and the "
-    "loop retrains 8 times across 23 runs. Retraining is worth only +4.4% here, because a week-old "
-    "weather forecast is noisy enough to blunt what a fresh model can learn from it.",
+    "{rmse_first} to {rmse_peak} µg/m³ of error once the heating season fills the valley with "
+    "winter smog, and the loop retrains {retrains} times across {runs} runs. Retraining is worth "
+    "{retrain_gain}, and the served champion is {rank_phrase}.",
     "openmeteo_delhi": "The violent case. Monsoon rain scrubs Delhi's air to a September minimum, "
-    "then crop-residue burning and winter inversions triple PM2.5. Feature drift peaks at PSI 9.37 "
-    "and the champion's error runs from 20.1 to 71.8 µg/m³. Retraining is worth +47.3%, the "
-    "largest payoff on this page, and the never-retrained champion ends up worse than a constant.",
+    "then crop-residue burning and winter inversions triple PM2.5. Feature drift peaks at PSI "
+    "{psi_peak} and the champion's error runs from {rmse_first} to {rmse_peak} µg/m³. Retraining "
+    "is worth {retrain_gain}, the largest payoff on this page, and the never-retrained champion "
+    "ends up worse than a constant.",
     "openmeteo_la": "The control, chosen by the measurements after the plan said otherwise. Los "
     "Angeles was meant to be the summer-smog city; its PM2.5 actually peaks in November and swings "
-    "only 1.9× against Delhi's 3×. The loop retrains twice across 37 runs and promotes once, and "
-    "retraining costs it 11.6%. A drift loop needs drift.",
+    "only 1.9× against Delhi's 3×. The champion barely moves across {runs} runs, retraining is "
+    "worth {retrain_gain}, and it ranks {rank_phrase}. A drift loop needs drift.",
     "openmeteo_santiago": "Kraków's twin, half a year out of phase. Santiago sits in a coastal "
     "basin that traps winter inversions the same way, so a champion trained on clean December air "
-    "decays from 8.0 to 60.8 µg/m³ as June arrives. Identical thresholds fire the same 8 retrains "
-    "here as in Kraków, in the opposite season, and this time they are worth +30.6%.",
-    "openmeteo_joburg": "Drift the loop can see and cannot fix. Highveld winter traps coal and "
-    "wood smoke under a nightly inversion, and the champion's error climbs from 14.2 to 89.6 "
-    "µg/m³, the worst here. Eight retrains across 20 runs buy −1.9%. Climatology, which is the "
-    "training mean for that hour of day and nothing more, beats the served model outright.",
+    "decays from {rmse_first} to {rmse_peak} µg/m³ as June arrives. It draws {retrains} retrains "
+    "across {runs} runs, and they are worth {retrain_gain} from thresholds identical to "
+    "everywhere else.",
+    "openmeteo_joburg": "Highveld winter traps coal and wood smoke under a nightly inversion, and "
+    "the champion's error climbs from {rmse_first} to {rmse_peak} µg/m³, the worst here. The loop "
+    "fires {retrains} retrains across {runs} runs for a net {retrain_gain}, and only {promotions} "
+    "challengers ever clear the promotion margin. The effort is spent and the gate declines most "
+    "of what it produces.",
     "openmeteo_melbourne": "The quiet city that goes stale anyway. Sydney is the obvious "
     "Australian choice and its PM2.5 barely moves; Melbourne swings 3.1× on winter wood smoke "
-    "while staying near the WHO guideline all year. Its champion still decays to 2.16× its "
-    "training error across 31 runs, and retraining buys −1.8%.",
+    "while staying near the WHO guideline all year. Its champion still decays to {perf_peak}× its "
+    "training error across {runs} runs, and retraining is worth {retrain_gain}.",
     "synthetic": "A synthetic world with a controllable drift knob, so detection can be shown "
     "to fire exactly when the data is made to shift, and only then.",
     "scheduled": "The same loop running unattended, and not a city at all: this is the Kraków "
@@ -83,6 +98,73 @@ STORY = {
     "What it shows is that the machinery still runs with nobody starting it, accruing its own "
     "history over calendar time.",
 }
+
+# Human-readable position of the served champion in the benchmark table, so a
+# story can say where it placed without a re-run silently making that a lie.
+_ORDINALS = {2: "second", 3: "third", 4: "fourth", 5: "fifth", 6: "sixth"}
+_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
+          8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
+
+
+def _count(n: int) -> str:
+    """Small counts read as words in prose; larger ones stay numerals."""
+    return _WORDS.get(n, str(n))
+
+
+def _pct(value: float) -> str:
+    """A signed percentage with a real minus sign, and no sign at all on zero.
+
+    "+0.0%" is what the arithmetic produces when retraining breaks exactly even,
+    and it reads as a gain that rounded away rather than as a wash.
+    """
+    if abs(value) < 0.05:
+        return "0.0%"
+    return f"{'+' if value > 0 else '−'}{abs(value):.1f}%"
+
+
+def _story_facts(runs: pd.DataFrame, retr: pd.DataFrame, prom: pd.DataFrame,
+                 benchmark: dict | None) -> dict[str, str]:
+    """Every number a story is allowed to quote, derived from that city's run."""
+    rmse = runs.get("metrics.champion_rmse")
+    perf = runs.get("metrics.perf_drift_ratio")
+    facts = {
+        "runs": str(len(runs)),
+        "retrains": _count(len(retr)),
+        "promotions": _count(len(prom)),
+        "psi_peak": f"{runs['metrics.data_drift_psi'].max():.2f}",
+        "rmse_first": "—" if rmse is None else f"{rmse.iloc[0]:.1f}",
+        "rmse_peak": "—" if rmse is None else f"{rmse.max():.1f}",
+        "rmse_last": "—" if rmse is None else f"{rmse.iloc[-1]:.1f}",
+        "perf_peak": "—" if perf is None else f"{perf.max():.2f}",
+    }
+
+    if benchmark and benchmark.get("scored"):
+        scored = sorted(benchmark["scored"], key=lambda s: s["median_rmse"])
+        names = [s["name"] for s in scored]
+        served = next((s for s in scored if s["name"] == "champion_served"), None)
+        frozen = next((s for s in scored if s["name"] == "champion_frozen"), None)
+        if served and frozen:
+            facts["retrain_gain"] = _pct((1 - served["median_rmse"] / frozen["median_rmse"]) * 100)
+        if "champion_served" in names:
+            place = names.index("champion_served") + 1
+            facts["rank_phrase"] = (
+                f"the lowest-error predictor of the {_count(len(names))} scored"
+                if place == 1
+                else f"{_ORDINALS.get(place, f'{place}th')} of the {_count(len(names))} scored"
+            )
+    return facts
+
+
+def _render_story(key: str, facts: dict[str, str]) -> str:
+    """Fill a story template, refusing to publish one with a hole in it."""
+    template = STORY[key]
+    try:
+        return template.format(**facts)
+    except KeyError as exc:  # a placeholder with nothing to fill it
+        raise SystemExit(
+            f"story for {key!r} wants {exc} but the run did not produce it; "
+            f"available: {sorted(facts)}"
+        ) from exc
 
 
 def _floats(series) -> list[float | None]:
@@ -157,7 +239,7 @@ def profile_data(key: str) -> dict | None:
     # The thing actually being predicted, in the units it is predicted in. Without
     # this the page is all monitoring machinery and never says what the model is
     # for. Written by run_openmeteo.py; absent for the live profile.
-    recent, latest_actual = None, None
+    recent, latest_actual, latest_actual_at = None, None, None
     pred_path = REPO_ROOT / "outputs" / f"predictions_{key}.csv"
     if pred_path.exists():
         preds = pd.read_csv(pred_path, parse_dates=["timestamp"])
@@ -168,6 +250,13 @@ def profile_data(key: str) -> dict | None:
                 "predicted": _floats(preds["predicted"]),
             }
             latest_actual = round(float(preds["actual"].iloc[-1]), 1)
+            # Dated, because a city's replay ends where its configured span ends,
+            # not today. Kraków's last reading is six months old; a tile that
+            # says "latest" invites a visitor to read a January number as now.
+            # Built by hand rather than with strftime: "%-d" is POSIX-only and
+            # "%#d" is Windows-only, and this runs on both.
+            stamp = preds["timestamp"].iloc[-1]
+            latest_actual_at = f"{stamp.day} {stamp:%b %Y}"
 
     loc = profile.location
     return {
@@ -176,7 +265,7 @@ def profile_data(key: str) -> dict | None:
         "benchmark": benchmark,
         "target": {"name": "PM2.5", "units": "µg/m³", "who_24h_guideline": 15},
         "recent": recent,
-        "story": STORY[key],
+        "story": _render_story(key, _story_facts(runs, retr, prom, benchmark)),
         "drift_date": drift_date,
         # Present only for profiles tied to a real place. The page plots one map
         # marker per profile that has one, so a location-less profile (the live
@@ -198,9 +287,10 @@ def profile_data(key: str) -> dict | None:
             "latest_rmse": (round(float(latest["metrics.champion_rmse"]), 1)
                             if "metrics.champion_rmse" in latest else None),
             "latest_actual": latest_actual,
+            "latest_actual_at": latest_actual_at,
         },
         "as_of": _dates(runs["as_of"]),
-        "psi": {f: _floats(runs[f"metrics.psi_{f}"]) for f in FEATURES if f"metrics.psi_{f}" in runs},
+        "psi": {f: _floats(runs[f"metrics.psi_{f}"]) for f in DRIFT_FEATURES if f"metrics.psi_{f}" in runs},
         "perf_ratio": _floats(runs["metrics.perf_drift_ratio"]),
         "retrain": {"as_of": _dates(retr["as_of"]), "perf": _floats(retr["metrics.perf_drift_ratio"])},
         "holdout": {
@@ -254,6 +344,42 @@ def publish_raw_data() -> list[dict]:
     return published
 
 
+def sweep_block() -> dict | None:
+    """The controlled experiment, from scripts/sweep_knobs.py.
+
+    The six cities show the loop acting; they cannot show that it acts *for the
+    right reason*, because the real world has no control condition. The synthetic
+    world does: two knobs that move covariate drift and concept drift
+    independently, so each detector can be checked against the cause it is
+    supposed to answer to and the one it should ignore.
+
+    Responses are published relative to the knob-at-zero reading as well as raw.
+    Seasonal difference between the training and monitoring windows puts a real
+    floor under PSI before either knob is touched, so the honest question is not
+    "is it zero" but "does it move, and only for its own cause".
+    """
+    path = REPO_ROOT / "outputs" / "sweep.csv"
+    if not path.exists():
+        return None
+    df = pd.read_csv(path)
+
+    out: dict[str, dict] = {}
+    for knob in ("feature_shift", "drift_strength"):
+        rows = df[df["sweep"] == knob].sort_values("level")
+        if rows.empty:
+            continue
+        base_psi = float(rows["max_psi"].iloc[0])
+        base_perf = float(rows["perf_drift_ratio"].iloc[0])
+        out[knob] = {
+            "level": _floats(rows["level"]),
+            "psi": _floats(rows["max_psi"]),
+            "perf": _floats(rows["perf_drift_ratio"]),
+            "psi_rel": [float(v) / base_psi for v in rows["max_psi"]],
+            "perf_rel": [float(v) / base_perf for v in rows["perf_drift_ratio"]],
+        }
+    return out or None
+
+
 def method_block() -> dict:
     """The page's "how this works" section, read out of the code that runs.
 
@@ -294,6 +420,10 @@ def method_block() -> dict:
         "estimator": " → ".join(type(step).__name__ for _, step in pipeline.steps),
         "alpha": float(pipeline.named_steps["ridge"].alpha),
         "features": list(FEATURES),
+        # The subset PSI is computed over, and the subset the charts colour.
+        # Split out so the page cannot invent a drift series for a feature the
+        # loop never measured drift on.
+        "drift_features": list(DRIFT_FEATURES),
         "target": TARGET,
         # Features and the target share one timestamp in the column contract, so
         # the horizon lives entirely in *which* weather the source fetches: at a
@@ -319,6 +449,7 @@ def build() -> Path:
         "built": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
         "raw_data": publish_raw_data(),
         "method": method_block(),
+        "sweep": sweep_block(),
         "profiles": profiles,
     }
     out = OUT / "data.json"

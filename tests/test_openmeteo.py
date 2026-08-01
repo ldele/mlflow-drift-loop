@@ -18,15 +18,19 @@ from driftloop.data.openmeteo import OpenMeteoSource
 
 def _fake_responses(lead_days: int):
     """Six hourly rows. The air-quality feed is missing hour 2 (NaN pm2_5) and
-    lacks hour 5 entirely, so the join + dropna should yield four clean rows."""
+    lacks hour 5 entirely, so the join + dropna should yield four clean rows.
+
+    Built from WEATHER_VARS rather than a hand-written list, so adding a feature
+    to the contract does not fail these tests for the wrong reason."""
     times = [f"2025-06-01T0{h}:00" for h in range(6)]
     suffix = f"_previous_day{lead_days}" if lead_days > 0 else ""
     weather = {
         "hourly": {
             "time": times,
-            f"temperature_2m{suffix}": [15.0, 15.5, 16.0, 16.5, 17.0, 17.5],
-            f"wind_speed_10m{suffix}": [2.0, 2.1, 2.2, 2.3, 2.4, 2.5],
-            f"relative_humidity_2m{suffix}": [60, 61, 62, 63, 64, 65],
+            **{
+                f"{api}{suffix}": [10.0 + i + 0.5 * h for h in range(6)]
+                for i, api in enumerate(openmeteo.WEATHER_VARS)
+            },
         }
     }
     air = {
@@ -65,8 +69,12 @@ def test_join_drops_missing_target_rows_and_keeps_contract(mocked_source):
     assert len(df) == 4
     assert df["timestamp"].is_monotonic_increasing
     assert not df[COLUMNS].isna().any().any()
-    # spot-check the mapping landed on the right columns
-    assert df["temperature"].iloc[0] == 15.0
+    # Every API name must land on its own contract column. Checking all of them
+    # rather than spot-checking one: a rename map that crossed or dropped a pair
+    # would still pass a single assertion, and the model would train on the
+    # wrong column with no error anywhere.
+    for i, column in enumerate(openmeteo.WEATHER_VARS.values()):
+        assert df[column].iloc[0] == 10.0 + i, f"{column} got the wrong series"
     assert df["pm25"].iloc[0] == 20.0
 
 
@@ -79,10 +87,10 @@ def test_forecast_mode_requests_the_previous_run_and_renames_it(tmp_path, monkey
     weather_call = next(c for c in calls if "air-quality" not in c[0])
     url, params = weather_call
     assert "historical-forecast-api" in url
-    assert params["hourly"] == (
-        "temperature_2m_previous_day7,wind_speed_10m_previous_day7,"
-        "relative_humidity_2m_previous_day7"
-    )
+    requested = params["hourly"].split(",")
+    # Every fetched feature must carry the lead suffix; a bare name here would
+    # mean that feature was silently taken from the analysis instead.
+    assert requested == [f"{api}_previous_day7" for api in openmeteo.WEATHER_VARS]
     # The suffixed names must not survive into the frame the model trains on.
     assert list(df.columns) == COLUMNS
 

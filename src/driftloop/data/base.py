@@ -13,7 +13,26 @@ from typing import Protocol
 
 import pandas as pd
 
-from driftloop.config import COLUMNS
+import numpy as np
+
+from driftloop.config import COLUMNS, TIMESTAMP
+
+
+def add_cyclical_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Encode hour-of-day as a point on a circle.
+
+    Raw hour 0-23 is useless to a linear model: it would make 23:00 and 00:00
+    the furthest apart values when they are adjacent. Sine and cosine together
+    place each hour on a circle, so midnight is next to 23:00 and the model can
+    express a smooth daily cycle with two coefficients.
+
+    Shared by every source, so the encoding cannot drift apart between them.
+    """
+    hours = pd.to_datetime(df[TIMESTAMP]).dt.hour.to_numpy(dtype=float)
+    radians = 2 * np.pi * hours / 24.0
+    df["hour_sin"] = np.sin(radians)
+    df["hour_cos"] = np.cos(radians)
+    return df
 
 
 class DataSource(Protocol):

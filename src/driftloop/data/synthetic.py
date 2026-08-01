@@ -14,15 +14,36 @@ import numpy as np
 import pandas as pd
 
 from driftloop.config import COLUMNS, SyntheticConfig
-from driftloop.data.base import validate_frame
+from driftloop.data.base import add_cyclical_features, validate_frame
 
 # y = f(x) + noise. Before the drift date, f uses PRE_COEFS.
-# Read it as: warm, still, damp air -> more PM2.5, wind is the big cleaner.
-PRE_COEFS = {"intercept": 12.0, "temperature": 0.45, "wind_speed": -2.2, "humidity": 0.08}
+# Read it as: warm, still, damp air -> more PM2.5, wind is the big cleaner,
+# rain washes it out, and strong sun mixes the boundary layer and dilutes it.
+PRE_COEFS = {
+    "intercept": 12.0,
+    "temperature": 0.45,
+    "wind_speed": -2.2,
+    "humidity": 0.08,
+    "precipitation": -3.0,
+    "shortwave_radiation": -0.010,
+}
 
 # After the drift date f becomes PRE + drift_strength * DELTA_COEFS.
-# The autumn-inversion regime: stagnation dominates, the temperature term flips.
-DELTA_COEFS = {"intercept": 6.0, "temperature": -0.75, "wind_speed": -2.6, "humidity": 0.16}
+# The autumn-inversion regime: stagnation dominates, the temperature term flips,
+# and weak winter sun stops doing the mixing it used to.
+DELTA_COEFS = {
+    "intercept": 6.0,
+    "temperature": -0.75,
+    "wind_speed": -2.6,
+    "humidity": 0.16,
+    "precipitation": -1.0,
+    "shortwave_radiation": 0.008,
+}
+
+# surface_pressure is generated but given no coefficient: a feature the world
+# supplies and the target genuinely does not depend on. Keeping one of those in
+# the synthetic world is deliberate, because a detector that fires on it would
+# be reporting drift with no consequence for the model.
 
 
 @lru_cache(maxsize=8)
@@ -52,13 +73,36 @@ def _full_timeline(cfg: SyntheticConfig) -> pd.DataFrame:
     wind_speed = np.clip(wind_speed, 0.2, None)
     humidity = np.clip(humidity, 10.0, 100.0)
 
+    # Sun follows the day and the season, and is zero at night. This is the
+    # stand-in for boundary-layer mixing.
+    daylight = np.clip(np.sin(2 * np.pi * (hour - 6) / 24), 0.0, None)
+    shortwave_radiation = 780.0 * daylight * (0.45 + 0.55 * (season + 1) / 2)
+    shortwave_radiation = np.clip(shortwave_radiation + rng.normal(0, 40.0, n), 0.0, None)
+
+    # Rain is mostly zero with occasional wet hours.
+    precipitation = rng.gamma(0.6, 0.9, n) * (rng.random(n) < 0.12)
+
+    # Synoptic pressure wandering around a standard sea-level value.
+    surface_pressure = 1013.0 + 9.0 * np.sin(2 * np.pi * (doy - 15) / 90.0) + rng.normal(0, 4.0, n)
+
+    # Covariate drift also reaches the two features that carry a coefficient,
+    # so feature_shift and drift_strength stay separable rather than one
+    # sneaking in through the other.
+    shortwave_radiation = np.clip(shortwave_radiation - 90.0 * cfg.feature_shift * ramp, 0.0, None)
+
     # Concept drift: the relationship changes.
     k = cfg.drift_strength * ramp
+
+    def coef(name: str) -> np.ndarray:
+        return PRE_COEFS[name] + k * DELTA_COEFS[name]
+
     pm25 = (
-        (PRE_COEFS["intercept"] + k * DELTA_COEFS["intercept"])
-        + (PRE_COEFS["temperature"] + k * DELTA_COEFS["temperature"]) * temperature
-        + (PRE_COEFS["wind_speed"] + k * DELTA_COEFS["wind_speed"]) * wind_speed
-        + (PRE_COEFS["humidity"] + k * DELTA_COEFS["humidity"]) * humidity
+        coef("intercept")
+        + coef("temperature") * temperature
+        + coef("wind_speed") * wind_speed
+        + coef("humidity") * humidity
+        + coef("precipitation") * precipitation
+        + coef("shortwave_radiation") * shortwave_radiation
     )
     pm25 = np.clip(pm25 + rng.normal(0, cfg.noise_sigma, n), 0.5, None)
 
@@ -68,10 +112,13 @@ def _full_timeline(cfg: SyntheticConfig) -> pd.DataFrame:
             "temperature": temperature,
             "wind_speed": wind_speed,
             "humidity": humidity,
+            "precipitation": precipitation,
+            "surface_pressure": surface_pressure,
+            "shortwave_radiation": shortwave_radiation,
             "pm25": pm25,
         }
     )
-    return df[COLUMNS]
+    return add_cyclical_features(df)[COLUMNS]
 
 
 class SyntheticSource:

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from driftloop.config import FEATURES, LoopConfig, SyntheticConfig
+from driftloop.config import DRIFT_FEATURES, LoopConfig, SyntheticConfig
 from driftloop.data import SyntheticSource
 from driftloop.drift import compute_data_drift, compute_perf_drift
 from driftloop.model import rmse, train
@@ -46,7 +46,7 @@ def measure(drift_strength: float, feature_shift: float, cfg: LoopConfig) -> dic
     monitor_df = source.get_data(MONITOR_START, MONITOR_END)
 
     champion = train(train_df)
-    data_drift = compute_data_drift(train_df, monitor_df, FEATURES)
+    data_drift = compute_data_drift(train_df, monitor_df, DRIFT_FEATURES)
     perf = compute_perf_drift(
         champion.baseline_rmse, rmse(champion.pipeline, monitor_df), cfg.perf_drift_threshold
     )

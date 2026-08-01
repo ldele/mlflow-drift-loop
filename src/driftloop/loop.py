@@ -25,7 +25,7 @@ from typing import Any
 import mlflow
 import pandas as pd
 
-from driftloop.config import FEATURES, LoopConfig
+from driftloop.config import DRIFT_FEATURES, LoopConfig
 from driftloop.data.base import DataSource
 from driftloop.drift import DataDriftResult, compute_data_drift, compute_perf_drift, distribution_report
 from driftloop.model import error_metrics, predictions_frame, rmse, train
@@ -99,7 +99,7 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
     reference = source.get_data(champion.train_start, champion.train_end + HOUR)
 
     # --- Signal 1: data drift (no model involved) ---
-    data_drift: DataDriftResult = compute_data_drift(reference, monitor, FEATURES)
+    data_drift: DataDriftResult = compute_data_drift(reference, monitor, DRIFT_FEATURES)
 
     # --- Signal 2: performance drift (champion only) ---
     champion_metrics = error_metrics(champion.pipeline, monitor)
@@ -168,7 +168,7 @@ def _log_monitoring_artifacts(champion_pipeline, monitor: pd.DataFrame, referenc
         preds = predictions_frame(champion_pipeline, monitor)
         preds.to_csv(tmp_path / "monitor_predictions.csv", index=False)
 
-        report = distribution_report(reference, monitor, FEATURES)
+        report = distribution_report(reference, monitor, DRIFT_FEATURES)
         (tmp_path / "feature_distributions.json").write_text(json.dumps(report), encoding="utf-8")
 
         mlflow.log_artifacts(str(tmp_path), artifact_path="monitoring")

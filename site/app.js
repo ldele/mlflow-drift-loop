@@ -2,10 +2,19 @@
  * Fetches data.json (from scripts/build_site.py) and builds interactive Plotly
  * charts. Chart titles, legends, and descriptions live in the HTML card — the
  * Plotly canvas holds only the data — and everything is theme-aware (light/dark).
- * Palette follows the validated data-viz reference (series slots 1–4 + status). */
+ * Palette follows the validated data-viz reference: categorical slots 1-6 taken
+ * in their fixed order (blue, orange, aqua, yellow, magenta, green), never
+ * cycled. Both modes clear the CVD and normal-vision floors on the adjacent
+ * pairlist. Three light-mode slots sit under 3:1 against the surface, so the
+ * relief rule applies: every chart carries a legend, and the footer publishes
+ * data.json plus a CSV per city as the table view. */
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-const FEATURES = ["temperature", "wind_speed", "humidity"];
+// Read from data.json rather than retyped, so adding a feature in config.py
+// cannot leave the page plotting a set the loop no longer uses. Colour is keyed
+// on a feature's index here, which is what keeps a feature the same colour in
+// the drift chart and the coefficient chart.
+let DRIFT_FEATURES = [];
 const PSI_SIGNIFICANT = 0.25;
 // The lower band boundary, used only to colour map markers. Industry convention:
 // <0.10 stable, 0.10–0.25 moderate, >0.25 significant.
@@ -21,14 +30,14 @@ const THEMES = {
   light: {
     surface: "#ffffff", ink: "#14130f", ink2: "#55534d", muted: "#8a867d",
     grid: "#ebe9e3", axis: "#d7d5cc", border: "rgba(15,14,10,0.10)",
-    series: ["#2a78d6", "#008300", "#e87ba4", "#eda100"],
+    series: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"],
     good: "#0a9a2e", warn: "#c98500", crit: "#d03b3b",
     drift: "rgba(236,131,90,0.09)",
   },
   dark: {
     surface: "#17171a", ink: "#f4f4f2", ink2: "#b8b7b0", muted: "#8b8983",
     grid: "#29292c", axis: "#3a3a3e", border: "rgba(255,255,255,0.10)",
-    series: ["#3987e5", "#22b45e", "#e07aa6", "#e0a53a"],
+    series: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300"],
     good: "#26c24a", warn: "#f0b03a", crit: "#e05656",
     drift: "rgba(236,131,90,0.15)",
   },
@@ -129,13 +138,13 @@ function legendHTML(chips) {
  * deferred until every card is in the DOM so the CSS grid has settled into its
  * final column count; otherwise Plotly measures a detached/half-laid-out width
  * and hard-codes its 700px default, overflowing the card. */
-function chartCard(jobs, title, desc, chips, traces, layout) {
+function chartCard(jobs, title, desc, chips, traces, layout, container = "charts") {
   const card = document.createElement("section");
   card.className = "card";
   card.innerHTML =
     `<div class="card-head"><h3>${title}</h3><div class="legend">${legendHTML(chips)}</div></div>` +
     `<p class="desc">${desc}</p><div class="plot"></div>`;
-  document.getElementById("charts").appendChild(card);
+  document.getElementById(container).appendChild(card);
   jobs.push({ div: card.querySelector(".plot"), traces, layout });
 }
 
@@ -151,9 +160,14 @@ function statTiles(stats, target) {
 
   const tiles = [];
   if (air != null) {
+    // Dated on purpose. A city's replay ends where its configured span ends, so
+    // "latest" can be months old, and an unqualified reading beside a WHO
+    // guideline reads as a statement about the air right now.
+    const at = stats.latest_actual_at;
     tiles.push({
       v: air, sub: target.units, color: airColor,
-      k: `Latest ${target.name} reading${guide ? ` · WHO 24h guideline ${guide}` : ""}`,
+      k: `Measured ${target.name}${at ? ` on ${at}` : ""}` +
+        `${guide ? ` · WHO 24h guideline ${guide}` : ""}`,
     });
   }
   if (stats.latest_rmse != null) {
@@ -398,7 +412,7 @@ function render() {
   charts.innerHTML = "";
   const jobs = [];
   const xEnd = p.as_of[p.as_of.length - 1];
-  const feat = FEATURES.filter((f) => p.psi[f]);
+  const feat = DRIFT_FEATURES.filter((f) => p.psi[f]);
   let lay, traces;
 
   // 0. What the model predicts, in the units it predicts it in. This is the
@@ -489,13 +503,17 @@ function render() {
   const coefPts = p.coef?.train_end?.length ?? 0;
   if (coefPts > 1) {
     lay.shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: 0, y1: 0, line: { color: pal.axis, width: 1 } });
-    traces = FEATURES.map((f, i) => ({
+    // Same features and the same colour indices as the drift chart above, so a
+    // reader tracking one feature across the two charts is tracking one colour.
+    // The cyclical hour terms are fitted but not drawn: they encode the daily
+    // cycle, which does not invert, and this chart is about signs flipping.
+    traces = DRIFT_FEATURES.map((f, i) => ({
       x: p.coef.train_end, y: p.coef[f], name: f, mode: "lines+markers", type: "scatter",
       line: { color: pal.series[i], width: 2.4 },
       marker: { size: 8, color: pal.series[i], line: { color: pal.surface, width: 2 } },
       hovertemplate: "%{y:.3f}<extra>" + f + "</extra>",
     }));
-    chips4 = FEATURES.map((f, i) => ({ label: f, color: pal.series[i], kind: "dot" }));
+    chips4 = DRIFT_FEATURES.map((f, i) => ({ label: f, color: pal.series[i], kind: "dot" }));
   } else {
     traces = [];
     annotated(lay, pal, coefPts === 1
@@ -508,6 +526,9 @@ function render() {
     chips4, traces, lay);
 
   renderBenchmark(p);
+  // Profile-independent, but re-rendered here so a theme flip recolours it with
+  // everything else rather than leaving one section in the old palette.
+  renderControl(DATA.sweep);
 
   // All cards are in the DOM now and the grid has settled — plot at the real width.
   jobs.forEach((j) => Plotly.newPlot(j.div, j.traces, j.layout, CONFIG));
@@ -611,6 +632,79 @@ function renderBenchmark(p) {
     `<thead><tr><th>Predictor</th><th class="num">Median RMSE</th><th>What it does</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div>` +
     `<div class="verdict">${verdict.join("")}</div>`;
+}
+
+/* ---------- controlled experiment ---------- */
+
+/* Both detectors are plotted against both knobs, indexed to their reading at
+ * knob zero. Indexing rather than a second y-axis: PSI and an error ratio have
+ * no common unit, and a dual axis would let the two curves be scaled into any
+ * story at all. Sharing one axis means the flat line is honestly flat.
+ *
+ * Colour follows the detector, not the chart, so the same series is the same
+ * colour in both panels. */
+function renderControl(sweep) {
+  const section = document.getElementById("control");
+  section.hidden = !sweep;
+  if (!sweep) return;
+
+  const pal = P();
+  const host = document.getElementById("control-charts");
+  host.innerHTML = "";
+  const jobs = [];
+
+  const KNOBS = [
+    {
+      key: "feature_shift",
+      title: "Turning the covariate knob",
+      desc: "The feature distributions are pushed further from the training window, while the " +
+        "relationship between weather and pollution is left alone. Data drift should climb and " +
+        "performance drift should not move.",
+    },
+    {
+      key: "drift_strength",
+      title: "Turning the concept knob",
+      desc: "The relationship between weather and pollution is changed, while the feature " +
+        "distributions are left alone. Performance drift should climb and data drift should not " +
+        "move.",
+    },
+  ];
+
+  const chips = [
+    { label: "data drift (PSI)", color: pal.series[0], kind: "line" },
+    { label: "performance drift", color: pal.series[1], kind: "line" },
+  ];
+
+  for (const knob of KNOBS) {
+    const s = sweep[knob.key];
+    if (!s) continue;
+    const lay = plotBase(pal, "response, × of knob at zero");
+    lay.xaxis.title = { text: "knob level", font: { color: pal.muted, size: 11 } };
+    lay.margin.b = 44;
+    thresholdLine(lay, pal, 1, "1.0 · unchanged");
+    chartCard(jobs, knob.title, knob.desc, chips,
+      [
+        lineT(s.level, s.psi_rel, "data drift (PSI)", pal.series[0]),
+        lineT(s.level, s.perf_rel, "performance drift", pal.series[1]),
+      ],
+      lay, "control-charts");
+  }
+
+  // Stated from the data rather than written down, so the claim cannot outlive
+  // the result it describes.
+  const fs = sweep.feature_shift, ds = sweep.drift_strength;
+  const last = (a) => a[a.length - 1];
+  if (fs && ds) {
+    document.getElementById("control-note").innerHTML =
+      `<strong>The result:</strong> turning the concept knob moves performance drift ` +
+      `${last(ds.perf_rel).toFixed(1)}× and data drift ${last(ds.psi_rel).toFixed(2)}×, meaning ` +
+      `PSI is unchanged across that entire sweep. Turning the covariate knob moves data drift ` +
+      `${last(fs.psi_rel).toFixed(1)}× and performance drift ${last(fs.perf_rel).toFixed(2)}×. ` +
+      `Each detector answers to its own cause and ignores the other, which is the property the ` +
+      `two-signal design depends on and the one no real city can demonstrate.`;
+  }
+
+  jobs.forEach((j) => Plotly.newPlot(j.div, j.traces, j.layout, CONFIG));
 }
 
 /* ---------- method section ---------- */
@@ -751,6 +845,7 @@ async function main() {
       "Couldn't load data.json (" + e.message + "). If viewing locally, serve the folder over HTTP.";
     return;
   }
+  DRIFT_FEATURES = DATA.method?.drift_features || [];
   document.getElementById("built").textContent = `Snapshot · built ${DATA.built}`;
   // Static across profiles, so it is rendered once rather than per selection.
   renderMethod(DATA.method);

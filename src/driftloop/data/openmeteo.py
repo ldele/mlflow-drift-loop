@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 from driftloop.config import COLUMNS, OpenMeteoConfig
-from driftloop.data.base import validate_frame
+from driftloop.data.base import add_cyclical_features, validate_frame
 
 WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
 # Archived *forecasts*, not archived observations: for a target hour it can
@@ -42,6 +42,9 @@ WEATHER_VARS = {
     "temperature_2m": "temperature",
     "wind_speed_10m": "wind_speed",
     "relative_humidity_2m": "humidity",
+    "precipitation": "precipitation",
+    "surface_pressure": "surface_pressure",
+    "shortwave_radiation": "shortwave_radiation",
 }
 
 # Open-Meteo archives previous model runs out to seven days, so that is the
@@ -116,6 +119,7 @@ def _fetch_span(cfg: OpenMeteoConfig) -> pd.DataFrame:
         frame["timestamp"] = pd.to_datetime(frame["timestamp"])
 
     merged = weather_df.merge(air_df, on="timestamp", how="inner")
+    merged = add_cyclical_features(merged)
     # Real feeds have gaps; the loop needs clean rows. Drop any hour missing a
     # feature or the target, then keep the contract's column order.
     merged = merged.dropna(subset=COLUMNS).sort_values("timestamp").reset_index(drop=True)
@@ -148,8 +152,13 @@ class OpenMeteoSource:
 
         cache_path = self._cache_path()
         if cache_path.exists() and not refresh:
-            self._timeline = pd.read_parquet(cache_path)
-            return self._timeline
+            cached = pd.read_parquet(cache_path)
+            # A cache written before a feature was added satisfies the filename
+            # but not the contract. Re-fetch instead of handing back a frame the
+            # model would fail on later, somewhere less obvious.
+            if all(column in cached.columns for column in COLUMNS):
+                self._timeline = cached
+                return self._timeline
 
         df = _fetch_span(self.config)
         self.cache_dir.mkdir(parents=True, exist_ok=True)

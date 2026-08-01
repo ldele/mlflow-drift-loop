@@ -60,12 +60,12 @@ season that ruins it.
 
 | | span | PM2.5 swing | champion RMSE | retrains / runs | retraining worth |
 |---|---|---|---|---|---|
-| **Kraków** | May 25 → Feb 26 | 10 → 54, winter smog in a basin | 5.2 → peak 53.3 | 8 / 23 | +4.4% |
-| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 8.0 → peak 60.8 | 8 / 22 | **+30.6%** |
-| **Delhi** | May 25 → Feb 26 | 42 → 127, post-monsoon burning | 20.1 → peak 71.8 | 5 / 16 | **+47.3%** |
-| **Johannesburg** | Nov 25 → Jul 26 | 23 → 84, Highveld coal smoke | 14.2 → peak 89.6 | 8 / 20 | −1.9% |
-| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.3 → peak 15.9 | 7 / 31 | −1.8% |
-| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 16.7 → peak 18.2 | 2 / 37 | −11.6% |
+| **Kraków** | May 25 → Feb 26 | 10 → 54, winter smog in a basin | 5.1 → peak 51.8 | 9 / 23 | +10.1% |
+| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.4 → peak 66.2 | 11 / 22 | **+26.1%** |
+| **Delhi** | May 25 → Feb 26 | 42 → 127, post-monsoon burning | 20.0 → peak 66.0 | 6 / 16 | **+66.7%** |
+| **Johannesburg** | Nov 25 → Jul 26 | 23 → 84, Highveld coal smoke | 11.6 → peak 81.6 | 9 / 20 | 0.0% |
+| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.3 → peak 13.2 | 7 / 31 | −7.1% |
+| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 17.3 → peak 19.2 | 9 / 37 | −8.2% |
 
 The cities were picked on measurements rather than reputation. Eighteen
 candidates were fetched and ranked by PM2.5 swing before any of them was wired
@@ -83,32 +83,26 @@ are at their cleanest, and they run on settings identical to every other city's.
 
 Santiago answers it most directly, because it is Kraków's twin. A coastal basin
 that traps winter inversions the same way, half a year out of phase. Both
-champions decay by roughly an order of magnitude (5.2 to 53.3 in Kraków, 8.0 to
-60.8 in Santiago) and the loop fires exactly 8 retrains in each, off the same
-thresholds, in opposite seasons.
-
-What the two cities do *not* share is the payoff. Retraining is worth +30.6% in
-Santiago and +4.4% in Kraków. Detection is symmetric; the value of acting on it
-is not, because Kraków's original champion happens to stay closer to usable as
-the winter comes in. That asymmetry is a result, not a defect in the pairing.
+champions decay by an order of magnitude (5.1 to 51.8 in Kraków, 6.4 to 66.2 in
+Santiago), both draw retrains off the same thresholds in opposite seasons, and
+retraining pays in both (+10.1% and +26.1%).
 
 ### Where it stops paying
 
-Johannesburg drifts more than anywhere else here and gains the least from
-retraining. The champion's error climbs from 14.2 to 89.6 µg/m³, the worst on the
-page, and eight retrains buy −1.9%. Climatology, which is the training mean for
-that hour of day and nothing more, beats the served model outright. Noticing that
-a model has gone stale is a different problem from being able to fix it, and only
-the largest drift signal in the project makes that visible.
+Johannesburg is where the promotion gate does the most visible work. The
+champion's error climbs from 11.6 to 81.6 µg/m³, the worst on the page, and nine
+retrains produce only two promotions: the other seven challengers failed to clear
+the 5% margin and were thrown away. Retraining nets exactly 0.0%. The loop spends
+the effort, the gate declines to pay, and nothing ships that did not earn it.
 
 Los Angeles is the control, and the measurements chose it for that. It was
 picked as the summer-smog city; hourly PM2.5 over 2025–26 peaks in November and
-bottoms out in June. Its champion barely moves across 37 runs, the loop retrains
-twice and promotes once, and retraining costs 11.6%. A drift loop needs drift.
+bottoms out in June. Its champion barely moves across 37 runs, retraining costs
+8.2%, and climatology beats it outright. A drift loop needs drift.
 
 Melbourne is the counter-intuitive case. Its air stays near the WHO guideline all
-year, yet the champion still decays to 2.16× its training error, and retraining
-buys −1.8%. Clean air does not imply a stable model.
+year, yet the champion still decays to 2.01× its training error, and retraining
+buys −7.1%. Clean air does not imply a stable model.
 
 A seventh source, **Live schedule**, is not a city. It is the same Kraków data
 run one incremental cycle at a time by a weekly GitHub Action, accruing its own
@@ -134,29 +128,64 @@ forecast was issued. The champion gets the weather forecast and nothing else.
   last available reading is a week old, which is most of the way to useless, so
   the weather-based model earns its place. This is the finding that flips with
   the horizon: at a one-hour lead persistence wins everywhere by 3× or more.
-- **Retraining earns its keep where drift is real:** +47.3% in Delhi, +30.6% in
-  Santiago. Delhi's frozen champion ends up worse than a constant, which is what
-  concept drift looks like when nobody intervenes.
-- **It costs 11.6% in Los Angeles** and buys nothing in Johannesburg (−1.9%) or
-  Melbourne (−1.8%). Retraining a city whose world barely moves fits noise.
-- **The champion still loses to a constant in three cities.** Climatology beats
-  it in Johannesburg, and the training mean beats it in Melbourne. Where PM2.5
-  barely moves, a week-old weather forecast carries too little signal to improve
-  on an average.
+- **Retraining earns its keep where drift is real:** +66.7% in Delhi, +26.1% in
+  Santiago, +10.1% in Kraków. Delhi's frozen champion ends up worse than a
+  constant, which is what concept drift looks like when nobody intervenes.
+- **It costs 8.2% in Los Angeles** and 7.1% in Melbourne, and breaks exactly even
+  in Johannesburg. Retraining a city whose world barely moves fits noise.
+- **The champion is the best predictor of the six in Kraków, Delhi and
+  Johannesburg**, second in Santiago, and still loses to climatology in Los
+  Angeles. Where PM2.5 barely moves, a week-old forecast carries too little
+  signal to beat an hour-of-day average.
 
-`alpha=1.0` ships. Forward-chaining CV picks anywhere from 0.001 in Los Angeles
-to 1000 in Delhi and Johannesburg, worth between 0.0% and 4.7% error depending on
-the city. The curve is nearly flat everywhere, which says the model is limited by
-what three forecast weather features can express rather than by its
-regularisation.
+`alpha=1.0` ships. Forward-chaining CV wants far heavier regularisation than that
+in most cities, up to 1000, which is itself a signal: the fitted relationship is
+weak enough that shrinking it toward zero costs almost nothing.
+
+## Does the detection actually work?
+
+![The controlled experiment](docs/images/control.png)
+
+No real city can answer that. Its drift has no known cause and no control
+condition, so a detector firing at random would look much the same. The synthetic
+world has both: two knobs that move covariate drift and concept drift
+independently, and each detector can be checked against the cause it should
+answer to and the one it should ignore.
+
+| knob turned 0 → 2 | data drift (PSI) | performance drift |
+|---|---|---|
+| **covariate** (feature distributions shift) | **1.77×** | 1.01× |
+| **concept** (the relationship changes) | 1.00× | **5.92×** |
+
+Each detector responds to its own cause and ignores the other. PSI across the
+entire concept sweep is not merely stable, it is identical to fifteen decimal
+places, because changing the relationship between features and target cannot move
+a statistic computed on the features alone.
+
+That is the property the two-signal design rests on, and it is the one thing the
+six cities cannot demonstrate. It is published on the page for the same reason it
+is here: it is the evidence, and the cities are the application.
 
 ## The model
 
 ![Method](docs/images/method.png)
 
-`StandardScaler → Ridge(alpha=1.0)` on forecast temperature, wind speed and
-humidity, predicting hourly PM2.5 seven days out. Trained on a chronological
-80/20 tail split, never a random one, then refit on the full window.
+`StandardScaler → Ridge(alpha=1.0)` on eight features, predicting hourly PM2.5
+seven days out. Trained on a chronological 80/20 tail split, never a random one,
+then refit on the full window.
+
+Six are observed weather, chosen for how pollution accumulates and clears rather
+than for what was easy to fetch: temperature, wind speed, humidity,
+**precipitation** (which scavenges particulates out of the air), **surface
+pressure** (subsidence inversions that trap them) and **shortwave radiation**
+(daytime convective mixing that dilutes them). Two more encode hour-of-day as a
+point on a circle, so the model can express a daily cycle rather than losing to
+an hour-of-day average.
+
+Only the six weather features carry a PSI. The clock cannot drift: every
+monitoring window contains all 24 hours, so its distribution is fixed by
+construction, and a drift chart that plotted it would be showing a flat line
+forever.
 
 The features and the target share one timestamp in the column contract, so the
 horizon lives entirely in which weather the data source fetches. Nothing
@@ -232,9 +261,16 @@ as the main file, Python 3.12.
   metrics, params and tags anywhere, but not the per-run prediction files.
 - **No serving.** The champion is registered and promoted, never served behind an
   API. That and an alert on promotion are the obvious next steps.
-- **Three features is not enough.** The alpha curve is flat in every city, which
-  says the ceiling is the feature set rather than the regularisation. Boundary
-  layer height, precipitation and a wind-direction term would all plausibly help.
+- **R² is still weak, and that is the honest headline.** Widening from three
+  features to eight improved every city (Los Angeles went from −2.13 to −0.98 on
+  the latest window, Melbourne from −0.28 to +0.12) but R² on the most-drifted
+  window is still near zero or negative in four of six. Predicting an hour's
+  PM2.5 from a week-old weather forecast is genuinely hard, and the page should be
+  read with that in mind: the loop is the demonstration, not the model.
+- **Boundary layer height is missing and it is the feature I most want.** It sets
+  the volume pollution is diluted into and would likely matter more than anything
+  in the list. Open-Meteo does not archive previous model runs for it, so at a
+  seven-day lead it returns null. Shortwave radiation is the stand-in.
 - **No autoregressive features.** Giving the champion a lag term would help most
   in the low-drift cities where a constant currently beats it. It would also
   blunt the drift story, since an autoregressive model absorbs regime change

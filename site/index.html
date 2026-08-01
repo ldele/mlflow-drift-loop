@@ -321,6 +321,24 @@
       <div class="tiles" id="tiles"></div>
       <div class="charts" id="charts"></div>
       <section class="card bench-card" id="bench" hidden></section>
+
+      <!-- The cities show the loop acting. They cannot show it acts for the
+           right reason, because the real world has no control condition. This
+           section is that control, and it sits here because it answers the
+           question the benchmark above provokes. -->
+      <section id="control" hidden>
+        <h2 class="method-h">Does the detection actually work?</h2>
+        <p class="method-sub">
+          A real city cannot answer that. Its drift has no known cause and no control condition, so
+          a detector that fired at random would look much the same. This is the same loop run
+          against a synthetic world with two independent knobs: one that shifts the feature
+          distributions, and one that changes the relationship between features and pollution.
+          Each detector should answer to its own knob and ignore the other.
+        </p>
+        <div class="charts" id="control-charts"></div>
+        <p class="why" id="control-note"></p>
+      </section>
+
       <div id="error"></div>
 
       <!-- After the evidence, before the footer: the charts make the claim,
