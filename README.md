@@ -34,9 +34,8 @@ leak guards.
 
 ## Six cities that disagree
 
-Each city trains a champion on a clean season and replays weekly into the season
-that ruins it. Every threshold is identical across cities, so a city's behaviour
-reflects its weather rather than its tuning.
+Each trains a champion on a clean season and replays weekly into the season that
+ruins it, on thresholds identical across every city.
 
 | | PM2.5 swing | retrains / runs | retraining worth |
 |---|---|---|---|
@@ -47,17 +46,13 @@ reflects its weather rather than its tuning.
 | **Melbourne** | 5 → 15, winter wood heaters | 7 / 31 | −7.1% |
 | **Los Angeles** | 15 → 29, a mild winter bump | 9 / 37 | −8.2% |
 
-Retraining pays where drift is real and costs where it is not, which is the
-result worth having. Los Angeles is the control: its champion barely moves
-across 37 runs and retraining loses 8.2%. Johannesburg is where the gate does
-the most visible work — nine retrains, two promotions, the other seven thrown
-away for failing the margin.
+Retraining pays where drift is real and costs where it is not — the result worth
+having. Half of these peak in June–August and half in northern winter, which is
+how you can tell the thresholds are not quietly encoding a season.
 
-Half the cities peak in June–August, when the other half are at their cleanest,
-which is how you can tell the thresholds are not quietly encoding a season.
 [evaluation.md](docs/evaluation.md) has the per-city findings, the benchmarks
-against four no-training baselines, and the controlled experiment that shows
-each detector answers to its own cause and ignores the other.
+against four no-training baselines, and the controlled experiment behind the
+two-signal design.
 
 ## Serving the champion
 
