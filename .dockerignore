@@ -1,0 +1,15 @@
+# The build context is sent to the daemon in full before the first instruction
+# runs, and this repo carries a 725 MB .venv plus every MLflow backend and the
+# built site. Deny everything and admit only what the image actually needs --
+# an allowlist, so a large directory added later cannot quietly bloat the build.
+*
+
+!pyproject.toml
+!README.md
+!src
+!scripts
+!data_cache
+
+# ...and nothing compiled or cached from inside those.
+**/__pycache__
+**/*.pyc
