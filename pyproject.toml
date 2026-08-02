@@ -14,10 +14,13 @@ dependencies = [
     "requests>=2.31",
     "truststore>=0.9",     # route TLS through the OS trust store (corporate proxy)
     "pyarrow>=15",         # parquet cache for the Open-Meteo timeline
+    "fastapi>=0.115",      # serving the promoted champion
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+# httpx backs fastapi's TestClient.
+dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]
 
 [build-system]
 requires = ["hatchling"]

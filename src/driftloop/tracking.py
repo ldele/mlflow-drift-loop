@@ -129,7 +129,11 @@ def load_champion(model_name: str) -> ChampionRef | None:
     pipeline = mlflow.sklearn.load_model(f"models:/{model_name}@{CHAMPION_ALIAS}")
     return ChampionRef(
         pipeline=pipeline,
-        version=mv.version,
+        # str for the same reason log_and_register does it: MLflow hands the
+        # version back as an int here and as a str elsewhere, and a field
+        # declared `str` that sometimes isn't will eventually be compared
+        # against one that is.
+        version=str(mv.version),
         train_start=pd.Timestamp(mv.tags["train_start"]),
         train_end=pd.Timestamp(mv.tags["train_end"]),
         baseline_rmse=float(mv.tags["baseline_rmse"]),

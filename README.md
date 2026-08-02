@@ -1,5 +1,7 @@
 # Air quality drift watch
 
+[![ci](https://github.com/ldele/mlflow-drift-loop/actions/workflows/ci.yml/badge.svg)](https://github.com/ldele/mlflow-drift-loop/actions/workflows/ci.yml)
+
 A model goes stale when the world stops matching what it was trained on. This
 watches for that happening, retrains when it does, and ships the new model only
 when it wins on data neither has seen.
@@ -208,7 +210,10 @@ python scripts/benchmark.py                 # baselines + alpha sweep
 python scripts/build_site.py                # -> site/data.json
 
 streamlit run dashboard/app.py              # the full app
+python scripts/serve.py --city krakow       # serve the champion on :8000
 mlflow ui --backend-store-uri sqlite:///mlflow_openmeteo.db
+
+pytest -q && ruff check .                   # what CI gates on
 ```
 
 The synthetic proof is `scripts/run_simulation.py --fresh` and
@@ -228,6 +233,55 @@ which is an auditable version history.
 > The Model Registry needs a database backend, so this uses a local SQLite file.
 > MLflow 3 replaced `Staging`/`Production` transitions with aliases.
 
+## Serving the champion
+
+The loop's entire output is one alias. `champion` points at whichever version
+last cleared the promotion gate, and the API reads that alias rather than a
+pinned version — so promoting in the registry is what changes what gets served.
+
+```bash
+python scripts/serve.py --city krakow      # http://localhost:8000/docs
+```
+
+| | |
+|---|---|
+| `GET /health` | up, and whether a model is loaded |
+| `GET /model` | which version is answering, its training window, how stale it is |
+| `POST /predict` | a batch of forecast hours → PM2.5 |
+| `POST /reload` | re-read the alias after a promotion |
+
+Kraków currently serves **version 10**, the champion left standing after nine
+retrains. `/model` reports that it was trained on 28 Oct – 4 Dec 2025, which is
+the number that matters operationally: you can see how old the thing answering
+you is.
+
+**It does not poll.** A promotion is picked up when `/reload` is called, not
+whenever the registry happens to change. Swapping a model under live traffic
+without anyone asking is worse than serving a slightly stale one, and this way
+the swap is an event with a caller attached to it.
+
+**Predictions come back twice.** The champion is an unconstrained Ridge, so on
+clean summer hours it emits negative concentrations — a real request above
+returns `-26.6`. `pm25` is floored at zero for consumers and `pm25_raw` keeps
+what the model actually said, because a clamp that hides the model's behaviour
+is how you stop noticing it.
+
+The service never writes to the tracking store, and it builds its features with
+the same `add_cyclical_features` the training path uses, so the served encoding
+cannot drift away from the trained one. Timestamps are normalised to UTC before
+the hour is read off them; there is a test for that, because getting it wrong
+would put the diurnal terms silently out of phase.
+
+```bash
+docker build -t drift-serve --build-arg CITY=delhi .
+docker run -p 8000:8000 drift-serve
+```
+
+The image replays the loop from the committed parquet cache at build time
+instead of copying the SQLite backend in. That is forced rather than chosen:
+MLflow stores artifact locations as absolute URIs, so a backend built on a
+developer's machine resolves to paths the container does not have.
+
 ## Nothing gathered is thrown away
 
 Raw hourly observations are committed as `data_cache/*.parquet` instead of being
@@ -241,12 +295,12 @@ city, both downloadable from the live page.
 ## Layout
 
 ```
-src/driftloop/    config, data sources, drift math, model, loop, benchmark
-scripts/          run_openmeteo · benchmark · build_site · run_scheduled · sweep_knobs
+src/driftloop/    config, data sources, drift math, model, loop, benchmark, serving
+scripts/          run_openmeteo · benchmark · build_site · run_scheduled · sweep_knobs · serve
 site/             committed shell (index.html, app.js) + generated data.json
 dashboard/        Streamlit app and shared chart theme
 docs/wireframes/  the drawings each UI was built from
-tests/            data contract, drift math, no-leak guards, baseline fairness, Open-Meteo (mocked)
+tests/            data contract, drift math, no-leak guards, baseline fairness, serving, Open-Meteo (mocked)
 ```
 
 Also on **Streamlit Community Cloud**: deploy this repo with `dashboard/app.py`
@@ -259,8 +313,11 @@ as the main file, Python 3.12.
   repo. Production would point `MLFLOW_TRACKING_URI` at a hosted tracking server.
 - **Artifact paths are absolute.** A backend generated on the CI runner resolves
   metrics, params and tags anywhere, but not the per-run prediction files.
-- **No serving.** The champion is registered and promoted, never served behind an
-  API. That and an alert on promotion are the obvious next steps.
+- **Serving is single-node.** One container per city, holding its own SQLite
+  backend, is the honest shape of a zero-infra demo rather than of production.
+  A real deployment would point every replica at one hosted tracking server so
+  they promote in step, and `POST /reload` would be called by the loop rather
+  than by hand.
 - **R² is still weak, and that is the honest headline.** Widening from three
   features to eight improved every city (Los Angeles went from −2.13 to −0.98 on
   the latest window, Melbourne from −0.28 to +0.12) but R² on the most-drifted
