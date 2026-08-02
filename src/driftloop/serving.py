@@ -257,7 +257,7 @@ def create_app(profile_key: str | None = None) -> FastAPI:
     )
 
     app = FastAPI(
-        title="Air quality drift watch -- champion serving",
+        title="Air quality drift watch — champion serving",
         description=(
             "Serves whichever model version currently holds the `champion` alias "
             "in the MLflow registry. Predicts a city's hourly PM2.5 "
