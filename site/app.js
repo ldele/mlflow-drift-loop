@@ -121,6 +121,85 @@ function annotated(lay, pal, text) {
   });
 }
 
+/* A grid of one small panel per series, each on its OWN y-axis.
+ *
+ * For quantities that share a unit, one chart with a line per series is better:
+ * you can compare heights directly. For quantities that don't, it is a trap.
+ * The model coefficients are per *original* unit, so in Krakow precipitation
+ * moves across ~27 units while shortwave radiation moves across ~0.05 -- 500x --
+ * and on one shared axis four of the six features are pinned flat against zero.
+ *
+ * Plotly.js has no subplot builder, so the axis grid is laid out by hand: panel
+ * i gets axis pair (i+1), positioned by domain. Panels share the x range but
+ * never the y. */
+function smallMultiples(pal, items, opts = {}) {
+  // Follow the same breakpoint the .charts grid uses: below it the card is a
+  // single narrow column, where three panels across are thinner than their own
+  // axis labels. Plotly's `responsive` rescales a plot but cannot re-flow a
+  // domain grid, so the column count is decided here, at plot time.
+  const ncols = opts.ncols || (window.innerWidth < 760 ? 2 : 3);
+  const nrows = Math.ceil(items.length / ncols);
+  const gapX = 0.06, gapY = 0.16;
+  const cellW = (1 - gapX * (ncols - 1)) / ncols;
+  const cellH = (1 - gapY * (nrows - 1)) / nrows;
+
+  const lay = {
+    paper_bgcolor: pal.surface, plot_bgcolor: pal.surface,
+    font: { family: FONT, size: 12, color: pal.ink2 },
+    margin: { l: 44, r: 14, t: 22, b: 30 },
+    height: opts.height || 150 * nrows + 60,
+    hovermode: "closest",
+    showlegend: false,
+    hoverlabel: { bgcolor: pal.surface, bordercolor: pal.border, font: { family: FONT, color: pal.ink } },
+    shapes: [], annotations: [],
+  };
+
+  const traces = items.map((item, i) => {
+    const col = i % ncols, row = Math.floor(i / ncols);
+    const n = i + 1;
+    const ax = n === 1 ? "xaxis" : `xaxis${n}`;
+    const ay = n === 1 ? "yaxis" : `yaxis${n}`;
+    const xref = n === 1 ? "x" : `x${n}`;
+    const yref = n === 1 ? "y" : `y${n}`;
+
+    const x0 = col * (cellW + gapX);
+    // Rows are laid out top-down, but Plotly's paper y runs bottom-up.
+    const y0 = 1 - (row * (cellH + gapY) + cellH);
+
+    lay[ax] = {
+      domain: [x0, x0 + cellW], anchor: yref,
+      showgrid: false, linecolor: pal.axis, zeroline: false, ticklen: 0,
+      tickfont: { color: pal.muted, size: 10 }, nticks: 3,
+    };
+    lay[ay] = {
+      domain: [y0, y0 + cellH], anchor: xref,
+      gridcolor: pal.grid, linecolor: pal.axis, zeroline: false, ticklen: 0,
+      tickfont: { color: pal.muted, size: 10 }, nticks: 4,
+    };
+    // Zero is the only reference worth drawing: crossing it is the event.
+    lay.shapes.push({
+      type: "line", xref: `${xref} domain`, x0: 0, x1: 1,
+      yref, y0: 0, y1: 0, line: { color: pal.axis, width: 1 }, layer: "below",
+    });
+    lay.annotations.push({
+      text: item.name, showarrow: false,
+      xref: `${xref} domain`, yref: `${yref} domain`, x: 0, y: 1,
+      xanchor: "left", yanchor: "bottom", yshift: 4,
+      font: { color: pal.ink, size: 11.5 },
+    });
+
+    return {
+      x: item.x, y: item.y, name: item.name, mode: "lines+markers", type: "scatter",
+      xaxis: xref, yaxis: yref,
+      line: { color: item.color, width: 2 },
+      marker: { size: 6, color: item.color, line: { color: pal.surface, width: 1.5 } },
+      hovertemplate: "%{y:.3f}<extra>" + item.name + "</extra>",
+    };
+  });
+
+  return { traces, layout: lay };
+}
+
 /* ---------- HTML pieces ---------- */
 
 function legendHTML(chips) {
@@ -138,9 +217,11 @@ function legendHTML(chips) {
  * deferred until every card is in the DOM so the CSS grid has settled into its
  * final column count; otherwise Plotly measures a detached/half-laid-out width
  * and hard-codes its 700px default, overflowing the card. */
-function chartCard(jobs, title, desc, chips, traces, layout, container = "charts") {
+function chartCard(jobs, title, desc, chips, traces, layout, container = "charts", wide = false) {
   const card = document.createElement("section");
-  card.className = "card";
+  // A small-multiples grid needs the whole row: at half width its panels are
+  // narrower than their own axis labels.
+  card.className = wide ? "card card-wide" : "card";
   card.innerHTML =
     `<div class="card-head"><h3>${title}</h3><div class="legend">${legendHTML(chips)}</div></div>` +
     `<p class="desc">${desc}</p><div class="plot"></div>`;
@@ -495,26 +576,27 @@ function render() {
     chips3, traces, lay);
 
   // 4. Model coefficients
-  lay = plotBase(pal, "coefficient", { hovermode: "closest" });
   let chips4 = [];
   // Two versions is the least that can show a coefficient moving, and plotting
   // one is worse than plotting none: a single point gives Plotly a zero-width
   // time axis, which it fills with millisecond ticks. Say "not yet" instead.
   const coefPts = p.coef?.train_end?.length ?? 0;
   if (coefPts > 1) {
-    lay.shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: 0, y1: 0, line: { color: pal.axis, width: 1 } });
     // Same features and the same colour indices as the drift chart above, so a
     // reader tracking one feature across the two charts is tracking one colour.
     // The cyclical hour terms are fitted but not drawn: they encode the daily
     // cycle, which does not invert, and this chart is about signs flipping.
-    traces = DRIFT_FEATURES.map((f, i) => ({
-      x: p.coef.train_end, y: p.coef[f], name: f, mode: "lines+markers", type: "scatter",
-      line: { color: pal.series[i], width: 2.4 },
-      marker: { size: 8, color: pal.series[i], line: { color: pal.surface, width: 2 } },
-      hovertemplate: "%{y:.3f}<extra>" + f + "</extra>",
-    }));
+    //
+    // One panel per feature rather than six lines on one axis -- see
+    // smallMultiples() for why a shared y-axis cannot work for these units.
+    const sm = smallMultiples(pal, DRIFT_FEATURES.map((f, i) => ({
+      name: f, x: p.coef.train_end, y: p.coef[f], color: pal.series[i],
+    })));
+    traces = sm.traces;
+    lay = sm.layout;
     chips4 = DRIFT_FEATURES.map((f, i) => ({ label: f, color: pal.series[i], kind: "dot" }));
   } else {
+    lay = plotBase(pal, "coefficient", { hovermode: "closest" });
     traces = [];
     annotated(lay, pal, coefPts === 1
       ? "Only one model version so far, so there is no movement to trace yet."
@@ -522,8 +604,8 @@ function render() {
   }
   chartCard(jobs,
     "Model coefficients",
-    "The Ridge model's learned slope per feature, across versions. A slope crossing zero means the real-world relationship has inverted, which is concept drift.",
-    chips4, traces, lay);
+    "The Ridge model's learned slope per feature, across versions, each on its own scale because they are in different units. A slope crossing zero means the real-world relationship has inverted, which is concept drift.",
+    chips4, traces, lay, "charts", coefPts > 1);
 
   renderBenchmark(p);
   // Profile-independent, but re-rendered here so a theme flip recolours it with

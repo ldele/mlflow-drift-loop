@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from driftloop.config import DRIFT_FEATURES
 
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
@@ -16,10 +19,21 @@ MUTED = "#898781"
 GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 
-# Categorical slots, in documented order.
-SERIES = ["#2a78d6", "#008300", "#e87ba4", "#eda100"]
-# Named handles for the three features, so a feature keeps its colour everywhere.
-FEATURE_COLOR = {"temperature": SERIES[0], "wind_speed": SERIES[1], "humidity": SERIES[2]}
+# Categorical slots, in documented order. Same hues and same order as the
+# published site's light palette (site/app.js), so a feature keeps its colour
+# whichever UI you are reading.
+SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
+
+# A feature's colour, fixed by its position in the drift-feature list rather
+# than hardcoded. This was a three-entry dict once, and it stayed that way when
+# the model widened to six drift features, which crashed every chart that looked
+# a newer feature up. Deriving it means the map cannot fall behind the config.
+if len(SERIES) < len(DRIFT_FEATURES):  # pragma: no cover - guards a config edit
+    raise RuntimeError(
+        f"palette has {len(SERIES)} slots for {len(DRIFT_FEATURES)} drift features; "
+        "add hues to SERIES (and to site/app.js) before adding features"
+    )
+FEATURE_COLOR = {feature: SERIES[i] for i, feature in enumerate(DRIFT_FEATURES)}
 
 # Reserved status colors -- thresholds and decisions only, never a series.
 GOOD = "#0ca30c"
@@ -129,25 +143,71 @@ def events(fig: go.Figure, x, y, name: str, color: str, symbol: str = "star") ->
     )
 
 
-def coef_lines(fig: go.Figure, versions: pd.DataFrame, features: list[str]) -> None:
-    """One line per feature: its coefficient across model versions (x = train_end).
+def coef_small_multiples(
+    versions: pd.DataFrame, features: list[str], ncols: int = 3
+) -> go.Figure:
+    """One small panel per feature: its coefficient across versions (x = train_end).
+
+    Small multiples rather than one chart with a line per feature, because the
+    coefficients are in *original* feature units and so are not comparable to
+    each other. In Kraków precipitation moves across ~27 units while shortwave
+    radiation moves across ~0.05 -- a factor of 500 -- so on one shared y-axis
+    every small-unit feature is pinned flat against zero and the chart says
+    nothing about four of the six.
+
+    Giving each feature its own axis keeps the slope readable in the unit that
+    makes it interpretable (PM2.5 per °C, per m/s, per hPa), and the thing this
+    chart exists to show -- a slope crossing zero, meaning the real-world
+    relationship inverted -- reads per panel instead of against a common scale.
 
     A 2px surface ring on the markers keeps overlapping points legible.
     """
+    nrows = -(-len(features) // ncols)  # ceil
+    fig = make_subplots(
+        rows=nrows,
+        cols=ncols,
+        shared_xaxes=True,
+        subplot_titles=list(features),
+        vertical_spacing=0.14,
+        horizontal_spacing=0.08,
+    )
+
     for i, feature in enumerate(features):
+        row, col = divmod(i, ncols)
+        row, col = row + 1, col + 1
+        color = FEATURE_COLOR.get(feature, SERIES[i % len(SERIES)])
         fig.add_trace(
             go.Scatter(
                 x=versions["train_end"],
                 y=versions[f"coef_{feature}"],
                 name=feature,
                 mode="lines+markers",
-                line=dict(color=SERIES[i], width=2),
-                marker=dict(size=9, color=SERIES[i], line=dict(color=SURFACE, width=2)),
+                line=dict(color=color, width=2),
+                marker=dict(size=7, color=color, line=dict(color=SURFACE, width=2)),
                 customdata=versions["version"],
                 hovertemplate="v%{customdata}: %{y:.3f}<extra>" + feature + "</extra>",
-            )
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
         )
-    fig.add_hline(y=0, line=dict(color=AXIS, width=1))
+        # Zero is the only line worth drawing here: crossing it is the event.
+        fig.add_hline(y=0, line=dict(color=AXIS, width=1), row=row, col=col)
+
+    fig.update_layout(
+        paper_bgcolor=SURFACE,
+        plot_bgcolor=SURFACE,
+        font=dict(family=FONT, size=12, color=INK_SECONDARY),
+        margin=dict(l=48, r=24, t=40, b=36),
+        height=190 * nrows + 60,
+        hovermode="closest",
+        showlegend=False,
+    )
+    fig.update_xaxes(showgrid=False, linecolor=AXIS, tickfont=dict(color=MUTED, size=10), zeroline=False)
+    fig.update_yaxes(gridcolor=GRID, linecolor=AXIS, tickfont=dict(color=MUTED, size=10), zeroline=False)
+    for annotation in fig.layout.annotations:  # the subplot titles
+        annotation.font = dict(family=FONT, size=12, color=INK)
+    return fig
 
 
 def hist_overlay(edges: list[float], reference: list[int], current: list[int], color: str) -> go.Figure:

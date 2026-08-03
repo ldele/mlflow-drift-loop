@@ -29,7 +29,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import theme  # noqa: E402
 from driftloop import tracking  # noqa: E402
-from driftloop.config import CITY_CLI_NAMES, FEATURES, PROFILES, TARGET  # noqa: E402
+from driftloop.config import (  # noqa: E402
+    CITY_CLI_NAMES,
+    DRIFT_FEATURES,
+    FEATURES,
+    PROFILES,
+    TARGET,
+)
 from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
 from driftloop.model import build_pipeline, train as train_model  # noqa: E402
 
@@ -252,10 +258,13 @@ with tab_loop:
 
     fig = theme.base_figure("Data drift — PSI per feature vs. the champion's training window", "PSI")
     theme.drift_region(fig, drift_date, runs["as_of"].max())
-    for i, feature in enumerate(FEATURES):
+    # DRIFT_FEATURES, not FEATURES: the two cyclical hour terms are fitted but
+    # carry no PSI, because every monitoring window contains all 24 hours and
+    # their distribution is fixed by construction.
+    for feature in DRIFT_FEATURES:
         col = f"metrics.psi_{feature}"
         if col in runs:
-            theme.line(fig, runs["as_of"], runs[col], feature, theme.SERIES[i])
+            theme.line(fig, runs["as_of"], runs[col], feature, theme.FEATURE_COLOR[feature])
     theme.threshold(fig, runs["as_of"], PSI_SIGNIFICANT, f"significant ({PSI_SIGNIFICANT})")
     st.plotly_chart(fig, width="stretch")
 
@@ -310,23 +319,27 @@ with tab_dist:
     )
     _, report = load_monitoring(DB, CFG.experiment_name, run_by_as_of[picked])
 
-    cols = st.columns(len(FEATURES))
-    for col, feature in zip(cols, FEATURES):
-        entry = report[feature]
-        label, color_ = psi_status(entry["psi"])
-        with col:
-            st.markdown(f"**{feature}**")
-            st.markdown(
-                f"<span style='color:{color_};font-weight:600'>PSI {entry['psi']:.2f} · {label}</span>"
-                f"<br><span style='color:{theme.MUTED};font-size:0.85em'>"
-                f"mean {entry['reference_mean']:.1f} → {entry['current_mean']:.1f}</span>",
-                unsafe_allow_html=True,
-            )
-            fig = theme.hist_overlay(
-                entry["edges"], entry["reference_counts"], entry["current_counts"],
-                theme.FEATURE_COLOR[feature],
-            )
-            st.plotly_chart(fig, width="stretch", key=f"hist_{feature}")
+    # Three panels a row rather than one row of six: at six across, each
+    # histogram is too narrow to read the shift the PSI number is summarising.
+    per_row = 3
+    for start in range(0, len(DRIFT_FEATURES), per_row):
+        chunk = DRIFT_FEATURES[start : start + per_row]
+        for col, feature in zip(st.columns(per_row), chunk):
+            entry = report[feature]
+            label, color_ = psi_status(entry["psi"])
+            with col:
+                st.markdown(f"**{feature}**")
+                st.markdown(
+                    f"<span style='color:{color_};font-weight:600'>PSI {entry['psi']:.2f} · {label}</span>"
+                    f"<br><span style='color:{theme.MUTED};font-size:0.85em'>"
+                    f"mean {entry['reference_mean']:.1f} → {entry['current_mean']:.1f}</span>",
+                    unsafe_allow_html=True,
+                )
+                fig = theme.hist_overlay(
+                    entry["edges"], entry["reference_counts"], entry["current_counts"],
+                    theme.FEATURE_COLOR[feature],
+                )
+                st.plotly_chart(fig, width="stretch", key=f"hist_{feature}")
 
 # --------------------------------------------------------------------------- #
 # Tab: the model itself                                                        #
@@ -354,9 +367,9 @@ with tab_model:
 """
         )
         st.caption(
-            "Ridge on three weather features, kept simple on purpose: a small model decays "
-            "visibly when the relationship shifts, where a larger one would absorb some of "
-            "the drift and hide it."
+            "Ridge on six weather features plus the hour of day, kept simple on purpose: "
+            "a small model decays visibly when the relationship shifts, where a larger one "
+            "would absorb some of the drift and hide it."
         )
     with param_col:
         st.markdown(
@@ -437,7 +450,7 @@ with tab_model:
             if penalty is not None:
                 caption += (
                     f", costing {penalty:.1f}% error. The curve is nearly flat, which says the "
-                    "model is limited by what three weather features can express, not by "
+                    "model is limited by what a week-old weather forecast can express, not by "
                     "regularisation."
                 )
             st.caption(caption)
@@ -449,18 +462,24 @@ with tab_model:
 
     st.markdown("#### Coefficient evolution — a direct picture of concept drift")
     st.markdown(
-        "The Ridge is three slopes and an intercept (in real units: PM2.5 per °C, "
-        "per m/s wind, per %RH). Concept drift *is* these slopes changing, so watch "
-        "them move each time the champion is retrained — the temperature slope in "
-        "particular crosses zero as the summer relationship gives way to autumn."
+        "The Ridge is one slope per weather feature and an intercept, in real "
+        "units: PM2.5 per °C, per m/s wind, per %RH, per mm, per hPa, per W/m². "
+        "Concept drift *is* these slopes changing, so watch them move each time "
+        "the champion is retrained — the temperature slope in particular crosses "
+        "zero as the summer relationship gives way to autumn."
+    )
+    st.caption(
+        "One panel per feature, because these are per-unit slopes in units that "
+        "are not comparable: on a shared axis the large-unit features flatten "
+        "the rest against zero. The two cyclical hour terms are fitted but not "
+        "drawn — they encode the daily cycle, which does not invert."
     )
     if versions.empty or versions["coef_temperature"].isna().all():
         st.info("No coefficient tags found — re-run `scripts/run_simulation.py --fresh`.")
     else:
-        fig = theme.base_figure(None, "coefficient (per unit)", height=320)
-        fig.update_layout(hovermode="closest")
-        theme.coef_lines(fig, versions, FEATURES)
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(
+            theme.coef_small_multiples(versions, DRIFT_FEATURES), width="stretch"
+        )
         show = versions[["version", "alias", "train_end", *[f"coef_{f}" for f in FEATURES], "coef_intercept"]]
         st.dataframe(
             show.rename(columns={"train_end": "trained through"}),

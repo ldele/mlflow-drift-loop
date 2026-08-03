@@ -139,6 +139,9 @@
 
       /* ---------- chart grid ---------- */
       .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 18px; margin: 18px 0 10px; }
+      /* The coefficient card holds a small-multiples grid — one panel per
+         feature — so it takes the whole row rather than sharing it. */
+      .card-wide { grid-column: 1 / -1; }
       /* The UA stylesheet's `[hidden] { display: none }` loses to any author rule
          that sets display, and .card below sets display:flex. Without this, a card
          the renderer hid stayed on screen: the benchmark card kept showing the
