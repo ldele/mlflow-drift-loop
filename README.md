@@ -34,7 +34,7 @@ was wrong. But "the world looks different" is not the same as "the model is
 failing". Kraków shows the gap: through the summer its weather drifts further
 from training than anywhere else here, while the model quietly gets better. So
 the cheap alarm watches, and only the expensive one, the one that asks whether we
-actually got this wrong, can authorise spending money on a retrain.
+got this wrong, can authorise spending money on a retrain.
 
 **Nothing is graded on work it has already seen.** The replacement trains on a
 window that stops before the exam, the incumbent was trained long before it, and
