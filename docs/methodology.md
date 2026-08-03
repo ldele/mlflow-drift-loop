@@ -9,9 +9,8 @@ A city's hourly PM2.5, seven days ahead.
 The features are the weather forecast for the target hour as it stood a week
 earlier, pulled from Open-Meteo's archive of previous model runs. At that lead
 the weather forecast is already wrong by about 4.5 °C on temperature, and the
-PM2.5 model inherits all of it before adding any error of its own. That is the
-honest version of the chain, and it is the reason the benchmarks look the way
-they do.
+PM2.5 model inherits all of it before adding any error of its own. Stating the
+chain in full explains why the benchmarks come out the way they do.
 
 The lead is one number, `FORECAST_LEAD_DAYS` in `config.py`. Set it to 0 and the
 features come from the ERA5 analysis instead, which turns the same code into a
@@ -41,8 +40,8 @@ forever.
 
 The features and the target share one timestamp in the column contract, so the
 horizon lives entirely in which weather the data source fetches. Nothing
-downstream of the fetch knows the difference, which is why the same loop, the
-same drift maths and the same registry served both framings without modification.
+downstream of the fetch knows the difference. The same loop, drift maths and
+registry served both framings without modification.
 
 It is kept small so that it decays visibly when the relationship shifts, where a
 larger model would absorb some of the drift and hide it. **The modelling is not
@@ -64,7 +63,28 @@ before you were allowed to decide you needed one.
 PSI above 0.25 counts as a significant feature-distribution shift (industry
 convention: <0.10 stable, 0.10–0.25 moderate, >0.25 significant). The retrain
 trigger is the champion's RMSE on the monitor window against its RMSE at
-training time, at 1.25× — "the model got 25% worse".
+training time, at 1.25×, meaning the model got 25% worse.
+
+Kraków is the clearest demonstration that these two must stay separate. Through
+the second half of its replay its features drift further from the training window
+than any other city on the page, while the champion runs comfortably *under* its
+training error. Distribution shift alone would have ordered twenty pointless
+retrains there.
+
+## How much history a challenger gets
+
+`challenger_train_days = 180`, and the number has a story. It was 45, which is a
+natural-looking choice and was wrong: PM2.5 is seasonal, so a challenger trained
+on six weeks only ever sees one season, wins its holdout exam honestly, and is
+then mismatched the moment the year turns. With replays that stopped at the
+winter peak this was invisible. Extending them through the recovery made
+retraining look actively harmful (−29.6% in Kraków, −4.3% in Delhi); widening the
+window to 180 days took Delhi to +43.8%. See
+[evaluation.md](evaluation.md#what-a-full-year-exposed).
+
+180 is argued rather than tuned, on the grounds that it spans more than one
+season. A proper sweep of retrain window against retraining value has not been
+run.
 
 ## No evaluation leak
 
@@ -106,7 +126,7 @@ Three properties, because they are the ones a reviewer asks about:
 
 - **The alias is the contract, not a version number.** Nothing in the service
   pins a version. Promote in the registry and `POST /reload` picks the new one
-  up without a redeploy — that is the seam between the weekly loop and serving.
+  up without a redeploy, which is the seam joining the weekly loop to serving.
 - **Serving never writes to the tracking store.** It sets the tracking URI and
   reads. It does not call `setup()`, which would create an experiment as a side
   effect; a read-only consumer should leave no trace.
@@ -124,8 +144,9 @@ The Docker image replays the loop from the committed parquet cache at build time
 instead of copying the SQLite backend in. That is forced rather than chosen:
 MLflow stores artifact locations as absolute URIs, so a backend built on a
 developer's machine resolves to paths the container does not have. Rebuilding
-inside the image is also what proves the replay is deterministic — it reproduces
-the same champion, with the same baseline RMSE, from the same committed data.
+inside the image is also what proves the replay is deterministic, since it
+reproduces the same champion, with the same baseline RMSE, from the same
+committed data.
 The install is editable for a related reason: `tracking.REPO_ROOT` is derived
 from the package file's location, so a non-editable install would put the
 backend inside site-packages.

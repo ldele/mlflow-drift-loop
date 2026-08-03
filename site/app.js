@@ -507,10 +507,10 @@ function render() {
     }
     chartCard(jobs,
       `What the model forecasts: ${t.name}`,
-      `Measured hourly ${t.name} in ${t.units} over the most recent monitoring window, against ` +
-      `what the serving champion forecast for those hours <em>a week before they happened</em>, ` +
-      `from the weather forecast alone and no past ${t.name}. The gap between the two lines is ` +
-      `the error every other chart summarises.`,
+      `What the air actually did, against what the model thought it would do. The call was made ` +
+      `<em>a week before it happened</em>, working only from the weather forecast, with no ` +
+      `knowledge of how dirty the air had been lately. The gap between the two lines is the ` +
+      `mistake every other chart on this page is measuring.`,
       [
         { label: `measured ${t.name}`, color: pal.series[0], kind: "line" },
         { label: "champion prediction", color: pal.series[3], kind: "line" },
@@ -529,7 +529,7 @@ function render() {
   traces = feat.map((f, i) => lineT(p.as_of, p.psi[f], f, pal.series[i]));
   chartCard(jobs,
     "Data drift",
-    "Each feature's recent distribution against the champion's training window (Population Stability Index). Above 0.25 counts as a meaningful shift.",
+    "How far the weather has moved from what this model was trained on. Each ingredient is compared against what it saw in training. Nobody has to be right or wrong for this to fire, because it watches the incoming data alone, so it can raise a hand before any mistakes show up. Above 0.25 counts as properly different. The statistic is PSI.",
     feat.map((f, i) => ({ label: f, color: pal.series[i], kind: "line" })),
     traces, lay);
 
@@ -545,7 +545,7 @@ function render() {
   }
   chartCard(jobs,
     "Performance drift & retrains",
-    "The champion's live error divided by its error at training time. Crossing 1.25, meaning 25% worse, triggers a retrain.",
+    "How much worse the model is today than on the day it was trained. 1.0 means as good as it ever was, 2.0 means twice the error. At 1.25, a quarter worse, it gets sent back to school.",
     chips2, traces, lay);
 
   // 3. Champion vs. challenger on the held-out week
@@ -572,7 +572,7 @@ function render() {
   }
   chartCard(jobs,
     "Champion vs. challenger",
-    "When a retrain fires, both models are scored on a held-out week neither has seen. The challenger is promoted only if it wins by a margin.",
+    "Being newer is not a qualification. The model in service and the one just trained sit the same exam, a week of air neither has ever seen, and the newcomer only takes the job if it wins clearly rather than by a nose.",
     chips3, traces, lay);
 
   // 4. Model coefficients
@@ -604,7 +604,7 @@ function render() {
   }
   chartCard(jobs,
     "Model coefficients",
-    "The Ridge model's learned slope per feature, across versions, each on its own scale because they are in different units. A slope crossing zero means the real-world relationship has inverted, which is concept drift.",
+    "What the model believes about each ingredient, and how that belief shifts every time it is retrained. A line crossing zero is the model changing its mind about which way something pushes: wind used to clear the air, now it dirties it. Each panel has its own scale, because the ingredients are measured in different units.",
     chips4, traces, lay, "charts", coefPts > 1);
 
   renderBenchmark(p);
@@ -778,12 +778,15 @@ function renderControl(sweep) {
   const last = (a) => a[a.length - 1];
   if (fs && ds) {
     document.getElementById("control-note").innerHTML =
-      `<strong>The result:</strong> turning the concept knob moves performance drift ` +
-      `${last(ds.perf_rel).toFixed(1)}× and data drift ${last(ds.psi_rel).toFixed(2)}×, meaning ` +
-      `PSI is unchanged across that entire sweep. Turning the covariate knob moves data drift ` +
-      `${last(fs.psi_rel).toFixed(1)}× and performance drift ${last(fs.perf_rel).toFixed(2)}×. ` +
-      `Each detector answers to its own cause and ignores the other, which is the property the ` +
-      `two-signal design depends on and the one no real city can demonstrate.`;
+      `<strong>The result:</strong> turn the dial that changes how weather becomes pollution, and ` +
+      `the "is it getting things wrong" alarm climbs ${last(ds.perf_rel).toFixed(1)}× while the ` +
+      `"does the weather look different" alarm does not move at all ` +
+      `(${last(ds.psi_rel).toFixed(2)}×). It is right not to: the weather has not changed. Turn ` +
+      `the other dial and it reverses, with the weather alarm climbing ` +
+      `${last(fs.psi_rel).toFixed(1)}× and the error alarm staying put ` +
+      `(${last(fs.perf_rel).toFixed(2)}×). Each answers only to the thing it is supposed to ` +
+      `watch, which is the whole reason for having two, and it is the one claim no real city can ` +
+      `settle, because in a real city nobody knows what the right answer was.`;
   }
 
   jobs.forEach((j) => Plotly.newPlot(j.div, j.traces, j.layout, CONFIG));
@@ -809,14 +812,15 @@ function renderMethod(m) {
 
   document.getElementById("method").hidden = false;
   document.getElementById("method-sub").textContent =
-    "Everything above is produced by one loop of four steps, run once a week against a " +
-    "small model. Nothing here is hand-tuned per city.";
+    "Everything above comes out of the same four steps, run once a week, with nobody watching. " +
+    "No city gets special treatment. They all run on identical settings, so where two cities " +
+    "behave differently, it is their air that differs and not their tuning.";
 
   const steps = [
-    ["Monitor", `Score the live champion on the last ${days(p.monitor_days)} of data.`],
-    ["Detect", "Two independent signals: PSI on the feature distributions, and the champion's error against its error at training time."],
-    ["Retrain", `If error crosses ${p.perf_drift_threshold}×, train a challenger on the last ${days(p.challenger_train_days)}.`],
-    ["Promote", `Both models scored on a held-out ${days(p.holdout_days)} neither has seen. The challenger must win by ${pct(p.promotion_margin)} or it is rejected.`],
+    ["Mark its homework", `Take the model in service and check the last ${days(p.monitor_days)} of forecasts against what the air actually did.`],
+    ["Look for trouble, two ways", "First, whether the weather has stopped resembling what the model learned from. Separately, whether the model is getting things wrong. The first can fire before any damage shows. Only the second is allowed to spend money."],
+    ["Train a rival", `If the error is ${p.perf_drift_threshold}× what it used to be, train a fresh model on the last ${days(p.challenger_train_days)} and let it apply for the job.`],
+    ["Make it earn the job", `Both sit the same exam, ${days(p.holdout_days)} of air neither has seen. The newcomer has to win by ${pct(p.promotion_margin)} rather than squeak past, or it is thrown away.`],
   ];
   document.getElementById("steps").innerHTML = steps
     .map(([title, desc], i) =>

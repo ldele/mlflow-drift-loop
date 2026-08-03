@@ -139,8 +139,8 @@
 
       /* ---------- chart grid ---------- */
       .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 18px; margin: 18px 0 10px; }
-      /* The coefficient card holds a small-multiples grid — one panel per
-         feature — so it takes the whole row rather than sharing it. */
+      /* The coefficient card holds a small-multiples grid, one panel per
+         feature, so it takes the whole row rather than sharing it. */
       .card-wide { grid-column: 1 / -1; }
       /* The UA stylesheet's `[hidden] { display: none }` loses to any author rule
          that sets display, and .card below sets display:flex. Without this, a card
@@ -288,12 +288,14 @@
             <span class="live"><span class="dot"></span> live</span>
           </div>
           <p class="lede">
-            A monitoring loop that catches a model going stale. The model forecasts a city's
-            <strong>hourly PM2.5</strong>, the fine-particulate pollution in its air,
-            <strong>seven days ahead</strong>, using the weather forecast for that hour as it stood
-            a week earlier. It inherits that forecast's error before adding any of its own. The loop
-            watches it across six cities, measures drift, trains a challenger when it decays, and
-            promotes it only if it wins on data neither has seen.
+            Models go stale. The world they were trained on moves on, and usually nobody notices
+            until something downstream breaks. This system notices on its own, every week, with
+            nobody watching it.
+            The job it does is forecasting <strong>how dirty a city's air will be</strong>
+            (<strong>PM2.5</strong>, the soot fine enough to reach your bloodstream)
+            <strong>a week ahead</strong>, using nothing but the weather forecast. When the model
+            starts slipping, the system trains a replacement, then refuses to ship it unless it
+            beats the one already in service. Six cities, running since 2025.
           </p>
           <p class="built" id="built"></p>
         </div>
@@ -308,9 +310,9 @@
       <section class="card map-card" id="map-card" hidden>
         <div class="card-head"><h3>Where the data comes from</h3></div>
         <p class="desc">
-          One marker per monitored city, coloured by its latest data-drift reading and sized by how
-          many monitoring runs it has. Click a marker, or a row, to switch the dashboard to that city.
-          Drag to rotate the globe.
+          One marker per city being watched. Colour shows how far that city's weather has wandered
+          from what its model was trained on; size shows how long it has been under watch. Click a
+          marker or a row to switch cities, and drag to spin the globe.
         </p>
         <div class="map-body">
           <div class="plot" id="globe"></div>
@@ -332,11 +334,13 @@
       <section id="control" hidden>
         <h2 class="method-h">Does the detection actually work?</h2>
         <p class="method-sub">
-          A real city cannot answer that. Its drift has no known cause and no control condition, so
-          a detector that fired at random would look much the same. This is the same loop run
-          against a synthetic world with two independent knobs: one that shifts the feature
-          distributions, and one that changes the relationship between features and pollution.
-          Each detector should answer to its own knob and ignore the other.
+          When an alarm goes off in a real city, there is no way to know whether it was right.
+          Nobody knows what the true answer was supposed to be, so an alarm firing at random would
+          look much the same as one that worked.
+          So the same system is pointed at a made-up world with two dials. One changes
+          <em>the weather</em>. The other changes <em>how the weather turns into pollution</em>.
+          Here the right answer is known in advance, because we set it. Each alarm should react to
+          its own dial and stay silent for the other. That is what the charts below test.
         </p>
         <div class="charts" id="control-charts"></div>
         <p class="why" id="control-note"></p>
@@ -356,10 +360,13 @@
           <p class="desc">One scheduled run, every week. Steps 3 and 4 only happen when step 2 says they should.</p>
           <ol class="steps" id="steps"></ol>
           <p class="why">
-            <strong>Why two signals:</strong> data drift needs no labels and no model, which makes it
-            the early warning. Performance drift is what triggers a retrain. Deciding
-            “has it drifted?” by comparing the champion to a challenger would be circular, since
-            you would need a challenger before you were allowed to decide you needed one.
+            <strong>Why two alarms and not one:</strong> the first looks only at the weather coming
+            in, so it can fire immediately, without waiting to find out whether the model was
+            wrong. But “the world looks different” is not the same as “the model is failing”.
+            Kraków shows the gap. Through the summer its weather drifts further from training than
+            anywhere else on this page, while the model quietly gets <em>better</em>. So the cheap
+            alarm watches, and only the expensive one, the one asking whether we actually got this
+            wrong, can authorise spending money on a retrain.
           </p>
         </section>
 
@@ -367,13 +374,15 @@
           <section class="card">
             <div class="card-head"><h3>The model</h3></div>
             <p class="desc">
-              A Ridge regression answering one question: given the weather we expect in a week,
-              how dirty will the air be? Its inputs are Open-Meteo's own archived forecasts, so the
-              weather error a real operator would have faced is carried through rather than assumed
-              away. It reads no past pollution. Kept small on purpose, because a simple model
-              decays visibly when the relationship shifts where a larger one would absorb some of
-              the drift and hide it. The modelling is not the interesting part here. The loop
-              around it is, and it would be unchanged if you swapped in something bigger.
+              It answers one question: given the weather we expect in a week, how dirty will the
+              air be? It is fed the weather forecasts that were actually published at the time,
+              rather than the weather that turned out to happen, so it starts a step behind in the
+              same way anyone forecasting a week out really would. It is never told how dirty the
+              air has been recently, which would be an easy shortcut and would hide the effect
+              being demonstrated. Keeping it simple is a choice: a simple model visibly falls apart
+              when the world shifts, where a clever one papers over the cracks and you learn
+              nothing. <strong>What is worth looking at is the machinery around the model.</strong>
+              Swap in something bigger and none of that machinery changes.
             </p>
             <dl class="spec" id="model-spec"></dl>
           </section>
@@ -389,8 +398,9 @@
       <footer>
         <div class="data-links" id="data-links"></div>
         <p class="foot-note">
-          Hover, zoom and toggle series on any chart. Rebuilt weekly from the MLflow
-          backends. Source and the full Streamlit app on
+          Every chart is live. Hover for values, drag to zoom, click a legend entry to hide a line.
+          The page rebuilds itself once a week from the system's own records. Code, and a deeper
+          version of this dashboard, on
           <a href="https://github.com/ldele/mlflow-drift-loop">GitHub</a>.
         </p>
       </footer>

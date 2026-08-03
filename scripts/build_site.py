@@ -64,39 +64,42 @@ DISPLAY_ORDER = [
 # and why a city was chosen. If a sentence would be falsified by a re-run, it
 # belongs in a placeholder. See _story_facts for the available names.
 STORY = {
-    "openmeteo": "The basin this started with. A champion trained on clean summer air decays from "
-    "{rmse_first} to {rmse_peak} µg/m³ of error once the heating season fills the valley with "
-    "winter smog, and the loop retrains {retrains} times across {runs} runs. Retraining is worth "
-    "{retrain_gain}, and the served champion is {rank_phrase}.",
-    "openmeteo_delhi": "The violent case. Monsoon rain scrubs Delhi's air to a September minimum, "
-    "then crop-residue burning and winter inversions triple PM2.5. Feature drift peaks at PSI "
-    "{psi_peak} and the champion's error runs from {rmse_first} to {rmse_peak} µg/m³. Retraining "
-    "is worth {retrain_gain}, the largest payoff on this page, and the never-retrained champion "
-    "ends up worse than a constant.",
-    "openmeteo_la": "The control, chosen by the measurements after the plan said otherwise. Los "
-    "Angeles was meant to be the summer-smog city; its PM2.5 actually peaks in November and swings "
-    "only 1.9× against Delhi's 3×. The champion barely moves across {runs} runs, retraining is "
-    "worth {retrain_gain}, and it ranks {rank_phrase}. A drift loop needs drift.",
-    "openmeteo_santiago": "Kraków's twin, half a year out of phase. Santiago sits in a coastal "
-    "basin that traps winter inversions the same way, so a champion trained on clean December air "
-    "decays from {rmse_first} to {rmse_peak} µg/m³ as June arrives. It draws {retrains} retrains "
-    "across {runs} runs, and they are worth {retrain_gain} from thresholds identical to "
-    "everywhere else.",
-    "openmeteo_joburg": "Highveld winter traps coal and wood smoke under a nightly inversion, and "
-    "the champion's error climbs from {rmse_first} to {rmse_peak} µg/m³, the worst here. The loop "
-    "fires {retrains} retrains across {runs} runs for a net {retrain_gain}, and only {promotions} "
-    "challengers ever clear the promotion margin. The effort is spent and the gate declines most "
-    "of what it produces.",
+    "openmeteo": "The city this started with. Kraków sits in a valley, and when the coal heating "
+    "goes on for winter the smog has nowhere to escape to. A model trained on clean summer air "
+    "goes from {rmse_first} to {rmse_peak} µg/m³ of error as that happens, and is replaced "
+    "{retrains} times over {runs} weeks. All that replacing is worth {retrain_gain}, near enough "
+    "a wash, and what it ends up with is {rank_phrase}.",
+    "openmeteo_delhi": "The violent one. The monsoon scrubs Delhi's air clean by September, then "
+    "the crop stubble is burned and the winter air stops moving, and the pollution triples. The "
+    "model's error runs from {rmse_first} to {rmse_peak} µg/m³ while the weather stops resembling "
+    "anything it was trained on. Keeping it retrained is worth {retrain_gain}, the biggest payoff "
+    "here. Left alone, it ends up worse than guessing the same number every hour.",
+    "openmeteo_la": "The control, and the measurements chose it rather than the plan. Los Angeles "
+    "was supposed to be the summer-smog city. Its pollution actually peaks in November and moves "
+    "only 1.9×, against Delhi's 3×. The model barely budges across {runs} weeks, retraining is "
+    "worth {retrain_gain}, and it comes {rank_phrase}. Something built to catch change needs "
+    "something to change.",
+    "openmeteo_santiago": "Kraków's twin, half a year out of step. Santiago sits in a coastal bowl "
+    "that traps winter air the same way, except that its winter is June. A model trained on clean "
+    "December air decays from {rmse_first} to {rmse_peak} µg/m³ as that winter arrives. It is "
+    "replaced {retrains} times over {runs} weeks, worth {retrain_gain}, on settings identical to "
+    "every other city here.",
+    "openmeteo_joburg": "Where the quality gate does its most visible work. Highveld winter nights "
+    "trap coal and wood smoke, and the model's error climbs from {rmse_first} to {rmse_peak} "
+    "µg/m³, the worst on this page. It trains {retrains} replacements over {runs} weeks and ships "
+    "only {promotions}. The rest were not clearly better and were thrown away, for a net effect on "
+    "the error of {retrain_gain}. The effort is spent, and nothing ships that has not earned it.",
     "openmeteo_melbourne": "The quiet city that goes stale anyway. Sydney is the obvious "
-    "Australian choice and its PM2.5 barely moves; Melbourne swings 3.1× on winter wood smoke "
-    "while staying near the WHO guideline all year. Its champion still decays to {perf_peak}× its "
-    "training error across {runs} runs, and retraining is worth {retrain_gain}.",
-    "synthetic": "A synthetic world with a controllable drift knob, so detection can be shown "
-    "to fire exactly when the data is made to shift, and only then.",
-    "scheduled": "The same loop running unattended, and not a city at all: this is the Kraków "
-    "source again, with one monitoring cycle appended automatically by a weekly GitHub Action. "
-    "What it shows is that the machinery still runs with nobody starting it, accruing its own "
-    "history over calendar time.",
+    "Australian choice and its air barely moves. Melbourne swings 3.1× on winter wood smoke while "
+    "staying near the WHO guideline all year round, and its model still decays to {perf_peak}× the "
+    "error it started with across {runs} weeks. Retraining is worth {retrain_gain}. Clean air "
+    "does not mean a stable model.",
+    "synthetic": "A made-up world with a dial controlling how far the data shifts, so the "
+    "detection can be shown to fire when something really has changed, and only then.",
+    "scheduled": "The same system running unattended, and not a city at all. This is the Kraków "
+    "data again, with one check appended automatically by a robot every Monday. What it shows is "
+    "that the machinery keeps going with nobody starting it, building its own history in real "
+    "calendar time.",
 }
 
 # Human-readable position of the served champion in the benchmark table, so a

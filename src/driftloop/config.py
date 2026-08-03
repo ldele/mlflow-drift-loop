@@ -74,8 +74,12 @@ class LoopConfig:
 
     # Rolling window used to monitor the champion and to measure data drift.
     monitor_days: int = 14
-    # How much recent history a challenger is trained on.
-    challenger_train_days: int = 45
+    # How much recent history a challenger is trained on. 180, not 45: PM2.5 is
+    # a seasonal process, and a challenger trained on six weeks only ever sees
+    # one season. It then serves into the next one and is worse than the model
+    # it replaced -- which is exactly what a full annual replay exposed, and
+    # what a replay stopping at the winter peak had been hiding.
+    challenger_train_days: int = 180
     # Most-recent slice, held out from the challenger so both models are judged
     # on data neither of them trained on.
     holdout_days: int = 7
@@ -124,7 +128,10 @@ class OpenMeteoConfig:
     latitude: float = 50.0647
     longitude: float = 19.9450
     origin: pd.Timestamp = pd.Timestamp("2025-05-01")
-    horizon: pd.Timestamp = pd.Timestamp("2026-02-01")
+    # Runs to within a fortnight of the present, like every other city. It used
+    # to stop at 2026-02-01, just past the winter peak, which left the page's
+    # European city half a year out of date next to the rest.
+    horizon: pd.Timestamp = pd.Timestamp("2026-07-15")
     timezone: str = "GMT"
     forecast_lead_days: int = FORECAST_LEAD_DAYS
 
@@ -146,7 +153,7 @@ DELHI = OpenMeteoConfig(
     latitude=28.6139,
     longitude=77.2090,
     origin=pd.Timestamp("2025-05-01"),
-    horizon=pd.Timestamp("2026-02-01"),
+    horizon=pd.Timestamp("2026-07-15"),
 )
 
 # The counterexample, and it is one on the measurements rather than by design.
@@ -263,11 +270,14 @@ PROFILES: dict[str, Profile] = {
         db_filename="mlflow_openmeteo.db",
         meta_filename="run_meta_openmeteo.json",
         location=KRAKOW,
+        # Train on clean summer air, walk into the heating season, then keep
+        # going out the other side: a full annual cycle, so the loop is watched
+        # through the world getting worse *and* recovering.
         replay=ReplayWindows(
             champion_train_start=pd.Timestamp("2025-06-01"),
             champion_train_end=pd.Timestamp("2025-08-01"),
             first_run=pd.Timestamp("2025-08-15"),
-            last_run=pd.Timestamp("2026-01-20"),
+            last_run=pd.Timestamp("2026-07-10"),
         ),
     ),
     "openmeteo_delhi": Profile(
@@ -280,12 +290,13 @@ PROFILES: dict[str, Profile] = {
         db_filename="mlflow_openmeteo_delhi.db",
         meta_filename="run_meta_openmeteo_delhi.json",
         location=DELHI,
-        # Train on the monsoon-scrubbed minimum, walk into the burning season.
+        # Train on the monsoon-scrubbed minimum, walk into the burning season,
+        # then on through the following monsoon as the air clears again.
         replay=ReplayWindows(
             champion_train_start=pd.Timestamp("2025-07-15"),
             champion_train_end=pd.Timestamp("2025-09-30"),
             first_run=pd.Timestamp("2025-10-10"),
-            last_run=pd.Timestamp("2026-01-25"),
+            last_run=pd.Timestamp("2026-07-10"),
         ),
     ),
     "openmeteo_la": Profile(
