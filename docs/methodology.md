@@ -71,6 +71,18 @@ than any other city on the page, while the champion runs comfortably *under* its
 training error. Distribution shift alone would have ordered twenty pointless
 retrains there.
 
+That last sentence needs a caveat it did not originally carry, and the caveat is
+the more interesting half. "Under its training error" is true only against a bar
+set in deep winter: the champion serving that stretch was promoted at the
+seasonal peak, so its baseline is 45.8 µg/m³ and almost nothing can cross
+1.25× it. Measured against a yardstick that does not move when a model is
+promoted, that same champion is at its *worst* there, with skill of −1.67 against a
+30-day daily profile, having been +0.43 in January. So the loop declining to
+retrain in Kraków's summer is the right call reached by a broken route: the
+retrains would indeed have been pointless, and the signal that said so had by
+then stopped measuring staleness at all. See
+[evaluation.md](evaluation.md#the-retrain-trigger-stops-measuring-staleness).
+
 ## How much history a challenger gets
 
 `challenger_train_days = 180`, and the number has a story. It was 45, which is a
@@ -106,6 +118,32 @@ Both are asserted in `tests/test_loop.py`.
 The baselines are held to the same rule: a forecaster issuing seven days out may
 use readings up to that moment and no later, so persistence repeats a week-old
 observation instead of yesterday's.
+
+## Scoring old models on windows they never served
+
+The loop logs what it decided at the time: which champion was serving, its error,
+and the ratio that drove the retrain. That runs the loop and cannot judge it,
+because three questions need a model scored on windows it never served. Does an
+individual model decay (the logged error is one line across eight different
+champions, so no single model's decay is visible in it), is the model worth
+having (an error needs an alternative to be compared against), and did the
+promotion gate work (that needs the *replaced* champion scored on the windows its
+replacement went on to serve).
+
+[`retrospect.py`](../src/driftloop/retrospect.py) answers all three without
+refitting anything. `log_and_register` already writes every version's
+coefficients as registry tags in original feature units, so a version is
+reconstructable as `intercept + Σ coef_i · x_i`, exact to the six decimals the
+tags carry, which `tests/test_retrospect.py` asserts against the loop's own
+independently logged RMSE. Scoring nine versions across forty-eight windows is
+then a few dot products.
+
+Two windowing rules keep it honest. The skill baseline's reference period ends a
+full forecast lead before the window it scores, so every hour it averages was
+observable when that forecast was issued. And the delivered-margin comparison
+starts at the run *after* a promotion: the monitor window at the promotion itself
+runs from 14 days before `as_of` while the challenger trained up to 7 days
+before it, so half that window is inside the challenger's own training data.
 
 ## What MLflow tracks
 

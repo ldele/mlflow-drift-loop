@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Air quality drift watch — all six cities</title>
+    <meta
+      name="description"
+      content="Every city at once: how each model's skill holds up week by week, what retraining was worth in each, and whether one model over all six would have done the job."
+    />
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div>
+          <div class="title-row">
+            <h1>All six cities at once</h1>
+          </div>
+          <p class="lede">
+            The main page shows one city at a time, which is the right way to follow a single model
+            through a year and the wrong way to see what the six have in common. This is the other
+            view. Every panel below carries all six, so the differences between them are the subject
+            rather than a thing you hold in memory across six clicks.
+          </p>
+          <p class="built" id="built"></p>
+        </div>
+        <button class="theme-btn" id="theme" title="Toggle light / dark" aria-label="Toggle theme">◐</button>
+      </header>
+
+      <p class="story">
+        <a href="index.html">← Back to one city at a time</a>
+      </p>
+
+      <div class="tiles" id="tiles"></div>
+
+      <section id="grid-section">
+        <h2 class="method-h">How each city's model holds up</h2>
+        <p class="method-sub">
+          One panel per city, same scale on every one, so a shallow curve and a collapsing one are
+          told apart by shape rather than by reading the axis. Above the line the model beats a
+          rule of thumb, which is what this hour usually looked like over the previous 30 days.
+          Below it, it loses to one.
+        </p>
+        <div class="charts" id="skill-grid"></div>
+      </section>
+
+      <section id="value-section">
+        <h2 class="method-h">What retraining was worth</h2>
+        <p class="method-sub">
+          Two readings per city, because the first misleads on its own. Across the replay compares
+          the median error of what was served against the first model held frozen, which is an
+          unpaired comparison: where a city promotes nothing until late, most windows compare the
+          first model against itself and the answer collapses toward zero. Week by week holds the
+          window fixed and compares the two models inside it.
+        </p>
+        <div class="charts" id="value-charts"></div>
+        <p class="why" id="value-note"></p>
+      </section>
+
+      <section id="pooled-section">
+        <h2 class="method-h">Six models, or one?</h2>
+        <p class="method-sub">
+          Each city here gets its own model, retrained on its own schedule. The cheaper arrangement
+          is one model over all six, so every city's benchmark carries it: one Ridge, trained once
+          on the six training windows, never retrained.
+        </p>
+        <div class="charts" id="pooled-charts"></div>
+        <p class="why" id="pooled-note"></p>
+      </section>
+
+      <div id="error"></div>
+
+      <footer>
+        <div class="data-links" id="data-links"></div>
+        <p class="foot-note">
+          Every chart is live. Hover for values, drag to zoom, click a legend entry to hide a line.
+          Code, and the per-city view, on
+          <a href="https://github.com/ldele/mlflow-drift-loop">GitHub</a>.
+        </p>
+      </footer>
+    </div>
+    <script src="compare.js" defer></script>
+  </body>
+</html>

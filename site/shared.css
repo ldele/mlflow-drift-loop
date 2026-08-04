@@ -1,0 +1,276 @@
+/* Shared by index.html (one city at a time) and compare.html (all six at
+   once). Extracted from index.html when the second page arrived: two copies
+   of a palette drift apart, and the whole point of the theme variables is
+   that a colour is defined once. */
+
+:root {
+  color-scheme: light;
+  --page: #f4f3f0;
+  --surface: #ffffff;
+  --surface-2: #fbfaf8;
+  --ink: #14130f;
+  --ink2: #55534d;
+  --muted: #8a867d;
+  --grid: #ebe9e3;
+  --axis: #d7d5cc;
+  --border: rgba(15, 14, 10, 0.09);
+  --accent: #2a6fdb;
+  --good: #0a9a2e;
+  --warn: #c98500;
+  --crit: #d03b3b;
+  /* No drop shadow. Nothing on this page floats above anything else, so a
+     shadow would be decoration pretending to be depth. Cards are separated
+     by a hairline and a change of surface, the way a printed table is. */
+  --shadow: none;
+  --radius: 6px;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0c0c0d;
+  --surface: #17171a;
+  --surface-2: #1d1d20;
+  --ink: #f4f4f2;
+  --ink2: #b8b7b0;
+  --muted: #8b8983;
+  --grid: #29292c;
+  --axis: #3a3a3e;
+  --border: rgba(255, 255, 255, 0.09);
+  --accent: #5a9bff;
+  --good: #26c24a;
+  --warn: #f0b03a;
+  --crit: #e05656;
+  --shadow: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0c0c0d;
+    --surface: #17171a;
+    --surface-2: #1d1d20;
+    --ink: #f4f4f2;
+    --ink2: #b8b7b0;
+    --muted: #8b8983;
+    --grid: #29292c;
+    --axis: #3a3a3e;
+    --border: rgba(255, 255, 255, 0.09);
+    --accent: #5a9bff;
+    --good: #26c24a;
+    --warn: #f0b03a;
+    --crit: #e05656;
+    --shadow: none;
+  }
+}
+/* Headings in a serif. system-ui everywhere is what you get when nobody
+   chose a typeface; a serif for headings against a sans for data is the
+   old newspaper split, and it costs nothing to load. */
+:root {
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+}
+h1, h2, h3, .tile-v, .verdict b { font-family: var(--serif); font-weight: 600; }
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+
+/* ---------- header ---------- */
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 36px 0 0; }
+.title-row { display: flex; align-items: center; gap: 12px; }
+h1 { margin: 0; font-size: 28px; }
+/* A plain word, not a pill with a glowing dot. The page is rebuilt weekly,
+   which is worth stating and isn't worth a fake telemetry indicator. */
+.live { font-size: 12.5px; color: var(--good); font-weight: 500; }
+.live .dot { display: none; }
+.lede { margin: 10px 0 0; color: var(--ink2); font-size: 15.5px; max-width: 64ch; }
+.built { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
+.theme-btn {
+  flex: none; width: 38px; height: 38px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--ink2); cursor: pointer; font-size: 17px; line-height: 1;
+  display: grid; place-items: center; box-shadow: var(--shadow);
+}
+.theme-btn:hover { color: var(--ink); }
+
+/* ---------- toolbar ---------- */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 24px 0 0; }
+/* wraps rather than overflowing once there are more cities than fit a row */
+.segmented {
+  display: inline-flex; flex-wrap: wrap; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px; gap: 2px;
+}
+.segmented button {
+  appearance: none; border: 0; background: transparent; color: var(--ink2);
+  font: inherit; font-size: 13.5px; font-weight: 500; padding: 7px 14px; border-radius: 4px;
+  cursor: pointer; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease;
+}
+.segmented button:hover { color: var(--ink); }
+.segmented button[aria-selected="true"] {
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-weight: 600;
+}
+.story { margin: 16px 0 0; color: var(--ink2); font-size: 15px; max-width: 78ch; }
+/* Says out loud when a source has too little history to read much into,
+   rather than letting a two-point chart pass for a trend. */
+.story-caveat { color: var(--muted); }
+
+/* ---------- KPI tiles ---------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 20px 0 4px; }
+.tile {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 15px 17px; box-shadow: var(--shadow);
+}
+.tile-v { font-size: 30px; line-height: 1.05; }
+.tile-u { font-family: system-ui, sans-serif; font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+.tile-k { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
+.tile-k .accent { color: var(--ink2); font-weight: 600; }
+
+/* ---------- chart grid ---------- */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 18px; margin: 18px 0 10px; }
+/* The coefficient card holds a small-multiples grid, one panel per
+   feature, so it takes the whole row rather than sharing it. */
+.card-wide { grid-column: 1 / -1; }
+/* The UA stylesheet's `[hidden] { display: none }` loses to any author rule
+   that sets display, and .card below sets display:flex. Without this, a card
+   the renderer hid stayed on screen: the benchmark card kept showing the
+   previously selected city's numbers on a source that has no benchmark. */
+[hidden] { display: none !important; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 18px 12px; box-shadow: var(--shadow); min-width: 0; display: flex; flex-direction: column;
+}
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.card h3 { margin: 0; font-size: 17px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+.lg { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); white-space: nowrap; }
+.lg .swatch { width: 15px; height: 3px; border-radius: 2px; }
+.lg .swatch.dot { width: 9px; height: 9px; border-radius: 50%; }
+.lg .swatch.dash { width: 15px; height: 0; border-top: 2px dotted currentColor; opacity: 0.75; background: none; }
+.lg .swatch.star { width: 0; height: 0; color: inherit; }
+.desc { margin: 8px 0 2px; font-size: 13px; color: var(--muted); }
+.plot { margin-top: 6px; }
+
+/* ---------- map card ---------- */
+/* Globe left, city list right. The list is not decoration: it is the
+   keyboard-reachable equivalent of clicking a marker, and it still works
+   if Plotly's topojson assets fail to load. */
+.map-card { margin: 20px 0 0; }
+.map-body {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 0.62fr);
+  gap: 16px; align-items: start; margin-top: 8px;
+}
+#globe { min-width: 0; }
+.city-cap { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+.city-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  appearance: none; font: inherit; cursor: pointer; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px;
+  margin-bottom: 8px; transition: background 0.15s ease, border-color 0.15s ease;
+}
+.city-row:hover { border-color: var(--accent); }
+.city-row[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: var(--accent);
+}
+.city-row .cmain { flex: 1; min-width: 0; }
+.city-row .cname { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+.city-row .csub { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.city-row .pill {
+  flex: none; font-size: 11.5px; font-weight: 600; padding: 3px 9px;
+  border-radius: 3px; border: 1px solid; white-space: nowrap;
+}
+@media (max-width: 760px) { .map-body { grid-template-columns: 1fr; } }
+
+/* ---------- benchmark card ---------- */
+.bench-card { margin: 18px 0 0; }
+.bench-wrap { overflow-x: auto; margin-top: 10px; }
+table.bench { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 460px; }
+table.bench th {
+  text-align: left; font-weight: 600; color: var(--muted); font-size: 11.5px;
+  padding: 0 12px 7px 0;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+table.bench th.num, table.bench td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.bench td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--border); }
+table.bench tr:last-child td { border-bottom: 0; }
+table.bench tr.is-model td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+table.bench tr.is-model td:first-child { font-weight: 600; color: var(--ink); }
+.bench-note { color: var(--muted); font-size: 12.5px; }
+/* Predictors are grouped by what they are allowed to see, because a model
+   given past PM2.5 and one given only weather are not answering the same
+   question. Ranking them in one list would read as a verdict it isn't. */
+table.bench td.bench-group {
+  padding: 16px 0 6px; font-size: 11.5px; font-weight: 600;
+  color: var(--ink2); border-bottom: 1px solid var(--border);
+}
+table.bench tr:first-child td.bench-group { padding-top: 2px; }
+table.bench td.bench-group span { font-weight: 400; color: var(--muted); }
+.verdict {
+  display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 14px 0 0;
+  padding-top: 14px; border-top: 1px solid var(--border);
+}
+.verdict div { font-size: 13px; color: var(--ink2); }
+.verdict b { display: block; font-size: 20px; margin-bottom: 1px; }
+
+/* ---------- method section ---------- */
+h2.method-h { margin: 36px 0 0; font-size: 23px; }
+.method-sub { margin: 8px 0 0; color: var(--ink2); font-size: 14.5px; max-width: 84ch; }
+/* Marks where the page stops being about the selected city. A rule rather
+   than a heading alone, because the boundary is the information. */
+.scope-rule { border: 0; border-top: 1px solid var(--border); margin: 40px 0 0; }
+h2.scope-h { margin-top: 26px; }
+.method-card { margin: 16px 0 0; }
+.steps {
+  list-style: none; margin: 12px 0 0; padding: 0; display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px;
+}
+.step {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.step-n {
+  font-size: 11px; font-weight: 700; color: var(--accent);
+
+}
+.step-t { font-size: 14.5px; font-weight: 600; margin-top: 3px; }
+.step-d { font-size: 12.5px; color: var(--ink2); margin-top: 4px; line-height: 1.45; }
+.why { margin: 14px 0 2px; font-size: 12.5px; color: var(--muted); max-width: 96ch; }
+.method-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  gap: 18px; margin: 18px 0 0;
+}
+.spec {
+  margin: 12px 0 2px; display: grid; grid-template-columns: max-content 1fr;
+  gap: 8px 18px; font-size: 13px; align-items: baseline;
+}
+.spec dt { color: var(--muted); white-space: nowrap; }
+.spec dd { margin: 0; color: var(--ink); min-width: 0; }
+.spec code {
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace;
+  font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 5px;
+}
+.gloss { color: var(--muted); font-size: 12.5px; }
+@media (max-width: 620px) { .method-grid { grid-template-columns: 1fr; } }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+footer { margin: 22px 0 44px; padding-top: 18px; border-top: 1px solid var(--border); }
+.data-links { font-size: 13.5px; color: var(--ink2); }
+.data-links strong { color: var(--ink); font-weight: 600; }
+.foot-note { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+#error { color: var(--crit); padding: 16px 0; font-size: 14px; }
+
+@media (max-width: 620px) {
+  header { flex-direction: row; padding-top: 26px; }
+  h1 { font-size: 23px; }
+  .charts { grid-template-columns: 1fr; }
+  .segmented { width: 100%; }
+  .segmented button { flex: 1; padding: 8px 6px; }
+}

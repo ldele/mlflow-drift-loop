@@ -38,6 +38,7 @@ from driftloop.config import (  # noqa: E402
 )
 from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
 from driftloop.model import build_pipeline, train as train_model  # noqa: E402
+from driftloop import retrospect  # noqa: E402
 
 st.set_page_config(page_title="Drift loop", page_icon="~", layout="wide")
 
@@ -141,6 +142,48 @@ def load_monitoring(db_filename: str, experiment: str, run_id: str) -> tuple[pd.
     return preds, report
 
 
+@st.cache_data(ttl=30)
+def load_retrospective(db_filename: str, experiment: str, profile_key: str):
+    """Every registered version scored on every monitoring window.
+
+    Needs to re-read old windows, so it exists only for the profiles whose data
+    is a fixed cached span (see ``replayable_source``). Returns None elsewhere
+    and the panels that depend on it say so rather than half-rendering.
+    """
+    from driftloop.data import replayable_source
+
+    profile = PROFILES[profile_key]
+    source = replayable_source(profile)
+    if source is None:
+        return None
+    cfg = profile.loop
+    tracking.setup(experiment, db_filename)
+    runs = load_runs(db_filename, experiment)
+    if runs.empty or "tags.champion_version" not in runs:
+        return None
+    models = retrospect.registered_models(MlflowClient(), cfg.registered_model_name)
+    if not models:
+        return None
+    frame = runs.copy()
+    frame["champion_version"] = runs["tags.champion_version"].astype(int)
+    return retrospect.build(
+        source, frame, models, cfg.monitor_days,
+        profile.location.forecast_lead_days, cfg.promotion_margin,
+    )
+
+
+def champion_age_days(runs: pd.DataFrame) -> tuple[int | None, str | None]:
+    """How long the version currently serving has been the one serving."""
+    if "tags.champion_version" not in runs or runs.empty:
+        return None, None
+    versions = runs["tags.champion_version"].tolist()
+    current = versions[-1]
+    since = len(versions) - 1
+    while since > 0 and versions[since - 1] == current:
+        since -= 1
+    return int((runs["as_of"].iloc[-1] - runs["as_of"].iloc[since]).days), current
+
+
 def psi_status(value: float) -> tuple[str, str]:
     if value > PSI_SIGNIFICANT:
         return "significant", theme.CRITICAL
@@ -215,22 +258,50 @@ retrained = runs[runs["tags.retrain_triggered"] == "True"]
 latest = runs.iloc[-1]
 run_by_as_of = dict(zip(runs["as_of"], runs["run_id"]))
 
+retro = load_retrospective(DB, CFG.experiment_name, profile_key)
+age_days, serving_version = champion_age_days(runs)
+
+# Three of these used to be counts of what the machine did, which says nothing
+# about whether any of it worked, and two of them had to be subtracted from each
+# other to reach the number that matters. Lead with health and freshness instead.
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Scheduled runs", len(runs))
-c2.metric("Retrains triggered", len(retrained))
-c3.metric("Promotions", len(promoted))
+if retro and retro.champion_skill and not np.isnan(retro.champion_skill[-1]):
+    skill = retro.champion_skill[-1]
+    c1.metric(
+        "Skill, latest window",
+        f"{skill:+.0%}",
+        f"vs. a {retrospect.CLIMATOLOGY_DAYS}-day daily profile",
+        delta_color="off",
+    )
+else:
+    c1.metric(
+        "Latest champion R²",
+        f"{latest['metrics.champion_r2']:.2f}" if "metrics.champion_r2" in latest else "—",
+        f"RMSE {latest['metrics.champion_rmse']:.2f}",
+        delta_color="off",
+    )
+c2.metric(
+    "Model in service",
+    f"{age_days} days" if age_days is not None else "—",
+    f"v{serving_version}" if serving_version else None,
+    delta_color="off",
+)
+c3.metric(
+    "Challengers shipped",
+    f"{len(promoted)}/{len(retrained)}",
+    f"{len(retrained) - len(promoted)} rejected by the gate",
+    delta_color="off",
+)
 c4.metric(
     "Latest max PSI",
     f"{latest['metrics.data_drift_psi']:.2f}",
-    latest["tags.data_drift_label"],
+    # The label is "significant" on essentially every run of every city, so as a
+    # delta it is a constant dressed as a status. The worst feature does
+    # varies and says which ingredient moved.
+    f"worst: {latest['tags.worst_feature']}" if "tags.worst_feature" in latest else None,
     delta_color="off",
 )
-c5.metric(
-    "Latest champion R²",
-    f"{latest['metrics.champion_r2']:.2f}" if "metrics.champion_r2" in latest else "—",
-    f"RMSE {latest['metrics.champion_rmse']:.2f}",
-    delta_color="off",
-)
+c5.metric("Weeks watched", len(runs))
 
 tab_loop, tab_dist, tab_model, tab_sweep, tab_registry, tab_table = st.tabs(
     ["Drift loop", "Feature drift", "Model", "Knob sweep", "Registry", "Runs"]
@@ -268,20 +339,80 @@ with tab_loop:
     theme.threshold(fig, runs["as_of"], PSI_SIGNIFICANT, f"significant ({PSI_SIGNIFICANT})")
     st.plotly_chart(fig, width="stretch")
 
+    # The trigger in µg/m³ rather than as a ratio. `error ÷ baseline` hides that
+    # the denominator is reset on every promotion; since retrains fire in the
+    # dirty season, each champion inherits a higher bar than the one it replaced
+    # and the bar never comes back down. Same units on one axis makes the
+    # staircase the obvious feature rather than a footnote.
     fig = theme.base_figure(
-        "Performance drift — champion RMSE now ÷ champion RMSE at training time", "ratio"
+        "The retrain trigger: champion error against the bar it must cross", "µg/m³"
     )
     theme.drift_region(fig, drift_date, runs["as_of"].max())
-    theme.line(fig, runs["as_of"], runs["metrics.perf_drift_ratio"], "perf drift ratio", theme.SERIES[0])
-    theme.threshold(
-        fig, runs["as_of"], CFG.perf_drift_threshold, f"retrain trigger ({CFG.perf_drift_threshold})"
+    fig.add_scatter(
+        x=runs["as_of"], y=runs["metrics.champion_baseline_rmse"] * CFG.perf_drift_threshold,
+        name=f"bar ({CFG.perf_drift_threshold}× baseline)", mode="lines",
+        line=dict(color=theme.CRITICAL, width=2, dash="dot", shape="hv"),
     )
+    theme.line(fig, runs["as_of"], runs["metrics.champion_rmse"], "champion error", theme.SERIES[0])
     if not retrained.empty:
         theme.events(
-            fig, retrained["as_of"], retrained["metrics.perf_drift_ratio"],
+            fig, retrained["as_of"], retrained["metrics.champion_rmse"],
             "retrain triggered", theme.WARNING, symbol="circle",
         )
     st.plotly_chart(fig, width="stretch")
+    st.caption(
+        "Where the staircase ends up far above the error, the trigger has gone quiet and cannot "
+        "fire again whatever the model does. The bar was set at the seasonal peak and never comes "
+        "back down."
+    )
+
+    if retro and retro.champion_skill:
+        fig = theme.base_figure(
+            f"What the model is worth: skill against a {retrospect.CLIMATOLOGY_DAYS}-day daily profile",
+            "skill",
+        )
+        theme.drift_region(fig, drift_date, runs["as_of"].max())
+        theme.line(fig, runs["as_of"], retro.champion_skill, "skill", theme.SERIES[2])
+        theme.threshold(fig, runs["as_of"], 0.0, "0 · no better than the baseline")
+        st.plotly_chart(fig, width="stretch")
+        st.caption(
+            "Scale-free, and its yardstick holds still when a model is promoted, which is what "
+            "the retrain ratio above cannot say. The baseline sees recent pollution readings and "
+            "the model never does, so it is a hard bar rather than a fair fight."
+        )
+
+        # One curve per promoted version, lined up on the day it took over. The
+        # logged champion error is a single line across every champion, so no
+        # individual model's decay is visible in it.
+        if retro.promoted_at:
+            fig = theme.base_figure(
+                "How each model ages: every promoted version, from the day it took over",
+                "skill",
+            )
+            # Read off the runs rather than assumed: the replay cadence is a
+            # config knob, so hard-coding seven would mislabel a different one.
+            step_days = (retro.as_of[1] - retro.as_of[0]).days if len(retro.as_of) > 1 else 7
+            for version, promoted_on in sorted(retro.promoted_at.items()):
+                start = retro.as_of.index(promoted_on) + 1
+                skills = retro.version_skill[version][start:]
+                if not skills:
+                    continue
+                serving = str(version) == str(serving_version)
+                fig.add_scatter(
+                    x=[i * step_days / 7 for i in range(len(skills))], y=skills,
+                    name=f"v{version}", mode="lines",
+                    line=dict(
+                        color=theme.SERIES[1] if serving else theme.SERIES[0],
+                        width=2.8 if serving else 1.6,
+                    ),
+                    opacity=1.0 if serving else 0.45,
+                )
+            fig.update_xaxes(title=dict(text="weeks in service", font=dict(color=theme.MUTED, size=11)))
+            st.plotly_chart(fig, width="stretch")
+            st.caption(
+                "Followed past each model's own retirement, so a line that keeps falling shows what "
+                "keeping it would have cost. The version currently serving is drawn solid."
+            )
 
     fig = theme.base_figure("Champion vs. challenger on the held-out window (RMSE, lower is better)", "RMSE")
     # The column only exists once at least one challenger has been trained; on a

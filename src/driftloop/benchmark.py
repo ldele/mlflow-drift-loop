@@ -30,7 +30,10 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import Ridge
 from sklearn.model_selection import TimeSeriesSplit
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from driftloop.config import FEATURES, TARGET
 from driftloop.model import build_pipeline
@@ -45,6 +48,7 @@ USES_PAST_TARGET = {"persistence", "seasonal_naive"}
 DETAIL = {
     "champion_served": "the model the loop actually served, retrained as needed",
     "champion_frozen": "the first champion, never retrained",
+    "pooled_cities": "one model trained on all six cities at once, never retrained",
     "persistence": "repeat the previous observation",
     "seasonal_naive": "repeat the same hour yesterday",
     "climatology": "the training mean for that hour of day",
@@ -96,8 +100,50 @@ def detail_map(lead_days: int) -> dict[str, str]:
     }
 
 
+def fit_pooled(training: dict[str, pd.DataFrame], alpha: float = 1.0) -> tuple[Pipeline, list[str]]:
+    """One model over every city at once, with a per-city intercept.
+
+    Worth having as a baseline because it tests the premise of the whole layout.
+    Six cities each get their own model here; if one model over all of them did
+    just as well, that choice would be wrong.
+
+    The per-city intercept is not a detail. Mean PM2.5 runs from 7 µg/m³ in
+    Melbourne to 84 in Delhi, a spread of 11×, and a single shared intercept
+    cannot straddle it: the same model without the city columns scores 43% worse
+    on average. With them, the weather slopes are shared and only the level is
+    learned per place, which is the interesting question -- does weather push
+    pollution around the same way everywhere?
+    """
+    cities = sorted(training)
+    frame = pd.concat(
+        [df.assign(_city=name) for name, df in training.items()], ignore_index=True
+    )
+    x = _pooled_matrix(frame, cities)
+    pipeline = Pipeline([("scale", StandardScaler()), ("ridge", Ridge(alpha=alpha))])
+    pipeline.fit(x, frame[TARGET].to_numpy(dtype=float))
+    return pipeline, cities
+
+
+def _pooled_matrix(frame: pd.DataFrame, cities: list[str]) -> np.ndarray:
+    """Weather features, then one indicator column per city."""
+    indicators = np.zeros((len(frame), len(cities)), dtype=float)
+    if "_city" in frame:
+        for i, city in enumerate(cities):
+            indicators[:, i] = (frame["_city"] == city).to_numpy(dtype=float)
+    return np.column_stack([frame[FEATURES].to_numpy(dtype=float), indicators])
+
+
+def predict_pooled(pipeline: Pipeline, cities: list[str], frame: pd.DataFrame, city: str) -> np.ndarray:
+    return pipeline.predict(_pooled_matrix(frame.assign(_city=city), cities))
+
+
 def predictor_columns(
-    timeline: pd.DataFrame, train: pd.DataFrame, alpha: float = 1.0, lead_days: int = 0
+    timeline: pd.DataFrame,
+    train: pd.DataFrame,
+    alpha: float = 1.0,
+    lead_days: int = 0,
+    pooled: tuple[Pipeline, list[str]] | None = None,
+    city: str | None = None,
 ) -> pd.DataFrame:
     """Every predictor's output for every row of the timeline, computed once.
 
@@ -110,6 +156,10 @@ def predictor_columns(
 
     frozen = build_pipeline(alpha).fit(train[FEATURES], train[TARGET])
     out["champion_frozen"] = frozen.predict(timeline[FEATURES])
+
+    if pooled is not None and city is not None:
+        pipeline, cities = pooled
+        out["pooled_cities"] = predict_pooled(pipeline, cities, timeline, city)
 
     persistence_lag, seasonal_lag = autoregressive_lags(lead_days)
     out["persistence"] = timeline[TARGET].shift(persistence_lag).to_numpy(dtype=float)
@@ -133,7 +183,15 @@ def score_windows(
     it already logged rather than recomputed -- reimplementing the promotion
     policy here would risk benchmarking a loop that isn't the one that shipped.
     """
-    names = ["champion_frozen", "persistence", "seasonal_naive", "climatology", "train_mean"]
+    # Derived from what was computed rather than hardcoded, so a
+    # predictor that could not be built (the pooled model needs every city's
+    # cache) is absent instead of scoring as NaN.
+    names = [
+        name
+        for name in ("champion_frozen", "pooled_cities", "persistence",
+                     "seasonal_naive", "climatology", "train_mean")
+        if name in columns
+    ]
     per_window: dict[str, list[float]] = {name: [] for name in names}
 
     stamps = pd.to_datetime(columns["timestamp"])

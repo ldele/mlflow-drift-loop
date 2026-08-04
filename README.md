@@ -23,7 +23,7 @@ One run a week, four steps:
 
 | | | |
 |---|---|---|
-| **1. Mark its homework** | check the last 14 days of forecasts against what the air actually did | |
+| **1. Mark its homework** | check the last 14 days of forecasts against what the air did | |
 | **2. Look for trouble, two ways** | has the weather stopped looking like what the model learned from, and separately, is the model getting things wrong? | two signals, on purpose |
 | **3. Train a rival** | error is 1.25× what it used to be, so train a fresh model on the last 180 days | only if step 2 says so |
 | **4. Make it earn the job** | both sit the same exam, a week of air neither has seen | the newcomer wins by 5% or it is thrown away |
@@ -35,6 +35,17 @@ failing". Kraków shows the gap: through the summer its weather drifts further
 from training than anywhere else here, while the model quietly gets better. So
 the cheap alarm watches, and only the expensive one, the one that asks whether we
 got this wrong, can authorise spending money on a retrain.
+
+**And the expensive one is measurably the wrong shape.** It compares the model
+against *its own* error at training time, and every promotion resets that
+comparison. Retrains fire in the dirty season, so each new model inherits a
+higher bar than the one it replaced and the bar never comes back down. Kraków's
+rises from 3.7 to 45.8 µg/m³, after which nothing can cross it: the last 30 of
+its 48 weeks are a 210-day-old model reported as healthier than it has ever
+been, while its skill against a plain 30-day daily profile is the worst it has
+ever been. Finding that is what the site is now built to do, and the two fixes it
+needs, a model-independent yardstick and an absolute error floor, are named on
+the page rather than left in a footnote.
 
 **Nothing is graded on work it has already seen.** The replacement trains on a
 window that stops before the exam, the incumbent was trained long before it, and
@@ -50,33 +61,50 @@ Each city trains a model on a clean season, then runs week by week into the
 season that ruins it. Every setting is identical across all six, so where two
 cities behave differently, it is their air that differs and not their tuning.
 
-| | how bad it gets (µg/m³) | weeks watched | retrains | was retraining worth it? |
-|---|---|---|---|---|
-| **Delhi** | 42 → 127, crop burning after the monsoon | 40 | 9 | **+43.8%** |
-| **Santiago** | 18 → 94, winter smog trapped in a bowl | 22 | 13 | **+12.9%** |
-| **Kraków** | 8 → 57, coal heating in a valley | 48 | 14 | +0.2% |
-| **Johannesburg** | 23 → 84, winter coal smoke | 20 | 11 | 0.0% |
-| **Melbourne** | 5 → 15, winter wood heaters | 31 | 8 | 0.0% |
-| **Los Angeles** | 15 → 29, a mild winter bump | 37 | 3 | −8.9% |
+Two columns for retraining, because one of them lies. The first compares the
+median error across the whole replay against never retraining. It is unpaired,
+so in a city that promotes nothing until week 14 of 20 most windows compare the
+first model against itself and the answer collapses toward zero. The second holds
+the window fixed and compares the two models week by week, over the weeks a
+retrained model was serving.
 
-In Delhi, where the air transforms, keeping the model fresh cuts its error by
-nearly half. In Los Angeles, where the air barely moves, retraining makes things
-8.9% worse by chasing noise. Los Angeles is the control, and it earns its place
-by failing.
+| | how bad it gets (µg/m³) | weeks | retrains | across the replay | week by week |
+|---|---|---|---|---|---|
+| **Delhi** | 42 → 127, crop burning after the monsoon | 40 | 9 | **+44.8%** | **+52.2%**, won 95% |
+| **Santiago** | 18 → 94, winter smog trapped in a bowl | 22 | 13 | **+13.4%** | **+21.4%**, won 100% |
+| **Kraków** | 8 → 57, coal heating in a valley | 48 | 14 | +0.2% | +9.4%, won 73% |
+| **Johannesburg** | 23 → 84, winter coal smoke | 20 | 11 | 0.0% | **+20.2%**, won 100% |
+| **Melbourne** | 5 → 15, winter wood heaters | 31 | 8 | 0.0% | +1.5%, won 71% |
+| **Los Angeles** | 15 → 29, a mild winter bump | 37 | 3 | −8.9% | +1.6%, won 51% |
 
-Johannesburg is where the promotion gate does its most visible work. Eleven
-retrains, three shipped. The other eight replacements were not good enough and
-were thrown away, and the net effect on error is zero. The system spent the
-effort, declined to pay, and nothing shipped that had not earned it.
+In Delhi, where the air transforms, keeping the model fresh roughly halves its
+error. In Los Angeles retraining is a coin toss: it wins 51% of the weeks it
+acted, against a headline that reads −8.9%. Los Angeles is the control, and it
+earns its place by failing.
+
+Johannesburg is where the promotion gate does its most visible work, and where
+the unpaired number misleads hardest. Eleven retrains, three shipped, the other
+eight thrown away for failing to clear the margin. Across the replay that reads
+as 0.0%. Week by week, in the seven weeks a retrained model was serving, it beat
+the original in all seven by a median of 20.2%.
 
 Half these cities are dirtiest in June to August and the other half in December
 to January, which is how you can tell the thresholds are not secretly encoding a
 season.
 
+**A seven-day exam certifies a model for a month, not for half a year.** Every
+promotion left a prediction behind, the margin the challenger won by, so the gate
+can be checked against what each winner went on to deliver. Across 27 promotions
+it is well calibrated for about five weeks: +12.7% promised, +10.1% delivered,
+none of them harmful. Beyond twenty weeks it reverses sign, promising +13.9% and
+delivering −5.9%, with all three harmful. And the models that serve half a year
+are the ones the ratcheted trigger can no longer replace, so the two faults
+compound.
+
 [evaluation.md](docs/evaluation.md) has the city-by-city detail, how the model
-scores against four "do nothing clever" baselines, and a controlled experiment
-showing that each of the two alarms answers only to the thing it is meant to
-watch.
+scores against four "do nothing clever" baselines, the gate calibration in full,
+and a controlled experiment showing that each of the two alarms answers only to
+the thing it is meant to watch.
 
 ### What a full year exposed
 
@@ -114,7 +142,7 @@ window it was trained on, so you can see how old the thing answering you is.
 It does not poll. A new model is picked up when `/reload` is called, because
 swapping the model under live traffic without anyone asking is worse than serving
 a slightly stale one. Predictions come back twice: `pm25` floored at zero for
-whoever is consuming it, and `pm25_raw` as the model actually said. A clamp that
+whoever is consuming it, and `pm25_raw` as the model said. A clamp that
 hides what your model is doing is how you stop noticing it.
 
 ## Quickstart
@@ -139,12 +167,14 @@ as the main file, Python 3.12.
 ## Layout
 
 ```
-src/driftloop/    config, data sources, drift math, model, loop, benchmark, serving
+src/driftloop/    config, data sources, drift math, model, loop, retrospect, benchmark, serving
 scripts/          run_openmeteo · benchmark · build_site · run_scheduled · sweep_knobs · serve
-site/             committed shell (index.html, app.js) + generated data.json
+site/             committed shell (index.html + app.js, compare.html + compare.js,
+                  shared.css) + generated data.json
 dashboard/        Streamlit app and shared chart theme
 docs/             methodology · evaluation · wireframes each UI was built from
-tests/            data contract, drift math, no-leak guards, baseline fairness, serving, charts
+tests/            data contract, drift math, no-leak guards, baseline fairness,
+                  retrospective scoring, serving, charts, site assets
 ```
 
 - **[methodology.md](docs/methodology.md)** covers how it works: the model, the

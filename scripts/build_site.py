@@ -27,10 +27,16 @@ from mlflow.tracking import MlflowClient
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from driftloop import tracking  # noqa: E402
+from driftloop import retrospect, tracking  # noqa: E402
 from driftloop.config import DRIFT_FEATURES, FEATURES, PROFILES  # noqa: E402
 
 OUT = REPO_ROOT / "site"
+
+# How far past a promotion a version's decay curve is followed. Longer than any
+# model here served, on purpose: the interesting part of the curve is
+# what a model *would* have done had it stayed, which is the counterfactual the
+# loop never computes for itself.
+DECAY_WEEKS = 26
 
 # Which sources the published page shows, in order. Only the real data is
 # showcased: the historical Kraków replay and the same loop running live. The
@@ -48,8 +54,14 @@ DISPLAY_ORDER = [
     "openmeteo_joburg",
     "openmeteo_melbourne",
     "openmeteo_la",
-    "scheduled",
 ]
+
+# The live schedule is not a city and was never comparable to one: it is the same
+# Kraków data with one cycle appended at a time, and it has a handful of cycles
+# against Kraków's 48. Sitting in the city selector it invited a comparison that
+# could only mislead, and every per-city chart it drew was two points. It gets a
+# status block in the section about the machinery instead.
+SCHEDULE_KEY = "scheduled"
 
 # Templates, not prose. Every number a city's story quotes is a `{placeholder}`
 # filled from that city's own run and benchmark output at build time.
@@ -74,26 +86,32 @@ STORY = {
     "model's error runs from {rmse_first} to {rmse_peak} µg/m³ while the weather stops resembling "
     "anything it was trained on. Keeping it retrained is worth {retrain_gain}, the biggest payoff "
     "here. Left alone, it ends up worse than guessing the same number every hour.",
-    "openmeteo_la": "The control, and the measurements chose it rather than the plan. Los Angeles "
-    "was supposed to be the summer-smog city. Its pollution actually peaks in November and moves "
-    "only 1.9×, against Delhi's 3×. The model barely budges across {runs} weeks, retraining is "
-    "worth {retrain_gain}, and it comes {rank_phrase}. Something built to catch change needs "
-    "something to change.",
+    "openmeteo_la": "Retraining buys nothing here, and that is why the city is on the page. Los "
+    "Angeles was picked as the summer-smog control and the measurements disagreed twice over: its "
+    "pollution peaks in November, and it moves only 1.9× against Delhi's 3×. Across {runs} weeks "
+    "the loop fires {retrains} times. Over the whole replay retraining scores {retrain_gain}, and "
+    "in the {acted_weeks} weeks a retrained model was serving it won {win_rate} of them, which is "
+    "a coin toss. The model comes {rank_phrase}. Something built to catch change needs something "
+    "to change.",
     "openmeteo_santiago": "Kraków's twin, half a year out of step. Santiago sits in a coastal bowl "
     "that traps winter air the same way, except that its winter is June. A model trained on clean "
     "December air decays from {rmse_first} to {rmse_peak} µg/m³ as that winter arrives. It is "
     "replaced {retrains} times over {runs} weeks, worth {retrain_gain}, on settings identical to "
     "every other city here.",
-    "openmeteo_joburg": "Where the quality gate does its most visible work. Highveld winter nights "
-    "trap coal and wood smoke, and the model's error climbs from {rmse_first} to {rmse_peak} "
-    "µg/m³, the worst on this page. It trains {retrains} replacements over {runs} weeks and ships "
-    "only {promotions}. The rest were not clearly better and were thrown away, for a net effect on "
-    "the error of {retrain_gain}. The effort is spent, and nothing ships that has not earned it.",
-    "openmeteo_melbourne": "The quiet city that goes stale anyway. Sydney is the obvious "
-    "Australian choice and its air barely moves. Melbourne swings 3.1× on winter wood smoke while "
+    "openmeteo_joburg": "Where the quality gate does its most visible work, and where the headline "
+    "number lies. Highveld winter nights trap coal and wood smoke, and the model's error climbs "
+    "from {rmse_first} to {rmse_peak} µg/m³, the worst on this page. It trains {retrains} "
+    "replacements over {runs} weeks and ships only {promotions}. Across the whole replay "
+    "retraining scores {retrain_gain}, which reads as a wash and is not one: nothing was promoted "
+    "until week 14 of 20, so most windows compare the first model against itself. In the "
+    "{acted_weeks} weeks where a retrained model was serving it beat the original in {win_rate} of "
+    "them, by a median of {retrain_acted}.",
+    "openmeteo_melbourne": "Clean air does not mean a stable model. Sydney is the obvious "
+    "Australian choice and its air barely moves; Melbourne swings 3.1× on winter wood smoke while "
     "staying near the WHO guideline all year round, and its model still decays to {perf_peak}× the "
-    "error it started with across {runs} weeks. Retraining is worth {retrain_gain}. Clean air "
-    "does not mean a stable model.",
+    "error it started with across {runs} weeks. Retraining scores {retrain_gain} over the replay "
+    "and {retrain_acted} in the {acted_weeks} weeks it was serving a retrained model, winning "
+    "{win_rate} of them. Small, positive, and worth far less than in Delhi.",
     "synthetic": "A made-up world with a dial controlling how far the data shifts, so the "
     "detection can be shown to fire when something really has changed, and only then.",
     "scheduled": "The same system running unattended, and not a city at all. This is the Kraków "
@@ -126,7 +144,7 @@ def _pct(value: float) -> str:
 
 
 def _story_facts(runs: pd.DataFrame, retr: pd.DataFrame, prom: pd.DataFrame,
-                 benchmark: dict | None) -> dict[str, str]:
+                 benchmark: dict | None, retraining: dict | None = None) -> dict[str, str]:
     """Every number a story is allowed to quote, derived from that city's run."""
     rmse = runs.get("metrics.champion_rmse")
     perf = runs.get("metrics.perf_drift_ratio")
@@ -155,6 +173,13 @@ def _story_facts(runs: pd.DataFrame, retr: pd.DataFrame, prom: pd.DataFrame,
                 if place == 1
                 else f"{_ORDINALS.get(place, f'{place}th')} of the {_count(len(names))} scored"
             )
+
+    # The paired reading, which is what a story should quote when the unpaired
+    # one is dragged to zero by windows in which nothing had been retrained yet.
+    if retraining and "when_it_acted" in retraining:
+        facts["retrain_acted"] = _pct(retraining["when_it_acted"])
+        facts["acted_weeks"] = str(retraining.get("acted_windows", ""))
+        facts["win_rate"] = f"{retraining.get('win_rate', 0):.0f}%"
     return facts
 
 
@@ -205,6 +230,133 @@ def load_versions(db: str, experiment: str, model: str) -> pd.DataFrame:
             row[f"coef_{name}"] = float(mv.tags.get(f"coef_{name}", "nan"))
         rows.append(row)
     return pd.DataFrame(rows).sort_values("version").reset_index(drop=True)
+
+
+def retrospective_block(key: str, runs: pd.DataFrame) -> dict | None:
+    """Everything that needs models scored on windows they never served.
+
+    Needs the city's raw data, so it is built only for profiles tied to a place.
+    The live schedule fetches a rolling window rather than a fixed cached span,
+    so it gets no block and the page drops those cards -- the same way it already
+    drops the benchmark card for a profile that has not been benchmarked.
+    """
+    from driftloop.data import replayable_source  # noqa: E402
+
+    profile = PROFILES[key]
+    location = profile.location
+    source = replayable_source(profile)
+    if source is None or location is None or "tags.champion_version" not in runs:
+        return None
+
+    cfg = profile.loop
+    tracking.setup(cfg.experiment_name, profile.db_filename)
+    models = retrospect.registered_models(MlflowClient(), cfg.registered_model_name)
+    if not models:
+        return None
+
+    # The gate calibration reads the holdout metrics off these rows, so the whole
+    # frame is passed through rather than just the two columns build() indexes on.
+    frame = runs.copy()
+    frame["champion_version"] = runs["tags.champion_version"].astype(int)
+    retro = retrospect.build(
+        source, frame, models, cfg.monitor_days, location.forecast_lead_days, cfg.promotion_margin
+    )
+    if not retro.as_of:
+        return None
+
+    as_of = _dates(pd.Series(retro.as_of))
+
+    # One decay curve per version that served, aligned on weeks since it
+    # took over. Followed past its retirement where the data allows, so a curve
+    # that keeps falling after the model was replaced shows what keeping it would
+    # have cost. Versions that were trained and rejected never served and are not
+    # plotted -- they have no service life to decay through.
+    step_days = max(1, (retro.as_of[1] - retro.as_of[0]).days) if len(retro.as_of) > 1 else 7
+    decay = []
+    for version, promoted in sorted(retro.promoted_at.items()):
+        # Week 0 is the first run *after* the promotion, for the same reason the
+        # gate calibration starts there: the window at the promotion itself
+        # overlaps the challenger's own training data.
+        start = retro.as_of.index(promoted) + 1
+        end = min(len(retro.as_of), start + DECAY_WEEKS)
+        if start >= end:
+            continue
+        served = sum(1 for v in retro.champion_version[start:] if v == version)
+        decay.append(
+            {
+                "version": int(version),
+                "promoted": promoted.strftime("%Y-%m-%d"),
+                "weeks": [round((i - start) * step_days / 7.0, 2) for i in range(start, end)],
+                "skill": _floats(pd.Series(retro.version_skill[version][start:end])),
+                "served_weeks": round(served * step_days / 7.0, 1),
+            }
+        )
+
+    latest_version = retro.champion_version[-1]
+    latest_model = models.get(latest_version)
+    importance: dict | None = None
+    if latest_model is not None:
+        window = source.get_data(
+            retro.as_of[-1] - pd.Timedelta(cfg.monitor_days, unit="D"), retro.as_of[-1]
+        )
+        if not window.empty:
+            ranked = sorted(
+                latest_model.importance(window).items(), key=lambda kv: kv[1], reverse=True
+            )
+            # The two clock terms are folded into one entry: separately they are
+            # half a daily cycle each and neither number means anything alone.
+            weather = [(f, v) for f, v in ranked if f in DRIFT_FEATURES]
+            clock = sum(v for f, v in ranked if f not in DRIFT_FEATURES)
+            rows = [*weather, ("hour of day", clock)]
+            rows.sort(key=lambda kv: kv[1], reverse=True)
+            importance = {
+                "features": [f for f, _ in rows],
+                "values": [round(v, 3) for _, v in rows],
+                "version": int(latest_version),
+            }
+
+    bootstrap = models[min(models)]
+    return {
+        "as_of": as_of,
+        "retraining": retrospect.retraining_value(retro),
+        "skill": {
+            "champion": _floats(pd.Series(retro.champion_skill)),
+            "climatology_rmse": _floats(pd.Series(retro.climatology_rmse)),
+            "champion_rmse": _floats(pd.Series(retro.champion_rmse)),
+            "climatology_days": retrospect.CLIMATOLOGY_DAYS,
+        },
+        "decay": decay,
+        # The trigger in µg/m³ rather than as a ratio. Same units as the error it
+        # is compared against, so the bar's staircase is visible: it steps up at
+        # every promotion and never comes back down.
+        "trigger": {
+            "rmse": _floats(runs["metrics.champion_rmse"]),
+            "bar": _floats(runs["metrics.champion_baseline_rmse"] * cfg.perf_drift_threshold),
+            "baseline": _floats(runs["metrics.champion_baseline_rmse"]),
+        },
+        "factors": {
+            "features": {f: _floats(pd.Series(v)) for f, v in retro.feature_means.items()},
+            "target": _floats(pd.Series(retro.target_mean)),
+            "trained_on": retrospect.training_window_stats(source, bootstrap),
+            "bootstrap_train": [
+                bootstrap.train_start.strftime("%Y-%m-%d"),
+                bootstrap.train_end.strftime("%Y-%m-%d"),
+            ],
+        },
+        "importance": importance,
+        "gate": [
+            {
+                "version": g["version"],
+                "replaced": g["replaced"],
+                "as_of": g["as_of"].strftime("%Y-%m-%d"),
+                "exam": round(g["exam_margin"], 4),
+                "delivered": round(g["delivered_margin"], 4),
+                "weeks": g["weeks_served"],
+            }
+            for g in retro.gate
+            if not pd.isna(g["exam_margin"]) and not pd.isna(g["delivered_margin"])
+        ],
+    }
 
 
 def profile_data(key: str) -> dict | None:
@@ -261,14 +413,41 @@ def profile_data(key: str) -> dict | None:
             stamp = preds["timestamp"].iloc[-1]
             latest_actual_at = f"{stamp.day} {stamp:%b %Y}"
 
+    retro = retrospective_block(key, runs)
+
+    # How long the model currently answering has been in service. The loop logs
+    # which version served each run but never how long it has been there, and
+    # that is the number a stale champion shows up in first: a trigger that has
+    # gone quiet looks identical to a model that is fine until you notice the
+    # thing has not been replaced in seven months.
+    champion_age_days, champion_version = None, None
+    if "tags.champion_version" in runs:
+        versions = runs["tags.champion_version"].tolist()
+        champion_version = versions[-1]
+        since = len(versions) - 1
+        while since > 0 and versions[since - 1] == champion_version:
+            since -= 1
+        champion_age_days = int((runs["as_of"].iloc[-1] - runs["as_of"].iloc[since]).days)
+
+    # What retraining was worth. Taken from the retrospective rather than from
+    # the benchmark file, because the benchmark compares one median against
+    # another and that comparison is unpaired: where both distributions are
+    # dominated by the same seasonal swing it mostly measures the season.
+    # Johannesburg reads 0.0% that way while winning every window in which a
+    # retrained model was serving.
+    value = (retro or {}).get("retraining") or {}
+    retrain_gain = round(value["across_replay"], 1) if "across_replay" in value else None
+    retrain_acted = round(value["when_it_acted"], 1) if "when_it_acted" in value else None
+
     loc = profile.location
     return {
         "key": key,
+        "retro": retro,
         "label": profile.label,
         "benchmark": benchmark,
         "target": {"name": "PM2.5", "units": "µg/m³", "who_24h_guideline": 15},
         "recent": recent,
-        "story": _render_story(key, _story_facts(runs, retr, prom, benchmark)),
+        "story": _render_story(key, _story_facts(runs, retr, prom, benchmark, value)),
         "drift_date": drift_date,
         # Present only for profiles tied to a real place. The page plots one map
         # marker per profile that has one, so a location-less profile (the live
@@ -283,6 +462,20 @@ def profile_data(key: str) -> dict | None:
             "runs": int(len(runs)),
             "retrains": int(len(retr)),
             "promotions": int(len(prom)),
+            # Trained, judged, and thrown away. The gate's actual output, which
+            # previously had to be reached by subtracting two tiles.
+            "rejected": int(len(retr) - len(prom)),
+            "champion_age_days": champion_age_days,
+            "champion_version": champion_version,
+            "retrain_gain": retrain_gain,
+            "retrain_acted": retrain_acted,
+            "retrain_acted_windows": value.get("acted_windows"),
+            "retrain_win_rate": round(value["win_rate"], 0) if "win_rate" in value else None,
+            "latest_skill": (
+                round(retro["skill"]["champion"][-1], 3)
+                if retro and retro["skill"]["champion"] and retro["skill"]["champion"][-1] is not None
+                else None
+            ),
             "latest_psi": round(float(latest["metrics.data_drift_psi"]), 2),
             "latest_r2": (round(float(latest["metrics.champion_r2"]), 2)
                           if "metrics.champion_r2" in latest else None),
@@ -294,6 +487,17 @@ def profile_data(key: str) -> dict | None:
         },
         "as_of": _dates(runs["as_of"]),
         "psi": {f: _floats(runs[f"metrics.psi_{f}"]) for f in DRIFT_FEATURES if f"metrics.psi_{f}" in runs},
+        # Features whose PSI is identically zero for every run. That is not
+        # stability: `psi()` bins on reference quantiles, so a feature that is
+        # near-constant over the training window (precipitation in a dry city)
+        # collapses to a single bin and returns 0.0 whatever the current window
+        # does. Flagged so the chart can say "not measurable here" instead of
+        # drawing a flat line that reads as "perfectly stable".
+        "psi_degenerate": [
+            f
+            for f in DRIFT_FEATURES
+            if f"metrics.psi_{f}" in runs and bool((runs[f"metrics.psi_{f}"] == 0).all())
+        ],
         "perf_ratio": _floats(runs["metrics.perf_drift_ratio"]),
         "retrain": {"as_of": _dates(retr["as_of"]), "perf": _floats(retr["metrics.perf_drift_ratio"])},
         "holdout": {
@@ -383,6 +587,30 @@ def sweep_block() -> dict | None:
     return out or None
 
 
+def schedule_block() -> dict | None:
+    """How the unattended loop is doing, as a few facts rather than as charts.
+
+    Reports what the tracking store contains and nothing about what produced it.
+    A cycle logged by hand and a cycle logged by the weekly Action are
+    indistinguishable here, so the page states the count and the dates and makes
+    no claim about the cron.
+    """
+    profile = PROFILES[SCHEDULE_KEY]
+    runs = load_runs(profile.db_filename, profile.loop.experiment_name)
+    if runs.empty:
+        return None
+    return {
+        "cycles": int(len(runs)),
+        "first": runs["as_of"].min().strftime("%Y-%m-%d"),
+        "last": runs["as_of"].max().strftime("%Y-%m-%d"),
+        "logged_at": pd.to_datetime(runs["start_time"]).max().strftime("%Y-%m-%d"),
+        "champion_version": (
+            runs["tags.champion_version"].iloc[-1] if "tags.champion_version" in runs else None
+        ),
+        "retrains": int((runs["tags.retrain_triggered"] == "True").sum()),
+    }
+
+
 def method_block() -> dict:
     """The page's "how this works" section, read out of the code that runs.
 
@@ -453,6 +681,7 @@ def build() -> Path:
         "raw_data": publish_raw_data(),
         "method": method_block(),
         "sweep": sweep_block(),
+        "schedule": schedule_block(),
         "profiles": profiles,
     }
     out = OUT / "data.json"

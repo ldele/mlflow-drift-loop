@@ -10,14 +10,24 @@ forecast archive, joined on the hour with observed PM2.5 from its air-quality
 API. Each city trains a model on a clean season and replays week by week into the
 season that ruins it, and then out the other side.
 
-| | span | PM2.5 swing | model error, start → worst | retrains / weeks | retraining worth |
-|---|---|---|---|---|---|
-| **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 20.0 → 99.0 | 9 / 40 | **+43.8%** |
-| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.4 → 68.3 | 13 / 22 | **+12.9%** |
-| **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 14 / 48 | +0.2% |
-| **Johannesburg** | Nov 25 → Jul 26 | 23 → 84, Highveld coal smoke | 11.6 → 82.3 | 11 / 20 | 0.0% |
-| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.3 → 15.0 | 8 / 31 | 0.0% |
-| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 17.3 → 19.5 | 3 / 37 | −8.9% |
+| | span | PM2.5 swing | model error, start → worst | retrains / weeks | across replay | week by week |
+|---|---|---|---|---|---|---|
+| **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 20.0 → 99.0 | 9 / 40 | **+44.8%** | **+52.2%**, won 95% |
+| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.4 → 68.3 | 13 / 22 | **+13.4%** | **+21.4%**, won 100% |
+| **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 14 / 48 | +0.2% | +9.4%, won 73% |
+| **Johannesburg** | Nov 25 → Jul 26 | 23 → 84, Highveld coal smoke | 11.6 → 82.3 | 11 / 20 | 0.0% | **+20.2%**, won 100% |
+| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.3 → 15.0 | 8 / 31 | 0.0% | +1.5%, won 71% |
+| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 17.3 → 19.5 | 3 / 37 | −8.9% | +1.6%, won 51% |
+
+The two retraining columns disagree, and the second is the one to trust when they
+do. "Across replay" compares the median error of what was served against the
+median of the first model held frozen. That comparison is unpaired: where both
+distributions are dominated by the same seasonal swing, it largely measures the
+season. Johannesburg promotes nothing until week 14 of 20, so 70% of its windows
+have the two models identical, both medians land on the same value, and the
+column reads 0.0%. "Week by week" holds the window fixed, compares the two models
+in it, and reports the median of those per-window ratios over the weeks a
+retrained model was serving, alongside how often it won.
 
 The cities were picked on measurements rather than reputation. Eighteen
 candidates were fetched and ranked by PM2.5 swing before any of them was wired
@@ -28,7 +38,7 @@ Angeles does.
 
 The same exercise settled the European slot. Over a current twelve-month window
 Kraków swings 6.9×, ahead of Milan (6.2×), Tuzla (6.2×) and Katowice (6.1×),
-and comfortably ahead of the cities that actually make the "worst air in Europe"
+and comfortably ahead of the cities that make the "worst air in Europe"
 headlines: Sarajevo 4.7×, Skopje 4.4×, Sofia 3.7×. Reputation was a poor guide
 again.
 
@@ -64,19 +74,23 @@ replay past the point that flatters the system.
 
 Los Angeles is the control, and the measurements chose it for that. It was picked
 as the summer-smog city; hourly PM2.5 over 2025–26 peaks in November and bottoms
-out in June. Its model barely moves across 37 weeks, only three retrains ever
-fire, and retraining costs 8.9%. There has to be drift for a drift loop to earn
-anything.
+out in June. Its model barely moves across 37 weeks and only three retrains ever
+fire. Week by week, retraining wins 51% of the weeks it acted, which is a coin
+toss and the fair verdict on the city. There has to be drift for a drift loop to
+earn anything.
 
 Johannesburg is where the promotion gate does the most visible work. Error
 climbs from 11.6 to 82.3 µg/m³, the worst on the page, and eleven retrains
 produce only three promotions: the other eight challengers failed to clear the 5%
-margin and were thrown away. Retraining nets 0.0%. The loop spends the
-effort, the gate declines to pay, and nothing ships that did not earn it.
+margin and were thrown away. The loop spends the effort, the gate declines to
+pay, and nothing ships that did not earn it. When something did ship it worked:
+in the seven weeks a retrained model was serving it beat the original in all
+seven, by a median of 20.2%.
 
 Melbourne is the counter-intuitive case. Its air stays near the WHO guideline all
 year, yet the model still decays to more than four times its training error, so
-clean air does not imply a stable model.
+clean air does not imply a stable model. Retraining still helps there, by 1.5%
+week on week, which is the smallest real effect on the page.
 
 ### The loop has no calendar in it
 
@@ -92,19 +106,35 @@ seasons.
 
 Kraków also supplies the cleanest evidence that the two signals are independent.
 Across the second half of its replay, 21 weeks from February to July 2026, its
-weather drifts *further* from the training window than anywhere else on the
-page, while the model runs at well under its training error. Data
-drift screams, performance is fine, and the loop correctly does nothing. A system
-that retrained on distribution shift alone would have burned twenty retrains
-there for no reason.
+weather drifts *further* from the training window than anywhere else on the page,
+while the model runs at well under its training error. Data drift screams, the
+retrain trigger stays quiet, and no retrain fires. A system that retrained on
+distribution shift alone would have burned twenty retrains there for no reason.
 
-A seventh source, **Live schedule**, is not a city. It is the same Kraków data
-run one incremental cycle at a time by a weekly GitHub Action, accruing its own
-history over calendar time. It has run only a handful of cycles so far, and the
-page says so on its own tab rather than letting two points pass for a trend. An
-eighth, synthetic, has two independent drift knobs and backs the offline
-correctness proof in [`sweep_knobs.py`](../scripts/sweep_knobs.py). It is not
-published.
+The trigger reaches the right answer by a route that had stopped working, which
+is worth stating plainly rather than counting as a win. Measured against a
+yardstick that holds still when a model is promoted, that same champion is at its
+worst in that stretch, not its best. See
+[The retrain trigger stops measuring staleness](#the-retrain-trigger-stops-measuring-staleness).
+
+**Live schedule** is not a city and no longer shares the city selector. It is the
+same Kraków data run one incremental cycle at a time, keeping its history in a
+tracking store committed back to the repository. Two cycles have been recorded,
+covering 2026-07-14 to 2026-07-20 and last logged on 2026-07-27. Drawing a city's
+worth of charts from two points invited a comparison with a 48-week replay that
+could only mislead, so it is now a short status block in the method section.
+
+One caveat there is worth being exact about: the tracking store records that a
+cycle happened, not what started it, so a cycle run by hand and one run by the
+weekly Action are indistinguishable in it. The repository contains no commits
+from the workflow's bot identity, and the two cycles are timestamped at 09:14 and
+09:50 UTC against a 06:00 cron. That is consistent with both being run by hand.
+Whether the Action itself has ever fired cannot be established from the
+repository, and the page claims only the count and the dates.
+
+A further source, synthetic, has two independent drift knobs and backs the
+offline correctness proof in [`sweep_knobs.py`](../scripts/sweep_knobs.py). It is
+not published.
 
 ## Does the model beat anything?
 
@@ -123,6 +153,7 @@ Median RMSE, µg/m³, lower is better:
 |---|---|---|---|---|---|---|
 | **served model** | **40.33** | 23.48 | 17.49 | **21.01** | **3.87** | 11.05 |
 | never retrained | 71.71 | 26.96 | 17.52 | 21.01 | 3.87 | **10.14** |
+| one model, all six cities | 45.10 | 25.78 | 19.79 | 22.48 | 6.76 | 10.29 |
 | climatology | 42.81 | 26.33 | 17.86 | 21.89 | 4.19 | 10.72 |
 | training mean | 45.29 | 26.32 | 18.40 | 23.62 | 3.98 | 10.46 |
 | persistence | 49.64 | 20.71 | **16.80** | 27.71 | 5.34 | 13.79 |
@@ -130,20 +161,119 @@ Median RMSE, µg/m³, lower is better:
 
 - The model is the best predictor in Delhi, Johannesburg and Melbourne, and
   second in Kraków. It beats persistence in four of six.
-- Retraining pays where drift is real: +43.8% in Delhi, +12.9% in Santiago. Delhi's never-retrained model ends up worse than a constant, which is
-  what happens when nobody intervenes.
-- It costs 8.9% in Los Angeles, and breaks even in Johannesburg and Melbourne.
-  Retraining a city whose world barely moves fits noise.
+- Retraining pays where drift is real. Delhi's never-retrained model ends up
+  worse than a constant, which is what happens when nobody intervenes.
 - Santiago is where the baselines win. Its pollution is persistent enough
   from week to week that repeating a stale reading beats forecasting from
   weather, even though retraining still clearly helps the model itself.
+
+### Six models, and whether one would do
+
+One Ridge over all six cities at once, trained once on the six training windows
+and never retrained, is the obvious cheaper arrangement. It carries a separate
+intercept per city, and that intercept does most of the work: mean PM2.5 runs
+from 7 µg/m³ in Melbourne to 84 in Delhi, and the same model without it scores
+43% worse. So the weather slopes are shared across cities and only the level is
+learned per place.
+
+The answer is that six models win, and the margin is smaller than the layout
+implies. Pooling loses to the city's own retrained model in five of six cities,
+but beats the city's own *frozen* model in two, and in Delhi it is not close:
+45.10 against 71.71 µg/m³. Training on five other cities is worth more than a
+year of staleness and less than keeping one city's model current. Where pooling
+hurts most is Melbourne, the cleanest city by a distance, whose weather-to-
+pollution relationship the other five outvote.
 
 `alpha=1.0` ships. Forward-chaining CV wants far heavier regularisation in most
 cities, up to 1000, which is itself a signal: the fitted relationship is weak
 enough that shrinking it toward zero costs almost nothing (between 0.1% and 11.9%
 depending on the city).
 
-## Does the detection actually work?
+## What the model is worth
+
+RMSE alone cannot answer that, and neither can R². RMSE has no scale, so a
+filthy city and a clean one are not comparable and neither are two seasons of
+the same city. R² normalises by the window's own variance, which in a calm
+fortnight is tiny, so it reports catastrophe (−5.93 in Kraków's last window) for
+a modest absolute error.
+
+The page now leads with a skill score against a baseline you could deploy
+instead: the hour-of-day profile of the previous 30 days, its reference
+period ending a full forecast lead before the window starts so nothing it
+averages was unavailable when the forecast went out. It does see recent PM2.5,
+which the model never does, so it is a hard bar rather than a like-for-like
+comparison, the same information-set distinction the benchmark table draws.
+
+These models earn their keep in the dirty season and
+lose to a rule of thumb in the clean one. Kraków's champion runs at +43% skill in
+January and −167% in July.
+
+This matters beyond presentation, because **the skill score and the retrain
+trigger disagree about the same model at the same moment**. In Kraków's final
+window the trigger reads 0.28, the healthiest it has ever been and nowhere near
+firing, while skill reads −1.67, the worst it has ever been. Only one of them
+can be right.
+
+## The retrain trigger stops measuring staleness
+
+Not after the first few promotions. `perf_drift_ratio` divides the champion's
+current error by *its own* error at training time, and every promotion resets
+the denominator. Retrains fire in the dirty season, so each new champion inherits
+a higher bar than the one it replaced, and the bar never comes back down:
+
+| | baseline, first → last | last retrain | runs of silence after it | highest ratio in those runs |
+|---|---|---|---|---|
+| **Kraków** | 3.7 → 45.8 | run 17 of 47 | **30** | 0.99 |
+| **Los Angeles** | 9.7 → 15.6 | run 7 of 36 | **29** | 1.16 |
+| **Santiago** | 6.7 → 52.7 | run 18 of 21 | 3 | 0.84 |
+| **Delhi** | 18.8 → 57.1 | run 33 of 39 | 6 | 1.07 |
+
+Once the bar has ratcheted to the seasonal peak the trigger cannot fire again,
+whatever the model does. Kraków spends 62% of its timeline in that state, serving
+a 210-day-old model. In that city `corr(champion_rmse, ratio)` is 0.29 while
+`corr(baseline_rmse, ratio)` is −0.72: the signal tracks *which champion happens
+to be in service* more strongly than how well that champion is doing.
+
+Two changes fix it, and the page now says so. Measure the trigger against
+something outside the model, as the skill score above does, since it holds still
+when a model is promoted. Then put an absolute error floor alongside the ratio,
+so being bad in absolute terms is sufficient on its own.
+
+## A seven-day exam certifies a model for a month, not half a year
+
+Every promotion left a prediction behind: the margin the challenger won its
+seven-day exam by. That margin is the number the decision was made *on*, so it
+cannot also be evidence the decision was right. The out-of-sample check is what
+each winner went on to deliver over the weeks it served, measured against the
+model it displaced and scored on those same windows. That is a counterfactual
+the loop has no reason to compute at the time, and which
+[`retrospect.py`](../src/driftloop/retrospect.py) computes afterwards by
+rebuilding every registered version from its logged coefficients.
+
+27 promotions across six cities:
+
+| promotions that served | n | exam promised | delivered | made things worse |
+|---|---|---|---|---|
+| under 20 weeks | 24 | +12.7% | **+10.1%** | 0 |
+| 20 weeks or more | 3 | +13.9% | **−5.9%** | **3 of 3** |
+
+The gate is honest and well calibrated over the horizon it tests, and not one
+short-serving promotion made things worse. But every model that ended up serving
+twenty weeks or more delivered a *negative* margin despite passing the same exam
+just as convincingly. A seven-day exam can certify a model for about a month and
+cannot certify it for half a year.
+
+The two faults compound. Those long-serving models serve long precisely because
+they were promoted at the seasonal peak, which is what sets the retrain bar out
+of reach. So the trigger goes quiet, the model stays, and the exam that cleared
+it is asked to stand for far longer than it can.
+
+Nothing here is a leak. The challenger never trains on its holdout, and the
+delivered margin is measured from the run *after* the promotion, because the
+monitor window at the promotion itself overlaps the challenger's training data.
+Dropping that window is what makes the comparison clean.
+
+## Whether the detection works at all
 
 ![The controlled experiment](images/control.png)
 
@@ -174,11 +304,18 @@ is here: it is the evidence, and the cities are the application.
   still near zero or negative in several. Predicting an hour's PM2.5 from a
   week-old weather forecast is hard, and the page should be read with
   that in mind: the loop is the demonstration, not the model.
-- The retrain trigger is relative to each model's own baseline. A model that
-  was trained on a hard season has a high baseline error, so "1.25× worse than
-  training" is a soft bar for it. Delhi's late replay shows this: error above 100
-  µg/m³ with the ratio still under the threshold, so no retrain fires. An
-  absolute floor alongside the ratio would catch it.
+- The retrain trigger ratchets, and is now measured rather than merely noted.
+  See [The retrain trigger stops measuring staleness](#the-retrain-trigger-stops-measuring-staleness)
+  above: the bar rises at every promotion and never falls, so after the seasonal
+  peak the trigger cannot fire at all. It is still shipped as-is, because the
+  page's argument is about making the failure visible rather than about hiding
+  it; the fix is an absolute floor alongside the ratio, plus a model-independent
+  yardstick.
+- The skill baseline sees recent PM2.5 and the model does not. That is stated
+  wherever the number appears, and it is deliberate: it is the alternative you
+  could deploy. A like-for-like baseline would have to be built from the
+  champion's own training window, which inherits the champion's staleness and so
+  cannot measure it.
 - 180 days is argued rather than tuned. It was chosen to span more than one
   season after 45 was shown to fail, not swept. A proper sweep of the retrain
   window against retraining value is the obvious next experiment.

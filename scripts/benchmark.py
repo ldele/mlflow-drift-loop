@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from driftloop.benchmark import predictor_columns, score_windows, tune_alpha
+from driftloop.benchmark import fit_pooled, predictor_columns, score_windows, tune_alpha
 from driftloop.config import CITY_CLI_NAMES, PROFILES, Profile
 from driftloop.data import OpenMeteoSource
 
@@ -30,7 +30,32 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
 
 
-def benchmark_city(profile: Profile) -> dict | None:
+def fit_pooled_model():
+    """One Ridge over every city's bootstrap window, for the pooled baseline.
+
+    Fitted once and handed to every city, because the whole question it answers
+    is what a single model over all of them would do. Returns None if any city's
+    cache is missing: a "pooled over six cities" row scored on four would be a
+    different claim than the one the label makes.
+    """
+    training: dict[str, pd.DataFrame] = {}
+    for key in CITY_CLI_NAMES.values():
+        profile = PROFILES[key]
+        if profile.location is None or profile.replay is None:
+            return None
+        source = OpenMeteoSource(profile.location)
+        if not source._cache_path().exists():
+            print(f"  (no cache for {profile.location.name}; skipping the pooled baseline)")
+            return None
+        training[key] = source.get_data(
+            profile.replay.champion_train_start, profile.replay.champion_train_end
+        )
+    rows = sum(len(df) for df in training.values())
+    print(f"pooled baseline: one model over {len(training)} cities, {rows} training rows")
+    return fit_pooled(training)
+
+
+def benchmark_city(profile: Profile, pooled=None) -> dict | None:
     location, plan, cfg = profile.location, profile.replay, profile.loop
     if location is None or plan is None:
         raise SystemExit(f"profile {profile.key!r} has no location/replay windows")
@@ -51,7 +76,9 @@ def benchmark_city(profile: Profile) -> dict | None:
     windows = [(stamp - offset, stamp) for stamp in sim["as_of"]]
 
     lead = location.forecast_lead_days
-    columns = predictor_columns(timeline, train, lead_days=lead)
+    columns = predictor_columns(
+        timeline, train, lead_days=lead, pooled=pooled, city=profile.key
+    )
     scored = score_windows(
         columns, windows, served_rmse=sim["champion_rmse"].tolist(), lead_days=lead
     )
@@ -95,9 +122,10 @@ def main() -> None:
     args = parser.parse_args()
 
     OUTPUTS.mkdir(exist_ok=True)
+    pooled = fit_pooled_model()
     for name in (list(CITY_CLI_NAMES) if args.city == "all" else [args.city]):
         key = CITY_CLI_NAMES[name]
-        payload = benchmark_city(PROFILES[key])
+        payload = benchmark_city(PROFILES[key], pooled)
         if payload is None:
             continue
         out = OUTPUTS / f"benchmark_{key}.json"

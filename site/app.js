@@ -102,11 +102,36 @@ function thresholdLine(lay, pal, value, label) {
   });
 }
 
-const lineT = (x, y, name, color, dash) => ({
-  x, y, name, mode: "lines", type: "scatter",
-  line: { color, width: 2.4, dash: dash || null, shape: "linear" },
-  hovertemplate: "%{y:.3f}<extra>" + name + "</extra>",
-});
+/* A horizontal band across the full width, for a range rather than a cut-off:
+ * the conventional PSI reading bands, or the spread of values a model was
+ * trained on. Drawn below the data and unlabelled on the canvas, since the card's
+ * legend names it, so the plot area stays free of text. */
+function bandShape(lay, y0, y1, color) {
+  lay.shapes.push({
+    type: "rect", xref: "paper", x0: 0, x1: 1, yref: "y", y0, y1,
+    fillcolor: color, line: { width: 0 }, layer: "below",
+  });
+}
+
+/* Optional keys are attached rather than set to undefined: Plotly's cleanData
+ * walks every key that is *present*, so `marker: undefined` throws where an
+ * absent marker is fine. */
+function lineT(x, y, name, color, dash, opts = {}) {
+  const trace = {
+    x, y, name, mode: opts.mode || "lines", type: "scatter",
+    // `hv` holds each value flat until the next point rather than sloping
+    // between them, which is what a threshold that only changes on promotion
+    // does. Sloping it would imply the bar drifts continuously.
+    line: { color, width: opts.width || 2.4, dash: dash || null, shape: opts.shape || "linear" },
+    showlegend: false,
+    hovertemplate: (opts.hover || "%{y:.3f}") + "<extra>" + name + "</extra>",
+  };
+  if (trace.mode.includes("markers")) {
+    trace.marker = { size: opts.size || 6, color, line: { width: 0 } };
+  }
+  if (opts.opacity != null) trace.opacity = opts.opacity;
+  return trace;
+}
 
 const eventT = (pal, x, y, name, color, symbol, size) => ({
   x, y, name, mode: "markers", type: "scatter",
@@ -176,11 +201,26 @@ function smallMultiples(pal, items, opts = {}) {
       gridcolor: pal.grid, linecolor: pal.axis, zeroline: false, ticklen: 0,
       tickfont: { color: pal.muted, size: 10 }, nticks: 4,
     };
-    // Zero is the only reference worth drawing: crossing it is the event.
-    lay.shapes.push({
-      type: "line", xref: `${xref} domain`, x0: 0, x1: 1,
-      yref, y0: 0, y1: 0, line: { color: pal.axis, width: 1 }, layer: "below",
-    });
+    // A band, where the panel has one: the range this feature held over the
+    // window the first model was trained on. The line leaving the band is the
+    // covariate-drift claim, stated in the feature's own units instead of as a
+    // PSI whose scale nobody can read.
+    if (item.band && item.band.lo != null) {
+      lay.shapes.push({
+        type: "rect", xref: `${xref} domain`, x0: 0, x1: 1,
+        yref, y0: item.band.lo, y1: item.band.hi,
+        fillcolor: item.color, opacity: 0.13, line: { width: 0 }, layer: "below",
+      });
+    }
+    // Zero is the only reference worth drawing: crossing it is the event. Only
+    // meaningful where zero is a boundary rather than just a small value, so
+    // the coefficient panels draw it and the feature-level panels do not.
+    if (opts.zeroLine !== false) {
+      lay.shapes.push({
+        type: "line", xref: `${xref} domain`, x0: 0, x1: 1,
+        yref, y0: 0, y1: 0, line: { color: pal.axis, width: 1 }, layer: "below",
+      });
+    }
     lay.annotations.push({
       text: item.name, showarrow: false,
       xref: `${xref} domain`, yref: `${yref} domain`, x: 0, y: 1,
@@ -229,9 +269,33 @@ function chartCard(jobs, title, desc, chips, traces, layout, container = "charts
   jobs.push({ div: card.querySelector(".plot"), traces, layout });
 }
 
-function statTiles(stats, target) {
+/* The tiles answer three questions in order: what is being predicted, is the
+ * model any good at it, and did the loop earn its keep. The counts they used to
+ * spend three of five slots on (runs / retrains / promotions) said what the
+ * machine *did* and nothing about whether any of it worked, and two of them had
+ * to be subtracted from each other to reach the number that matters. */
+const pct = (v, digits = 0) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(digits)}%`;
+
+/* Plot every collected job, then force a re-measure.
+ *
+ * Deferring the plot until all cards are in the DOM is not on its own enough:
+ * Plotly reads the container width during newPlot and, whenever that read comes
+ * back unusable, silently falls back to a hard-coded 700px and writes it into
+ * the layout. A 700px canvas in a 509px card overflows the card and scrolls the
+ * whole page sideways.
+ *
+ * `Plots.resize` re-reads the container after layout has settled. Writing a
+ * measured `layout.width` before newPlot instead is about 20% quicker and is
+ * wrong: an explicit width opts the plot out of `responsive`, so every chart
+ * then keeps its old size through a viewport change and overflows again. The
+ * second pass buys the resize behaviour and is worth its cost. */
+function plotAll(jobs) {
+  jobs.forEach((j) =>
+    Plotly.newPlot(j.div, j.traces, j.layout, CONFIG).then(() => Plotly.Plots.resize(j.div)));
+}
+
+function statTiles(stats, target, retro) {
   const pal = P();
-  const r2 = stats.latest_r2;
   const guide = target?.who_24h_guideline;
   const air = stats.latest_actual;
   // Lead with the physical quantity. Without it the page is all monitoring
@@ -251,17 +315,46 @@ function statTiles(stats, target) {
         `${guide ? ` · WHO 24h guideline ${guide}` : ""}`,
     });
   }
-  if (stats.latest_rmse != null) {
+  // The health number. Scale-free, so unlike the raw error it is comparable
+  // between a clean city and a filthy one, and unlike the retrain trigger its
+  // yardstick does not move every time a model is promoted.
+  if (stats.latest_skill != null) {
+    const s = stats.latest_skill * 100;
+    const days = retro?.skill?.climatology_days ?? 30;
     tiles.push({
-      v: `±${stats.latest_rmse}`, sub: target?.units,
-      k: `Champion error${r2 == null ? "" : ` · R² ${r2.toFixed(2)}`}`,
+      v: pct(s), color: s >= 0 ? pal.good : pal.crit,
+      k: `${s >= 0 ? "Better" : "Worse"} than a ${days}-day daily profile · latest window`,
     });
   }
-  tiles.push(
-    { v: stats.runs, k: "Monitoring runs" },
-    { v: stats.retrains, k: "Retrains" },
-    { v: stats.promotions, k: "Promotions" },
-  );
+  if (stats.champion_age_days != null) {
+    // A trigger that has gone quiet is indistinguishable from a model that is
+    // fine, until you notice how long the thing has been sitting there.
+    tiles.push({
+      v: stats.champion_age_days, sub: "days",
+      color: stats.champion_age_days >= 120 ? pal.warn : undefined,
+      k: `Current model in service · v${stats.champion_version}`,
+    });
+  }
+  tiles.push({
+    v: `${stats.promotions}/${stats.retrains}`,
+    k: `Challengers shipped · ${stats.rejected} rejected by the gate`,
+  });
+  if (stats.retrain_gain != null) {
+    // Two numbers, because one of them lies on its own. The replay-wide figure
+    // compares the median error of what was served against the median of the
+    // original held frozen, which is an unpaired comparison: in a city that
+    // promotes nothing until week 14 of 20, most windows have the two models
+    // identical and both medians land on the same value. Johannesburg reads
+    // 0.0% that way and won every week in which a retrained model was serving.
+    const acted = stats.retrain_acted;
+    tiles.push({
+      v: pct(stats.retrain_gain, 1), color: stats.retrain_gain >= 0 ? pal.good : pal.crit,
+      k: "Retraining, across the whole replay" +
+        (acted == null ? "" : ` · ${pct(acted, 1)} over the ${stats.retrain_acted_windows}`
+          + ` weeks it served a retrained model`),
+    });
+  }
+  tiles.push({ v: stats.runs, k: "Weeks watched" });
 
   document.getElementById("tiles").innerHTML = tiles.map((t) =>
     `<div class="tile"><div class="tile-v"${t.color ? ` style="color:${t.color}"` : ""}>${t.v}` +
@@ -283,68 +376,31 @@ function psiStatus(pal, psi) {
   return pal.good;
 }
 
-/* Spin the globe to a new centre instead of cutting to it. The rotation carries
- * the information a cut throws away: how far apart two cities actually are, and
- * which way round the world you travelled to get there. */
-let globeAnim = null;
-// Bumped on every new spin. A spin chained onto a relayout promise can't be
-// stopped with cancelAnimationFrame, so each frame checks it still owns the
-// globe before doing anything.
-let globeSpin = 0;
-const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-
-function spinGlobeTo(gd, target) {
-  const spin = ++globeSpin;
-  if (globeAnim) {
-    cancelAnimationFrame(globeAnim);
-    globeAnim = null;
-  }
-  // Read the *live* rotation, so interrupting a spin — or spinning after the user
-  // has dragged the globe by hand — starts from where it actually is.
-  const from = { ...(gd.layout?.geo?.projection?.rotation || { lon: 0, lat: 0 }) };
-  // Normalise into (-180, 180] so we always take the short way round: Tokyo to
-  // Los Angeles crosses the Pacific, it doesn't wind back across Eurasia.
-  const dLon = ((target.lon - from.lon + 540) % 360) - 180;
-  const dLat = target.lat - from.lat;
-  if (Math.abs(dLon) < 0.01 && Math.abs(dLat) < 0.01) return;
-
-  const settle = (lon, lat) =>
-    Plotly.relayout(gd, { "geo.projection.rotation.lon": lon, "geo.projection.rotation.lat": lat });
-
-  if (reducedMotion()) return void settle(target.lon, target.lat);
-
-  // A neighbouring city shouldn't take as long as a half-world spin.
-  const duration = 380 + 620 * Math.min(1, Math.hypot(dLon, dLat) / 180);
-  // One clock for the baseline and for every reading of it. Mixing
-  // performance.now() with the timestamp requestAnimationFrame hands the
-  // callback is a bug: the two need not share a time origin, and when they
-  // don't the easing goes negative and the globe creeps backwards.
-  const t0 = performance.now();
-
-  const frame = () => {
-    if (spin !== globeSpin) return; // a newer spin owns the globe now
-    const t = Math.min(1, Math.max(0, (performance.now() - t0) / duration));
-    const e = easeInOut(t);
-    // Wait for the projection to finish before asking for the next position.
-    // Relayout on a geo subplot re-projects the whole topojson, which takes
-    // longer than a frame; firing one per rAF queues them faster than they can
-    // render and the backlog is what makes the spin tear. Pacing on the promise
-    // renders as many intermediate positions as the browser can sustain, evenly
-    // — and the easing stays time-based, so the duration is unchanged.
-    settle(from.lon + dLon * e, from.lat + dLat * e)
-      .then(() => {
-        if (spin !== globeSpin || t >= 1) {
-          globeAnim = null;
-          return;
-        }
-        globeAnim = requestAnimationFrame(frame);
-      })
-      .catch(() => {
-        globeAnim = null;
-      });
-  };
-  globeAnim = requestAnimationFrame(frame);
+/* Move the globe to a new centre in one step.
+ *
+ * This was an eased animation, and it was measurably the wrong idea. Rotating an
+ * orthographic globe means re-projecting the land, ocean, country, coastline and
+ * graticule paths, which costs 25-120ms per frame here whether it is driven
+ * through `Plotly.relayout` or by rotating the projection and re-rendering the
+ * subplot directly. That is a ceiling of roughly eleven frames a second, so no
+ * amount of frame-pacing made it smooth: an eased tween sampled that coarsely
+ * reads as a stutter, and all the machinery to schedule it (easing, a spin
+ * counter to void superseded frames, promise chaining to avoid a backlog,
+ * reduced-motion handling) was work spent making the judder regular.
+ *
+ * Dragging feels smooth by comparison because the pointer is the clock. The
+ * frame rate is the same; the user is supplying it, so latency reads as weight
+ * rather than as dropped frames. Nothing here can borrow that.
+ *
+ * So: one relayout, one re-projection, done. The globe stays draggable, which is
+ * where the smooth interaction lives. */
+function centreGlobeOn(gd, target) {
+  const from = gd.layout?.geo?.projection?.rotation || { lon: 0, lat: 0 };
+  if (Math.abs(target.lon - from.lon) < 0.01 && Math.abs(target.lat - from.lat) < 0.01) return;
+  Plotly.relayout(gd, {
+    "geo.projection.rotation.lon": target.lon,
+    "geo.projection.rotation.lat": target.lat,
+  });
 }
 
 function renderCityList(cities, pal) {
@@ -401,7 +457,7 @@ function renderMap() {
 
   if (globeState.plotted && globeState.theme === theme && globeState.sig === sig) {
     Plotly.restyle(gd, { "marker.line.color": [ringColor], "marker.line.width": [ringWidth] }, [0]);
-    spinGlobeTo(gd, focus);
+    centreGlobeOn(gd, focus);
     renderCityList(cities, pal);
     return;
   }
@@ -449,7 +505,6 @@ function renderMap() {
   // newPlot on a live div keeps previously bound handlers, which would stack a
   // second click listener on every theme flip.
   if (gd.removeAllListeners) gd.removeAllListeners("plotly_click");
-  if (globeAnim) { cancelAnimationFrame(globeAnim); globeAnim = null; }
 
   Plotly.newPlot(gd, [trace], layout, CONFIG).then(() => {
     gd.on("plotly_click", (ev) => {
@@ -488,12 +543,18 @@ function render() {
   const pal = P();
   renderStory(p);
   renderMap();
-  statTiles(p.stats, p.target);
+  statTiles(p.stats, p.target, p.retro);
   const charts = document.getElementById("charts");
   charts.innerHTML = "";
   const jobs = [];
   const xEnd = p.as_of[p.as_of.length - 1];
-  const feat = DRIFT_FEATURES.filter((f) => p.psi[f]);
+  // Features whose PSI is identically zero are dropped rather than drawn: the
+  // statistic is undefined for them here (a near-constant reference collapses to
+  // one bin), and a flat line at zero reads as "perfectly stable", which is the
+  // opposite of "not measurable".
+  const degenerate = p.psi_degenerate || [];
+  const feat = DRIFT_FEATURES.filter((f) => p.psi[f] && !degenerate.includes(f));
+  const R = p.retro;
   let lay, traces;
 
   // 0. What the model predicts, in the units it predicts it in. This is the
@@ -507,7 +568,7 @@ function render() {
     }
     chartCard(jobs,
       `What the model forecasts: ${t.name}`,
-      `What the air actually did, against what the model thought it would do. The call was made ` +
+      `What the air did, against what the model thought it would do. The call was made ` +
       `<em>a week before it happened</em>, working only from the weather forecast, with no ` +
       `knowledge of how dirty the air had been lately. The gap between the two lines is the ` +
       `mistake every other chart on this page is measuring.`,
@@ -522,33 +583,220 @@ function render() {
       lay);
   }
 
-  // 1. Data drift — PSI per feature
-  lay = plotBase(pal, "PSI");
-  driftRegion(lay, pal, p.drift_date, xEnd);
-  thresholdLine(lay, pal, PSI_SIGNIFICANT, "0.25 · significant");
-  traces = feat.map((f, i) => lineT(p.as_of, p.psi[f], f, pal.series[i]));
+  // 1. Skill against a baseline you could deploy instead.
+  //
+  // The page used to headline raw RMSE and R². RMSE has no scale, so a filthy
+  // city and a clean one cannot be compared and neither can two seasons of the
+  // same city. R² normalises by the window's own variance, which in a calm
+  // fortnight is tiny, so it reports catastrophe for a modest absolute error.
+  // A skill score against a fixed alternative avoids both.
+  if (R?.skill) {
+    const days = R.skill.climatology_days;
+    lay = plotBase(pal, "skill");
+    thresholdLine(lay, pal, 0, "0 · no better than the baseline");
+    driftRegion(lay, pal, p.drift_date, xEnd);
+    chartCard(jobs,
+      "What the model is worth",
+      `These models earn their keep in the dirty season and lose to a rule of thumb in the clean one. ` +
+      `Above the line the model beats the rule of thumb, which is "this hour usually looks like it did over the last ${days} days". Below the line it loses to it. ` +
+      `That baseline gets to see recent pollution readings and the model never does, so it is a hard bar rather than a fair fight. It is here because it is the thing you could deploy instead.`,
+      [{ label: `skill vs. ${days}-day daily profile`, color: pal.series[2], kind: "line" }],
+      [lineT(p.as_of, R.skill.champion, "skill", pal.series[2], null, { hover: "%{y:+.2f}" })],
+      lay);
+  }
+
+  // 2. One decay curve per model. THE chart the page was missing: the logged
+  // champion error is a single line across eight different champions, so no
+  // individual model's decay is visible in it. Scored on every window including
+  // ones it never served, so a curve that keeps falling past its retirement is
+  // what keeping that model would have cost.
+  if (R?.decay?.length) {
+    const serving = String(p.stats.champion_version);
+    const n = R.decay.length;
+    // A line per promoted model does not survive contact with a longer replay.
+    // Kraków already has seven and gains one per promotion, and past about four
+    // the chart stops being readable as anything but a smudge. So the cohort is
+    // summarised and only two models are ever named: the one answering now, and
+    // the longest unbroken run, which is where staleness shows up if it shows up
+    // anywhere. Individual lines are kept only while there are few enough to
+    // tell apart, since a quartile band over three models says less than the
+    // three lines do.
+    const SUMMARISE_ABOVE = 3;
+    const longest = R.decay.reduce((a, b) => (b.served_weeks > a.served_weeks ? b : a));
+    const quantile = (sorted, q) => {
+      const i = (sorted.length - 1) * q, lo = Math.floor(i), hi = Math.ceil(i);
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+    };
+
+    traces = [];
+    const chipsD = [];
+    if (n > SUMMARISE_ABOVE) {
+      const weeks = [], p25 = [], p50 = [], p75 = [];
+      const span = Math.max(...R.decay.map((d) => d.skill.length));
+      for (let i = 0; i < span; i++) {
+        const values = R.decay
+          .map((d) => d.skill[i])
+          .filter((v) => v != null && Number.isFinite(v))
+          .sort((a, b) => a - b);
+        // Stop where too few models are still running to summarise honestly,
+        // rather than letting the band narrow to a single survivor's line.
+        if (values.length < 3) break;
+        weeks.push(i);
+        p25.push(quantile(values, 0.25));
+        p50.push(quantile(values, 0.5));
+        p75.push(quantile(values, 0.75));
+      }
+      traces.push(
+        { x: weeks, y: p75, mode: "lines", type: "scatter", line: { width: 0 },
+          showlegend: false, hoverinfo: "skip" },
+        { x: weeks, y: p25, mode: "lines", type: "scatter", line: { width: 0 },
+          fill: "tonexty", fillcolor: "rgba(42,120,214,0.15)", showlegend: false,
+          hovertemplate: "week %{x}<extra>middle half of models</extra>" },
+        lineT(weeks, p50, "median model", pal.series[0], null,
+          { width: 2.6, hover: "week %{x}: median skill %{y:+.2f}" }),
+      );
+      chipsD.push(
+        { label: `median of ${n} models`, color: pal.series[0], kind: "line" },
+        { label: "middle half", color: pal.series[0], kind: "dot" },
+      );
+    } else {
+      R.decay.forEach((d, i) => traces.push(
+        lineT(d.weeks, d.skill, `v${d.version}`, pal.series[0], null,
+          { mode: "lines+markers", size: 5, width: 1.8,
+            opacity: 0.35 + 0.4 * (i / Math.max(1, n - 1)),
+            hover: "week %{x}: skill %{y:+.2f}" })));
+      chipsD.push({ label: "each promoted model", color: pal.series[0], kind: "line" });
+    }
+
+    // Usually the same model: a champion the trigger can no longer replace is
+    // both the longest run and the one still answering. Drawing it twice in two
+    // colours invents a second model that does not exist, so they collapse into
+    // one line whose label says it is both.
+    const current = R.decay.find((d) => String(d.version) === serving);
+    const named = current && current.version === longest.version
+      ? [[longest, pal.crit,
+          `serving now, and the longest run · v${longest.version}, ${longest.served_weeks}w`]]
+      : [
+          [longest, pal.crit, `longest run · v${longest.version}, ${longest.served_weeks}w`],
+          [current, pal.series[1], `serving now · v${serving}`],
+        ];
+    for (const [entry, color, label] of named) {
+      if (!entry) continue;
+      traces.push(lineT(entry.weeks, entry.skill, label, color, null,
+        { mode: "lines+markers", size: 5, width: 2.8, hover: "week %{x}: skill %{y:+.2f}" }));
+      chipsD.push({ label, color, kind: "line" });
+    }
+
+    lay = plotBase(pal, "skill", { hovermode: "closest" });
+    lay.xaxis.title = { text: "weeks in service", font: { color: pal.muted, size: 11 } };
+    lay.margin.b = 44;
+    thresholdLine(lay, pal, 0, "0 · no better than the baseline");
+    chartCard(jobs,
+      "How each model ages once it takes over",
+      `Every model this city promoted, lined up on the day it took over rather than on the calendar, and followed past its own retirement so a line that keeps falling shows what keeping it would have cost. ` +
+      (n > SUMMARISE_ABOVE
+        ? `${n} models are summarised as a median and the middle half, because one line each stops being readable. `
+        : `All ${n} are drawn, since there are few enough to tell apart. `) +
+      `Two are named: the model answering now, and the longest unbroken run, which is where staleness shows up first.`,
+      chipsD, traces, lay, "charts", true);
+  }
+
+  // 3. The retrain trigger, in µg/m³ instead of as a ratio.
+  //
+  // As a ratio the staircase is invisible: `error ÷ baseline` hides that the
+  // denominator is reset on every promotion, and because retrains fire in the
+  // dirty season each new champion inherits a *higher* bar than the one it
+  // replaced. Plotting both in the same unit makes the ratchet the obvious
+  // feature of the chart rather than a footnote in the methodology.
+  if (R?.trigger) {
+    lay = plotBase(pal, `error (${p.target?.units || "µg/m³"})`);
+    driftRegion(lay, pal, p.drift_date, xEnd);
+    traces = [
+      lineT(p.as_of, R.trigger.bar, "retrain bar", pal.crit, "dot", { shape: "hv", width: 2 }),
+      lineT(p.as_of, R.trigger.rmse, "champion error", pal.series[0]),
+    ];
+    const chipsT = [
+      { label: "champion error", color: pal.series[0], kind: "line" },
+      { label: "the bar it must cross", color: pal.crit, kind: "dash" },
+    ];
+    if (p.retrain.as_of.length) {
+      traces.push(eventT(pal, p.retrain.as_of,
+        p.retrain.as_of.map((d) => R.trigger.rmse[p.as_of.indexOf(d)]),
+        "retrain triggered", pal.warn, "circle", 10));
+      chipsT.push({ label: "retrain fires", color: pal.warn, kind: "dot" });
+    }
+    chartCard(jobs,
+      "When it retrains, and against what bar",
+      "A retrain fires when the error crosses the dotted bar, which is 1.25× whatever the model in service scored when it was trained. " +
+      "The bar is a staircase because every promotion resets it, and promotions happen in the dirty season, so each new model inherits a higher bar than the one it replaced and the bar never comes back down. " +
+      "Where the staircase ends up far above the error, the trigger has gone quiet and cannot fire again whatever the model does.",
+      chipsT, traces, lay);
+  }
+
+  // 4. Weather drift as a band per ingredient per week, not six lines.
+  //
+  // Six series over four decades of log scale is unreadable, and the reading it
+  // invites is one the statistic cannot support: PSI saturates near 11.5,
+  // because at a seasonal gap most of the training range holds no current data
+  // and every empty bin adds a fixed amount whatever the true distance. So it
+  // is a dependable yes/no and an undependable how-much. Showing only the band
+  // says the part that is true, and says it at a glance: mostly red, from the
+  // first week, in every city.
+  const bandOf = (v) => (v == null ? null : v > PSI_SIGNIFICANT ? 2 : v > PSI_MODERATE ? 1 : 0);
+  lay = plotBase(pal, null, { height: 40 + 26 * feat.length, hovermode: "closest" });
+  lay.margin.l = 132;
+  lay.yaxis.showgrid = false;
+  lay.yaxis.linecolor = "rgba(0,0,0,0)";
+  traces = [{
+    type: "heatmap",
+    x: p.as_of,
+    // Reversed: Plotly puts the first category at the bottom, and reading order
+    // should match the legend above it.
+    y: [...feat].reverse(),
+    z: [...feat].reverse().map((f) => p.psi[f].map(bandOf)),
+    customdata: [...feat].reverse().map((f) => p.psi[f]),
+    zmin: 0, zmax: 2, showscale: false, xgap: 1, ygap: 3,
+    colorscale: [
+      [0, pal.good], [0.333, pal.good],
+      [0.333, pal.warn], [0.666, pal.warn],
+      [0.666, pal.crit], [1, pal.crit],
+    ],
+    hovertemplate: "%{y}, %{x}<br>PSI %{customdata:.2f}<extra></extra>",
+  }];
   chartCard(jobs,
-    "Data drift",
-    "How far the weather has moved from what this model was trained on. Each ingredient is compared against what it saw in training. Nobody has to be right or wrong for this to fire, because it watches the incoming data alone, so it can raise a hand before any mistakes show up. Above 0.25 counts as properly different. The statistic is PSI.",
-    feat.map((f, i) => ({ label: f, color: pal.series[i], kind: "line" })),
+    "How far the weather has moved from training",
+    "The early warning. It compares incoming weather against what the model was trained on, one ingredient at a time, and needs no labels and no model, so it can raise a hand before any mistake shows up. " +
+    "Green means the ingredient still looks like training, amber that it has shifted, red that it is properly different. " +
+    "Read the whole block rather than any one cell. These cities go red early and stay red, which is all a statistic that maxes out long before the season does can honestly tell you. It is called PSI, and the bands are the industry convention." +
+    (degenerate.length
+      ? ` Not shown: ${degenerate.join(", ")}, which barely varies during training here, so the statistic is undefined rather than zero.`
+      : ""),
+    [
+      { label: "looks like training", color: pal.good, kind: "dot" },
+      { label: "shifted", color: pal.warn, kind: "dot" },
+      { label: "properly different", color: pal.crit, kind: "dot" },
+    ],
     traces, lay);
 
-  // 2. Performance drift & retrains
-  lay = plotBase(pal, "error ratio");
-  driftRegion(lay, pal, p.drift_date, xEnd);
-  thresholdLine(lay, pal, PERF_THRESHOLD, "1.25 · retrain trigger");
-  traces = [lineT(p.as_of, p.perf_ratio, "perf ratio", pal.series[0])];
-  const chips2 = [{ label: "champion error ÷ baseline", color: pal.series[0], kind: "line" }];
-  if (p.retrain.as_of.length) {
-    traces.push(eventT(pal, p.retrain.as_of, p.retrain.perf, "retrain triggered", pal.warn, "circle", 11));
-    chips2.push({ label: "retrain", color: pal.warn, kind: "dot" });
+  // 5. The physical story, in the units the features are measured in. This is
+  // what "the world moved" means before it is compressed into a statistic, and
+  // it is the chart that justifies retraining at all.
+  if (R?.factors) {
+    const fm = R.factors.features;
+    const shown = DRIFT_FEATURES.filter((f) => fm[f] && !degenerate.includes(f));
+    const sm = smallMultiples(pal, shown.map((f, i) => ({
+      name: f, x: p.as_of, y: fm[f], color: pal.series[i],
+      band: R.factors.trained_on[f] || {},
+    })), { zeroLine: false });
+    chartCard(jobs,
+      "What changed in the world",
+      `Each weather ingredient, averaged over every monitoring window, in its own units. The shaded band is the range that ingredient held while the first model was being trained (${R.factors.bootstrap_train[0]} to ${R.factors.bootstrap_train[1]}). ` +
+      "A line that leaves its band means the model is being asked about conditions it was never shown. This is the case for retraining, before any statistic is computed.",
+      shown.map((f, i) => ({ label: f, color: pal.series[i], kind: "dot" })),
+      sm.traces, sm.layout, "charts", true);
   }
-  chartCard(jobs,
-    "Performance drift & retrains",
-    "How much worse the model is today than on the day it was trained. 1.0 means as good as it ever was, 2.0 means twice the error. At 1.25, a quarter worse, it gets sent back to school.",
-    chips2, traces, lay);
 
-  // 3. Champion vs. challenger on the held-out week
+  // 6. Champion vs. challenger on the held-out week
   lay = plotBase(pal, "RMSE");
   let chips3;
   if (p.holdout.as_of.length) {
@@ -571,11 +819,39 @@ function render() {
     annotated(lay, pal, "No challenger trained yet, because no retrain has fired.");
   }
   chartCard(jobs,
-    "Champion vs. challenger",
-    "Being newer is not a qualification. The model in service and the one just trained sit the same exam, a week of air neither has ever seen, and the newcomer only takes the job if it wins clearly rather than by a nose.",
+    "The exam: champion vs. challenger",
+    "Being newer is not a qualification. The model in service and the one just trained sit the same exam, a week of air neither has ever seen, and the newcomer only takes the job if it wins by more than 5% rather than by a nose. Whether passing this exam predicts anything is tested further down the page.",
     chips3, traces, lay);
 
-  // 4. Model coefficients
+  // 7. What the model leans on. Answers the question the coefficient chart
+  // cannot: the slopes are per original unit, so a slope per hPa and a slope
+  // per W/m² are not comparable, and the biggest number there is usually just
+  // the feature with the smallest units.
+  if (R?.importance) {
+    const imp = R.importance;
+    lay = plotBase(pal, null, { height: 230, hovermode: "closest" });
+    lay.margin.l = 132;
+    lay.yaxis.gridcolor = "rgba(0,0,0,0)";
+    lay.xaxis.title = { text: "µg/m³ of prediction per 1-sd move", font: { color: pal.muted, size: 11 } };
+    lay.xaxis.showgrid = true;
+    lay.xaxis.gridcolor = pal.grid;
+    lay.margin.b = 44;
+    traces = [{
+      type: "bar", orientation: "h",
+      // Reversed so the largest sits at the top: Plotly stacks the first
+      // category at the bottom of a horizontal bar chart.
+      y: [...imp.features].reverse(), x: [...imp.values].reverse(),
+      marker: { color: pal.series[0] },
+      hovertemplate: "%{x:.1f} µg/m³ per 1-sd<extra>%{y}</extra>",
+    }];
+    chartCard(jobs,
+      "What moves the prediction",
+      `How much the model's answer shifts when each ingredient moves by one standard deviation. This is the comparable version of the coefficients below, in µg/m³, for version ${imp.version} over the most recent window. ` +
+      "Boundary layer height, the depth of air that pollution is diluted into, would very likely top this list and is missing. Open-Meteo does not archive it at a seven-day lead, so shortwave radiation stands in for it.",
+      [], traces, lay, "charts", true);
+  }
+
+  // 8. Model coefficients
   let chips4 = [];
   // Two versions is the least that can show a coefficient moving, and plotting
   // one is worse than plotting none: a single point gives Plotly a zero-width
@@ -608,12 +884,14 @@ function render() {
     chips4, traces, lay, "charts", coefPts > 1);
 
   renderBenchmark(p);
-  // Profile-independent, but re-rendered here so a theme flip recolours it with
-  // everything else rather than leaving one section in the old palette.
+  // Both profile-independent, but re-rendered here so a theme flip recolours
+  // them with everything else rather than leaving a section in the old palette.
+  renderPooled();
+  renderGate();
   renderControl(DATA.sweep);
 
   // All cards are in the DOM now and the grid has settled — plot at the real width.
-  jobs.forEach((j) => Plotly.newPlot(j.div, j.traces, j.layout, CONFIG));
+  plotAll(jobs);
 }
 
 /* ---------- benchmark card ---------- */
@@ -621,6 +899,7 @@ function render() {
 const BENCH_LABEL = {
   champion_served: "Champion (loop)",
   champion_frozen: "Champion (never retrained)",
+  pooled_cities: "One model, all six cities",
   persistence: "Persistence",
   seasonal_naive: "Seasonal naive",
   climatology: "Climatology",
@@ -691,7 +970,10 @@ function renderBenchmark(p) {
     const w = weatherOnly[0], s = seesPast[0];
     const forecastWins = w.median_rmse <= s.median_rmse;
     const ratio = forecastWins ? s.median_rmse / w.median_rmse : w.median_rmse / s.median_rmse;
-    verdict.push(`<div><b>${ratio.toFixed(1)}×</b>` +
+    // A ratio that rounds to "1.0×" is a statement that nothing separates the
+    // two groups, dressed up as a finding. Give it the extra digit rather than
+    // publishing a headline number that says nothing.
+    verdict.push(`<div><b>${ratio.toFixed(ratio < 1.1 ? 2 : 1)}×</b>` +
       (forecastWins
         ? `${label(w)} below ${label(s)}, the best that past readings manage`
         : `${label(s)} below ${label(w)}, and it sees past PM2.5`) +
@@ -714,6 +996,153 @@ function renderBenchmark(p) {
     `<thead><tr><th>Predictor</th><th class="num">Median RMSE</th><th>What it does</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div>` +
     `<div class="verdict">${verdict.join("")}</div>`;
+}
+
+/* ---------- one model for every city? ---------- */
+
+const POOLED_LABEL = { champion_served: "its own model, retrained", champion_frozen: "its own model, frozen",
+  pooled_cities: "one model for all six" };
+
+/* Grouped bars per city rather than a table, because the shape of the answer is
+ * the answer: pooling helps where a city's own training window was a poor guide
+ * to its future, and hurts where the city is unlike the others. */
+function renderPooled() {
+  const section = document.getElementById("pooled");
+  const cities = (DATA.profiles || []).filter((p) => p.benchmark?.scored?.some((s) => s.name === "pooled_cities"));
+  section.hidden = cities.length < 2;
+  if (section.hidden) return;
+
+  const pal = P();
+  const host = document.getElementById("pooled-charts");
+  host.innerHTML = "";
+  const jobs = [];
+
+  const pick = (p, name) => p.benchmark.scored.find((s) => s.name === name)?.median_rmse ?? null;
+  const names = ["champion_served", "champion_frozen", "pooled_cities"];
+  const colors = [pal.series[0], pal.series[3], pal.series[1]];
+
+  const lay = plotBase(pal, "median error (µg/m³)", { hovermode: "closest", height: 320 });
+  lay.barmode = "group";
+  lay.margin.b = 54;
+  const traces = names.map((name, i) => ({
+    type: "bar", name: POOLED_LABEL[name],
+    x: cities.map((p) => p.label), y: cities.map((p) => pick(p, name)),
+    marker: { color: colors[i] }, showlegend: false,
+    hovertemplate: `%{x}: %{y:.2f} µg/m³<extra>${POOLED_LABEL[name]}</extra>`,
+  }));
+
+  chartCard(jobs,
+    "One model for all six cities, against six models",
+    "Median error over the same monitoring windows, lower is better. The pooled model gets a separate intercept per city, which is doing most of the work: mean pollution runs from 7 µg/m³ in Melbourne to 84 in Delhi, and the same model without that adjustment scores 43% worse. So the weather slopes are shared and only the level is learned per place.",
+    names.map((name, i) => ({ label: POOLED_LABEL[name], color: colors[i], kind: "dot" })),
+    traces, lay, "pooled-charts", true);
+
+  const beatsFrozen = cities.filter((p) => pick(p, "pooled_cities") < pick(p, "champion_frozen"));
+  const beatsServed = cities.filter((p) => pick(p, "pooled_cities") < pick(p, "champion_served"));
+  const delhi = cities.find((p) => p.label === "Delhi");
+  document.getElementById("pooled-note").innerHTML =
+    `<strong>The answer is no, and the near miss is the interesting part.</strong> One model over ` +
+    `every city loses to the city's own retrained model in ${cities.length - beatsServed.length} of ` +
+    `${cities.length} cities. But it beats the city's own <em>frozen</em> model in ` +
+    `${beatsFrozen.length}, and in Delhi it is not close: ` +
+    `${delhi ? `${pick(delhi, "pooled_cities").toFixed(1)} against ${pick(delhi, "champion_frozen").toFixed(1)} µg/m³` : ""}. ` +
+    `Training on five other cities is worth more than a year of staleness, and less than keeping ` +
+    `one city's model current. The cheap arrangement is not one model; it is one model plus the ` +
+    `retraining loop, which is what the six cities here already are. ` +
+    `Where pooling hurts most is Melbourne, the cleanest city by a distance, whose weather-to-` +
+    `pollution relationship the other five outvote.`;
+
+  plotAll(jobs);
+}
+
+/* ---------- did the promotion gate work? ---------- */
+
+/* The gate promotes on one seven-day exam. That margin is in-sample *for the
+ * decision*, being the number the decision was made on, so it cannot say
+ * whether the decision was right. The out-of-sample check is what the winner
+ * went on to deliver against the model it displaced, scored on the windows it
+ * served, which is a counterfactual the loop has no reason to compute
+ * at the time and `retrospect.py` computes afterwards.
+ *
+ * Pooled across every city rather than drawn per city, because five points per
+ * city cannot show a pattern and twenty-seven can, and because the pattern is a
+ * property of the *rule* rather than of any one place. */
+const GATE_LONG_WEEKS = 20;
+
+function renderGate() {
+  const section = document.getElementById("gate");
+  const rows = (DATA.profiles || []).flatMap((p) =>
+    (p.retro?.gate || []).map((g) => ({ ...g, city: p.label })));
+  section.hidden = rows.length < 4;
+  if (section.hidden) return;
+
+  const pal = P();
+  const host = document.getElementById("gate-charts");
+  host.innerHTML = "";
+  const jobs = [];
+
+  const long = rows.filter((r) => r.weeks >= GATE_LONG_WEEKS);
+  const short = rows.filter((r) => r.weeks < GATE_LONG_WEEKS);
+  const mean = (a, k) => (a.length ? a.reduce((s, r) => s + r[k], 0) / a.length : NaN);
+
+  const pt = (list, name, color) => ({
+    x: list.map((r) => r.exam * 100), y: list.map((r) => r.delivered * 100),
+    text: list.map((r) => `${r.city} v${r.version} · served ${r.weeks}w`),
+    name, mode: "markers", type: "scatter",
+    marker: { color, size: 11, line: { color: pal.surface, width: 1.5 } },
+    showlegend: false,
+    hovertemplate: "%{text}<br>exam %{x:+.1f}% → delivered %{y:+.1f}%<extra></extra>",
+  });
+
+  const all = rows.map((r) => r.exam * 100).concat(rows.map((r) => r.delivered * 100));
+  const lo = Math.min(...all, 0) - 4, hi = Math.max(...all) + 4;
+
+  const lay = plotBase(pal, "what it went on to deliver (%)", { hovermode: "closest", height: 330 });
+  lay.xaxis.title = { text: "margin on the seven-day exam (%)", font: { color: pal.muted, size: 11 } };
+  lay.xaxis.showgrid = true;
+  lay.xaxis.gridcolor = pal.grid;
+  lay.margin.b = 46;
+  // y = x is where a perfectly calibrated exam would put every point.
+  lay.shapes.push({
+    type: "line", xref: "x", yref: "y", x0: lo, y0: lo, x1: hi, y1: hi,
+    line: { color: pal.muted, width: 1, dash: "dot" }, layer: "below",
+  });
+  // Below this line the promotion made things worse than leaving the old model.
+  lay.shapes.push({
+    type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: 0, y1: 0,
+    line: { color: pal.crit, width: 1 }, layer: "below",
+  });
+  lay.annotations.push({
+    xref: "paper", x: 0, y: 0, yref: "y", text: "0 · no better than the model it replaced",
+    showarrow: false, font: { color: pal.muted, size: 10 },
+    xanchor: "left", yanchor: "bottom", xshift: 3, yshift: 2, bgcolor: pal.surface, borderpad: 1,
+  });
+
+  chartCard(jobs,
+    "What the exam promised against what it delivered",
+    `One point per promotion, across every city. Horizontal is the margin the challenger won its exam by, which is the number the gate decided on. Vertical is what it went on to deliver over the weeks it then served, measured against the model it replaced and scored on those same windows. ` +
+    `On the dotted diagonal the exam predicted the outcome perfectly. Below the red line the promotion made things worse.`,
+    [
+      { label: `served under ${GATE_LONG_WEEKS} weeks`, color: pal.series[2], kind: "dot" },
+      { label: `served ${GATE_LONG_WEEKS}+ weeks`, color: pal.crit, kind: "dot" },
+      { label: "perfect calibration", color: pal.muted, kind: "dash" },
+    ],
+    [pt(short, "short", pal.series[2]), pt(long, "long", pal.crit)],
+    lay, "gate-charts", true);
+
+  document.getElementById("gate-note").innerHTML =
+    `<strong>The result:</strong> the exam is honest and well calibrated over the horizon it tests. ` +
+    `Across ${short.length} promotions that served under ${GATE_LONG_WEEKS} weeks it promised ` +
+    `${pct(mean(short, "exam") * 100, 1)} and delivered ${pct(mean(short, "delivered") * 100, 1)}, and not one of them ` +
+    `made things worse. But every one of the ${long.length} models that ended up serving ${GATE_LONG_WEEKS} weeks or more ` +
+    `delivered a <em>negative</em> margin, ${pct(mean(long, "exam") * 100, 1)} promised against ` +
+    `${pct(mean(long, "delivered") * 100, 1)} delivered, despite passing the same exam just as convincingly. ` +
+    `A seven-day exam can certify a model for about a month. It cannot certify one for half a year. ` +
+    `And the long-serving models are long-serving for a reason: they were promoted at the seasonal peak, ` +
+    `which sets the retrain bar so high that nothing crosses it afterwards. So the two faults compound. ` +
+    `The trigger goes quiet, the model stays, and the exam that cleared it is asked to stand for far longer than it can.`;
+
+  plotAll(jobs);
 }
 
 /* ---------- controlled experiment ---------- */
@@ -789,7 +1218,7 @@ function renderControl(sweep) {
       `settle, because in a real city nobody knows what the right answer was.`;
   }
 
-  jobs.forEach((j) => Plotly.newPlot(j.div, j.traces, j.layout, CONFIG));
+  plotAll(jobs);
 }
 
 /* ---------- method section ---------- */
@@ -859,6 +1288,30 @@ function renderMethod(m) {
     ["PSI significant", code(`> ${p.psi_threshold}`), `stable below ${b.stable}, moderate ${b.stable} to ${b.significant}`],
     ["promotion margin", code(`> ${pct(p.promotion_margin)}`), "or the challenger is rejected"],
   ]);
+}
+
+/* The unattended loop, as a count of cycles and the dates they cover.
+ *
+ * It used to sit in the city selector, where it drew the same charts as a city
+ * on two data points and invited a comparison with a 48-week replay. It is a
+ * mode, not a place. Reported here as facts about what the tracking store
+ * holds, with no claim about what put them there: a cycle run by hand and a
+ * cycle run by the weekly Action leave identical records, so asserting the cron
+ * is working would be asserting something this page cannot see. */
+function renderSchedule(s) {
+  const card = document.getElementById("schedule-card");
+  card.hidden = !s;
+  if (!s) return;
+  const plural = s.cycles === 1 ? "cycle has" : "cycles have";
+  document.getElementById("schedule-desc").innerHTML =
+    `Alongside the six replays, the same code runs one cycle at a time against live Kraków data, ` +
+    `keeping its history in a tracking store committed back to the repository. So far ${s.cycles} ` +
+    `${plural} been recorded, covering ${s.first} to ${s.last}, most recently logged on ` +
+    `${s.logged_at}. It is still serving its first model and has triggered ${s.retrains} retrains, ` +
+    `which is what two cycles can be expected to show. ` +
+    `<span class="gloss">The records do not say what ran them. A cycle started by hand and one ` +
+    `started by the weekly job are indistinguishable in the store, so this is a count of what is ` +
+    `there rather than evidence the schedule is firing.</span>`;
 }
 
 function renderDataLinks(data) {
@@ -935,6 +1388,7 @@ async function main() {
   document.getElementById("built").textContent = `Snapshot · built ${DATA.built}`;
   // Static across profiles, so it is rendered once rather than per selection.
   renderMethod(DATA.method);
+  renderSchedule(DATA.schedule);
   renderDataLinks(DATA);
   buildSegmented();
   if (DATA.profiles.length) {
