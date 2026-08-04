@@ -1,8 +1,11 @@
 """The model itself: deliberately boring.
 
-A Ridge on three features is enough. A simple model decays *legibly* when the
-relationship shifts, which is what the demo is about -- a big model would
-absorb some of the drift and blur the story.
+A Ridge on six weather variables and the hour of day. A simple model decays
+*legibly* when the relationship shifts, which is what the demo is about: a big
+model would absorb some of the drift and blur the story.
+
+It was three features and grew to eight, which is why anything counting them
+reads the list from `config.FEATURES` rather than hardcoding a number.
 """
 
 from __future__ import annotations

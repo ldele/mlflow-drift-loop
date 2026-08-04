@@ -140,6 +140,68 @@ def test_skill_is_positive_exactly_when_the_model_beats_the_baseline(source):
         assert (skill > 0) == (rmse < climatology)
 
 
+def test_the_champion_series_uses_the_loop_s_own_logged_error(source):
+    """The serving champion's error is read, not reconstructed.
+
+    A run that promotes monitors with the *outgoing* champion and then writes the
+    winner onto its ``champion_version`` tag. Reconstructing from the tag would
+    credit the new model with a window it never served, and that window overlaps
+    the challenger's training data, so the credit flatters it.
+    """
+    early = train(source.get_data(pd.Timestamp("2025-01-01"), pd.Timestamp("2025-03-01")))
+    late = train(source.get_data(pd.Timestamp("2025-05-01"), pd.Timestamp("2025-07-01")))
+    models = {1: _as_registered(early, 1), 2: _as_registered(late, 2)}
+
+    as_of = pd.date_range("2025-07-15", periods=4, freq="7D")
+    sentinel = 123.456
+    runs = pd.DataFrame(
+        {
+            "as_of": as_of,
+            "champion_version": [1, 2, 2, 2],
+            "tags.promotion_decision": ["none", "promoted", "none", "none"],
+            "metrics.champion_rmse": [sentinel, sentinel, sentinel, sentinel],
+        }
+    )
+
+    result = build(source, runs, models, monitor_days=14, lead_days=0, promotion_margin=0.05)
+
+    assert result.champion_rmse == [sentinel] * 4, "logged error should win over reconstruction"
+    # The promoting run was served by version 1, whatever its tag now says.
+    assert result.serving_version == [1, 1, 2, 2]
+
+
+def test_paired_value_counts_windows_by_who_served_them(source):
+    """"Did retraining help" must not be decided by comparing two floats.
+
+    The served figure is logged and the frozen one is reconstructed, so for the
+    identical model they agree only to the precision of the coefficient tags.
+    Testing ``served != frozen`` therefore marks every window as retrained and
+    averages in the ones from before anything was promoted.
+    """
+    from driftloop.retrospect import retraining_value
+
+    early = train(source.get_data(pd.Timestamp("2025-01-01"), pd.Timestamp("2025-03-01")))
+    late = train(source.get_data(pd.Timestamp("2025-05-01"), pd.Timestamp("2025-07-01")))
+    models = {1: _as_registered(early, 1), 2: _as_registered(late, 2)}
+
+    as_of = pd.date_range("2025-07-15", periods=6, freq="7D")
+    runs = pd.DataFrame(
+        {
+            "as_of": as_of,
+            "champion_version": [1, 1, 1, 1, 2, 2],
+            "tags.promotion_decision": ["none"] * 4 + ["promoted", "none"],
+        }
+    )
+
+    value = build(source, runs, models, 14, 0, 0.05)
+    scored = retraining_value(value)
+
+    # Promotion lands on window 4, and that window was still served by v1, so
+    # only the last window counts.
+    assert scored["acted_windows"] == 1
+    assert scored["windows"] == 6
+
+
 def test_gate_calibration_excludes_the_promotion_window_itself(source):
     """The delivered margin must not be measured on the challenger's own training data.
 

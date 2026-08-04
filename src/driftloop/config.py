@@ -146,7 +146,7 @@ KRAKOW = OpenMeteoConfig()
 
 # Monsoon rain scrubs the air to a September minimum, then crop-residue burning
 # and winter inversions take PM2.5 from ~42 to ~127 ug/m3. The most violent of
-# the three by a wide margin.
+# the six by a wide margin.
 DELHI = OpenMeteoConfig(
     name="Delhi",
     country="IN",

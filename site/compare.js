@@ -35,7 +35,12 @@ function resolveTheme() {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 const P = () => THEMES[resolveTheme()];
-const pct = (v, d = 1) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(d)}%`;
+/* No sign on a value that rounds to zero: "−0.0%" reads as a loss that rounded
+ * away rather than as breaking even. */
+const pct = (v, d = 1) => {
+  const rounded = Number(Math.abs(v).toFixed(d));
+  return rounded === 0 ? `0.${"0".repeat(d)}%` : `${v >= 0 ? "+" : "−"}${rounded.toFixed(d)}%`;
+};
 
 function plotBase(pal, yTitle, opts = {}) {
   return {
@@ -302,7 +307,10 @@ function renderAll() {
 }
 
 function setupTheme() {
-  const saved = localStorage.getItem("driftloop-theme");
+  // Same ?theme=light|dark override the per-city page honours, so a link that
+  // pins the palette keeps working when a reader follows it between the two.
+  const asked = new URLSearchParams(location.search).get("theme");
+  const saved = asked === "dark" || asked === "light" ? asked : localStorage.getItem("driftloop-theme");
   if (saved === "dark" || saved === "light") document.documentElement.setAttribute("data-theme", saved);
   document.getElementById("theme").addEventListener("click", () => {
     const next = resolveTheme() === "dark" ? "light" : "dark";

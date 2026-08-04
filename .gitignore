@@ -22,3 +22,10 @@ outputs/
 # published. The glob covers cities added later without another edit here.
 site/data.json
 site/*_hourly.csv
+
+# Per-session working notes: what one session did and what it left open, for
+# picking the project back up. HANDOFF.md is the committed counterpart and holds
+# what stays true; this is the part that stops being interesting once the open
+# threads are closed, so it does not belong in the history.
+/SESSION.md
+HANDOFF.md

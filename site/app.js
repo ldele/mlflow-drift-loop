@@ -274,7 +274,14 @@ function chartCard(jobs, title, desc, chips, traces, layout, container = "charts
  * spend three of five slots on (runs / retrains / promotions) said what the
  * machine *did* and nothing about whether any of it worked, and two of them had
  * to be subtracted from each other to reach the number that matters. */
-const pct = (v, digits = 0) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(digits)}%`;
+/* A signed percentage, with no sign at all on zero. "−0.0%" is what the
+ * arithmetic produces when retraining breaks exactly even, and it reads as a
+ * loss that rounded away rather than as a wash. */
+const pct = (v, digits = 0) => {
+  const rounded = Number(Math.abs(v).toFixed(digits));
+  return rounded === 0 ? `0.${"0".repeat(digits)}%`.replace(".%", "%")
+    : `${v >= 0 ? "+" : "−"}${rounded.toFixed(digits)}%`;
+};
 
 /* Plot every collected job, then force a re-measure.
  *
@@ -747,6 +754,12 @@ function render() {
   lay.margin.l = 132;
   lay.yaxis.showgrid = false;
   lay.yaxis.linecolor = "rgba(0,0,0,0)";
+  // Every row named. plotBase asks for five ticks, which on a six-category axis
+  // makes Plotly label every other one, and a heatmap row with no label is a
+  // row the reader cannot identify.
+  lay.yaxis.tickmode = "linear";
+  lay.yaxis.dtick = 1;
+  delete lay.yaxis.nticks;
   traces = [{
     type: "heatmap",
     x: p.as_of,
@@ -947,7 +960,7 @@ function renderBenchmark(p) {
 
   const rows =
     group("Weather forecast only",
-      "temperature, wind speed and humidity as forecast for the target hour. What the champion sees.",
+      "the six weather variables forecast for the target hour, plus the hour itself. What the champion sees.",
       weatherOnly) +
     group("Sees past PM2.5",
       "the readings available when the forecast was issued, a week before the target hour.",
@@ -1241,12 +1254,12 @@ function renderMethod(m) {
 
   document.getElementById("method").hidden = false;
   document.getElementById("method-sub").textContent =
-    "Everything above comes out of the same four steps, run once a week, with nobody watching. " +
-    "No city gets special treatment. They all run on identical settings, so where two cities " +
-    "behave differently, it is their air that differs and not their tuning.";
+    "Every city on this page comes out of the same four steps, run once a week. No city gets " +
+    "special treatment: they all run on identical settings, so where two cities behave " +
+    "differently, it is their air that differs and not their tuning.";
 
   const steps = [
-    ["Mark its homework", `Take the model in service and check the last ${days(p.monitor_days)} of forecasts against what the air actually did.`],
+    ["Mark its homework", `Take the model in service and check the last ${days(p.monitor_days)} of forecasts against what the air did.`],
     ["Look for trouble, two ways", "First, whether the weather has stopped resembling what the model learned from. Separately, whether the model is getting things wrong. The first can fire before any damage shows. Only the second is allowed to spend money."],
     ["Train a rival", `If the error is ${p.perf_drift_threshold}× what it used to be, train a fresh model on the last ${days(p.challenger_train_days)} and let it apply for the job.`],
     ["Make it earn the job", `Both sit the same exam, ${days(p.holdout_days)} of air neither has seen. The newcomer has to win by ${pct(p.promotion_margin)} rather than squeak past, or it is thrown away.`],
@@ -1360,7 +1373,12 @@ function buildSegmented() {
 }
 
 function setupTheme() {
-  const saved = localStorage.getItem("driftloop-theme");
+  // ?theme=light|dark pins the palette for this load without touching the
+  // stored preference. It exists so the screenshots in the README can be
+  // regenerated headlessly against a known theme, and it doubles as a way to
+  // link someone to the page as you are seeing it.
+  const asked = new URLSearchParams(location.search).get("theme");
+  const saved = asked === "dark" || asked === "light" ? asked : localStorage.getItem("driftloop-theme");
   if (saved === "dark" || saved === "light") document.documentElement.setAttribute("data-theme", saved);
   document.getElementById("theme").addEventListener("click", () => {
     const next = resolveTheme() === "dark" ? "light" : "dark";

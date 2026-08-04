@@ -65,22 +65,23 @@ convention: <0.10 stable, 0.10–0.25 moderate, >0.25 significant). The retrain
 trigger is the champion's RMSE on the monitor window against its RMSE at
 training time, at 1.25×, meaning the model got 25% worse.
 
-Kraków is the clearest demonstration that these two must stay separate. Through
-the second half of its replay its features drift further from the training window
-than any other city on the page, while the champion runs comfortably *under* its
-training error. Distribution shift alone would have ordered twenty pointless
-retrains there.
+Kraków is the clearest demonstration that these two must stay separate, and also
+the clearest demonstration that the second one is built wrong. Through the second
+half of its replay its features drift further from the training window than any
+other city on the page while the champion runs comfortably *under* its training
+error, so distribution shift alone would have ordered twenty pointless retrains
+there.
 
-That last sentence needs a caveat it did not originally carry, and the caveat is
-the more interesting half. "Under its training error" is true only against a bar
-set in deep winter: the champion serving that stretch was promoted at the
-seasonal peak, so its baseline is 45.8 µg/m³ and almost nothing can cross
-1.25× it. Measured against a yardstick that does not move when a model is
-promoted, that same champion is at its *worst* there, with skill of −1.67 against a
-30-day daily profile, having been +0.43 in January. So the loop declining to
-retrain in Kraków's summer is the right call reached by a broken route: the
-retrains would indeed have been pointless, and the signal that said so had by
-then stopped measuring staleness at all. See
+"Under its training error" is doing the work, and it is measured against a bar
+set in deep winter. The champion serving that stretch was promoted at the
+seasonal peak, so its baseline is 45.8 µg/m³ and almost nothing can cross 1.25×
+it. Against a yardstick that holds still when a model is promoted, that same
+champion is at its worst in that stretch rather than its best: skill of −1.67
+against a 30-day daily profile, having been +0.43 in January.
+
+So the loop is right to decline and the signal that told it so had stopped
+measuring staleness. Both halves are true, and only the first was on this page
+before. See
 [evaluation.md](evaluation.md#the-retrain-trigger-stops-measuring-staleness).
 
 ## How much history a challenger gets
@@ -135,8 +136,8 @@ refitting anything. `log_and_register` already writes every version's
 coefficients as registry tags in original feature units, so a version is
 reconstructable as `intercept + Σ coef_i · x_i`, exact to the six decimals the
 tags carry, which `tests/test_retrospect.py` asserts against the loop's own
-independently logged RMSE. Scoring nine versions across forty-eight windows is
-then a few dot products.
+independently logged RMSE. Scoring Kraków's fifteen registered versions across
+its forty-eight windows is then a few dot products.
 
 Two windowing rules keep it honest. The skill baseline's reference period ends a
 full forecast lead before the window it scores, so every hour it averages was

@@ -49,7 +49,7 @@ CITY_STORY = {
     "openmeteo": " Here it's a summer-trained model walking into the winter heating season, "
     "when basin inversions drive PM2.5 up several-fold.",
     "openmeteo_delhi": " Here it's a monsoon-trained model walking into the post-monsoon "
-    "burning season, which triples Delhi's PM2.5, the most violent of the three.",
+    "burning season, which triples Delhi's PM2.5, the most violent of the six.",
     "openmeteo_la": " Los Angeles is the quiet one: barely a season at all, so the champion "
     "mostly holds and the loop mostly declines to retrain.",
 }

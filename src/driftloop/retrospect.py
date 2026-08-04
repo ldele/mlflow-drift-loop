@@ -178,6 +178,13 @@ class Retrospective:
     as_of: list[pd.Timestamp] = field(default_factory=list)
     climatology_rmse: list[float] = field(default_factory=list)
     champion_version: list[int] = field(default_factory=list)
+    # Which version actually *served* each window, which is not always the one
+    # tagged on the run. A run that promotes monitors with the outgoing champion
+    # and then writes the winner's version onto the tag, so on promotion runs the
+    # two differ by one. `champion_version` keeps the tag, because a decay curve
+    # should begin where a model was promoted; this is for asking what was in
+    # service at the time.
+    serving_version: list[int] = field(default_factory=list)
     champion_rmse: list[float] = field(default_factory=list)
     champion_skill: list[float] = field(default_factory=list)
     # Per-window mean of each weather feature, and of the target. This is the
@@ -233,9 +240,18 @@ def retraining_value(result: Retrospective) -> dict[str, float | int]:
         "windows": int(usable.sum()),
     }
 
-    # Windows where the loop had replaced the original, so the two models differ
-    # and the comparison is about retraining rather than about nothing.
-    acted = usable & (served != frozen)
+    # Windows where a retrained model was the one serving, so the comparison is
+    # about retraining rather than about a model against itself.
+    #
+    # Keyed on the version in service, not on whether the two error values
+    # differ. The served figure is the loop's logged error and the frozen one is
+    # reconstructed from coefficient tags, so for the very same model they agree
+    # only to the six decimals the tags carry. An equality test on floats from
+    # two sources therefore counted every window as retrained, which pulled
+    # Johannesburg's paired result from +20% down to zero by averaging in
+    # thirteen windows where nothing had been retrained yet.
+    serving = np.asarray(result.serving_version or result.champion_version, dtype=int)
+    acted = usable & (serving != frozen_version)
     out["acted_windows"] = int(acted.sum())
     if acted.any():
         ratio = served[acted] / frozen[acted]
@@ -304,9 +320,41 @@ def build(
 
     champion_versions = [int(v) for v in runs["champion_version"]]
     result.champion_version = champion_versions
+
+    # The champion series is the loop's own logged error, not this module's
+    # reconstruction of it.
+    #
+    # They disagree on promotion runs, and the logged one is right. A run that
+    # promotes monitors with the *old* champion and then overwrites its
+    # `champion_version` tag with the winner, so reading the tag credits the new
+    # model with a window it never served -- and that window overlaps the
+    # challenger's own training data, so the credit is flattering. Delhi came out
+    # at +44.8% for retraining that way against the benchmark's +43.8%, a whole
+    # point of free improvement from an accounting slip.
+    #
+    # The per-version curves keep using the tag, which is correct for them: a
+    # decay curve should start where a model was promoted.
+    promoted = (
+        [str(v) == "promoted" for v in runs["tags.promotion_decision"]]
+        if "tags.promotion_decision" in runs
+        else [False] * len(champion_versions)
+    )
+    result.serving_version = [
+        champion_versions[i - 1] if promoted[i] and i > 0 else v
+        for i, v in enumerate(champion_versions)
+    ]
+
+    logged = runs["metrics.champion_rmse"] if "metrics.champion_rmse" in runs else None
     for i, version in enumerate(champion_versions):
-        result.champion_rmse.append(result.version_rmse.get(version, [float("nan")] * len(windows))[i])
-        result.champion_skill.append(result.version_skill.get(version, [float("nan")] * len(windows))[i])
+        fallback = result.version_rmse.get(version, [float("nan")] * len(windows))[i]
+        value = float(logged.iloc[i]) if logged is not None and not pd.isna(logged.iloc[i]) else fallback
+        climatology = result.climatology_rmse[i]
+        result.champion_rmse.append(value)
+        result.champion_skill.append(
+            float("nan")
+            if not climatology or np.isnan(climatology) or np.isnan(value)
+            else 1.0 - value / climatology
+        )
 
     spans = _service_spans(result.as_of, champion_versions)
     for version, (first, _) in spans.items():

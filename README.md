@@ -7,8 +7,8 @@ notices until something downstream breaks.
 
 This system notices on its own. Every week it marks its own homework. When the
 model it is running starts slipping, it trains a replacement, and it refuses to
-ship that replacement unless it beats the one already in service. Nobody is
-watching it. It has been running since 2025.
+ship that replacement unless it beats the one already in service. Six cities are
+replayed week by week across a full year of weather, from 2025 into 2026.
 
 The job it does is forecasting how dirty a city's air will be a week from now,
 using nothing but the weather forecast. Six cities on six continents.
@@ -70,23 +70,23 @@ retrained model was serving.
 
 | | how bad it gets (µg/m³) | weeks | retrains | across the replay | week by week |
 |---|---|---|---|---|---|
-| **Delhi** | 42 → 127, crop burning after the monsoon | 40 | 9 | **+44.8%** | **+52.2%**, won 95% |
-| **Santiago** | 18 → 94, winter smog trapped in a bowl | 22 | 13 | **+13.4%** | **+21.4%**, won 100% |
-| **Kraków** | 8 → 57, coal heating in a valley | 48 | 14 | +0.2% | +9.4%, won 73% |
-| **Johannesburg** | 23 → 84, winter coal smoke | 20 | 11 | 0.0% | **+20.2%**, won 100% |
-| **Melbourne** | 5 → 15, winter wood heaters | 31 | 8 | 0.0% | +1.5%, won 71% |
-| **Los Angeles** | 15 → 29, a mild winter bump | 37 | 3 | −8.9% | +1.6%, won 51% |
+| **Delhi** | 42 → 127, crop burning after the monsoon | 40 | 9 | **+43.8%** | **+49.4%**, won 92% of 38 |
+| **Santiago** | 18 → 94, winter smog trapped in a bowl | 22 | 13 | **+12.9%** | **+17.3%**, won 100% of 16 |
+| **Kraków** | 8 → 57, coal heating in a valley | 48 | 14 | +0.2% | +6.4%, won 73% of 48 |
+| **Johannesburg** | 23 → 84, winter coal smoke | 20 | 11 | 0.0% | **+14.9%**, won 100% of 6 |
+| **Melbourne** | 5 → 15, winter wood heaters | 31 | 8 | 0.0% | +1.2%, won 70% of 27 |
+| **Los Angeles** | 15 → 29, a mild winter bump | 37 | 3 | −8.9% | 0.0%, won 49% of 37 |
 
 In Delhi, where the air transforms, keeping the model fresh roughly halves its
-error. In Los Angeles retraining is a coin toss: it wins 51% of the weeks it
-acted, against a headline that reads −8.9%. Los Angeles is the control, and it
-earns its place by failing.
+error. In Los Angeles it is a coin toss, winning 49% of the weeks it acted and
+netting nothing either way. Los Angeles is the control, and it earns its place by
+failing.
 
 Johannesburg is where the promotion gate does its most visible work, and where
 the unpaired number misleads hardest. Eleven retrains, three shipped, the other
 eight thrown away for failing to clear the margin. Across the replay that reads
-as 0.0%. Week by week, in the seven weeks a retrained model was serving, it beat
-the original in all seven by a median of 20.2%.
+as 0.0%. Week by week, in the six weeks a retrained model was serving, it beat
+the original in all six by a median of 14.9%.
 
 Half these cities are dirtiest in June to August and the other half in December
 to January, which is how you can tell the thresholds are not secretly encoding a

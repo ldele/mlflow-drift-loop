@@ -5,6 +5,8 @@ Whether it works, and where it does not. For how it works, see
 
 ## Six cities that disagree
 
+![All six cities side by side](images/compare.png)
+
 Weather forecasts from the [Open-Meteo](https://open-meteo.com/) historical
 forecast archive, joined on the hour with observed PM2.5 from its air-quality
 API. Each city trains a model on a clean season and replays week by week into the
@@ -12,12 +14,12 @@ season that ruins it, and then out the other side.
 
 | | span | PM2.5 swing | model error, start → worst | retrains / weeks | across replay | week by week |
 |---|---|---|---|---|---|---|
-| **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 20.0 → 99.0 | 9 / 40 | **+44.8%** | **+52.2%**, won 95% |
-| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.4 → 68.3 | 13 / 22 | **+13.4%** | **+21.4%**, won 100% |
-| **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 14 / 48 | +0.2% | +9.4%, won 73% |
-| **Johannesburg** | Nov 25 → Jul 26 | 23 → 84, Highveld coal smoke | 11.6 → 82.3 | 11 / 20 | 0.0% | **+20.2%**, won 100% |
-| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.3 → 15.0 | 8 / 31 | 0.0% | +1.5%, won 71% |
-| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 17.3 → 19.5 | 3 / 37 | −8.9% | +1.6%, won 51% |
+| **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 20.0 → 99.0 | 9 / 40 | **+43.8%** | **+49.4%**, won 92% of 38 |
+| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.4 → 68.3 | 13 / 22 | **+12.9%** | **+17.3%**, won 100% of 16 |
+| **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 14 / 48 | +0.2% | +6.4%, won 73% of 48 |
+| **Johannesburg** | Nov 25 → Jul 26 | 23 → 84, Highveld coal smoke | 11.6 → 82.3 | 11 / 20 | 0.0% | **+14.9%**, won 100% of 6 |
+| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.3 → 15.0 | 8 / 31 | 0.0% | +1.2%, won 70% of 27 |
+| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 17.3 → 19.5 | 3 / 37 | −8.9% | 0.0%, won 49% of 37 |
 
 The two retraining columns disagree, and the second is the one to trust when they
 do. "Across replay" compares the median error of what was served against the
@@ -28,6 +30,12 @@ have the two models identical, both medians land on the same value, and the
 column reads 0.0%. "Week by week" holds the window fixed, compares the two models
 in it, and reports the median of those per-window ratios over the weeks a
 retrained model was serving, alongside how often it won.
+
+Which windows those are is decided by the version in service, not by whether the
+two error figures differ. The served figure is the loop's own logged error and
+the frozen one is rebuilt from coefficient tags, so for the identical model they
+agree only to six decimals; testing them for equality marks every window as
+retrained and averages in the ones from before anything was promoted.
 
 The cities were picked on measurements rather than reputation. Eighteen
 candidates were fetched and ranked by PM2.5 swing before any of them was wired
@@ -75,21 +83,21 @@ replay past the point that flatters the system.
 Los Angeles is the control, and the measurements chose it for that. It was picked
 as the summer-smog city; hourly PM2.5 over 2025–26 peaks in November and bottoms
 out in June. Its model barely moves across 37 weeks and only three retrains ever
-fire. Week by week, retraining wins 51% of the weeks it acted, which is a coin
-toss and the fair verdict on the city. There has to be drift for a drift loop to
-earn anything.
+fire. Week by week, retraining wins 49% of the weeks it acted and nets nothing
+either way, which is a coin toss and the fair verdict on the city. There has to
+be drift for a drift loop to earn anything.
 
 Johannesburg is where the promotion gate does the most visible work. Error
 climbs from 11.6 to 82.3 µg/m³, the worst on the page, and eleven retrains
 produce only three promotions: the other eight challengers failed to clear the 5%
 margin and were thrown away. The loop spends the effort, the gate declines to
 pay, and nothing ships that did not earn it. When something did ship it worked:
-in the seven weeks a retrained model was serving it beat the original in all
-seven, by a median of 20.2%.
+in the six weeks a retrained model was serving it beat the original in all six,
+by a median of 14.9%.
 
 Melbourne is the counter-intuitive case. Its air stays near the WHO guideline all
 year, yet the model still decays to more than four times its training error, so
-clean air does not imply a stable model. Retraining still helps there, by 1.5%
+clean air does not imply a stable model. Retraining still helps there, by 1.2%
 week on week, which is the smallest real effect on the page.
 
 ### The loop has no calendar in it
@@ -169,6 +177,8 @@ Median RMSE, µg/m³, lower is better:
 
 ### Six models, and whether one would do
 
+![One model over all six cities against six separate ones](images/pooled.png)
+
 One Ridge over all six cities at once, trained once on the six training windows
 and never retrained, is the obvious cheaper arrangement. It carries a separate
 intercept per city, and that intercept does most of the work: mean PM2.5 runs
@@ -240,6 +250,8 @@ when a model is promoted. Then put an absolute error floor alongside the ratio,
 so being bad in absolute terms is sufficient on its own.
 
 ## A seven-day exam certifies a model for a month, not half a year
+
+![What the exam promised against what it delivered](images/gate.png)
 
 Every promotion left a prediction behind: the margin the challenger won its
 seven-day exam by. That margin is the number the decision was made *on*, so it
