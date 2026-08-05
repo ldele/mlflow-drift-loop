@@ -44,14 +44,29 @@ st.set_page_config(page_title="Drift loop", page_icon="~", layout="wide")
 
 # What each city's replay is a story *about*. Keyed by profile so a new city
 # without an entry degrades to the generic story rather than borrowing another
-# city's — or, worse, the live schedule's.
+# city's — or, worse, the live schedule's. All six are filled: three of them were
+# missing, and a Melbourne page silently reading "here it's a summer-trained
+# model walking into the winter heating season" is worse than no story at all.
 CITY_STORY = {
     "openmeteo": " Here it's a summer-trained model walking into the winter heating season, "
-    "when basin inversions drive PM2.5 up several-fold.",
+    "when basin inversions over a coal-heated valley drive PM2.5 up several-fold — and then "
+    "back out the other side, which is the half of the year that exposed the retrain rule.",
     "openmeteo_delhi": " Here it's a monsoon-trained model walking into the post-monsoon "
     "burning season, which triples Delhi's PM2.5, the most violent of the six.",
     "openmeteo_la": " Los Angeles is the quiet one: barely a season at all, so the champion "
-    "mostly holds and the loop mostly declines to retrain.",
+    "mostly holds and the loop mostly declines to retrain. It is the control, and it earns "
+    "its place by failing — there has to be drift for a drift loop to be worth anything.",
+    "openmeteo_santiago": " Santiago is Kraków's twin, half a year out of phase: the same "
+    "basin trapping the same winter inversions, walked into from a southern-summer-trained "
+    "model. Same thresholds, opposite season, which is how you can tell the loop has no "
+    "calendar in it.",
+    "openmeteo_joburg": " Johannesburg is where the promotion gate does its most visible "
+    "work. Highveld coal smoke takes the error from 12 to 82 µg/m³, eleven retrains fire, "
+    "and only three challengers clear the 5% margin — the other eight are trained and "
+    "thrown away.",
+    "openmeteo_melbourne": " Melbourne stays near the WHO guideline all year and its model "
+    "still decays to more than four times its training error, which is the case against "
+    "reading clean air as a stable model.",
 }
 
 
@@ -172,6 +187,68 @@ def load_retrospective(db_filename: str, experiment: str, profile_key: str):
     )
 
 
+@st.cache_data(ttl=30)
+def load_training_band(db_filename: str, experiment: str, profile_key: str):
+    """The range each feature held while the *first* champion was trained.
+
+    Drawn behind the feature series, this states the covariate-drift claim
+    physically rather than statistically: the band is what the model was shown,
+    the line is what the world did afterwards, and a line leaving its band is
+    the case for retraining before any statistic is computed.
+    """
+    from driftloop.data import replayable_source
+
+    profile = PROFILES[profile_key]
+    source = replayable_source(profile)
+    if source is None:
+        return None
+    tracking.setup(experiment, db_filename)
+    models = retrospect.registered_models(MlflowClient(), profile.loop.registered_model_name)
+    if not models:
+        return None
+    bootstrap = models[min(models)]  # the version everything else drifted away from
+    return (
+        retrospect.training_window_stats(source, bootstrap),
+        bootstrap.train_start,
+        bootstrap.train_end,
+    )
+
+
+@st.cache_data(ttl=30)
+def load_importance(db_filename: str, experiment: str, profile_key: str, version: int, as_of: str):
+    """How far the prediction moves per 1-sd move in each feature, in µg/m³.
+
+    The comparable version of the coefficient panels. A slope per hPa and a
+    slope per W/m² answer different questions, so the largest raw coefficient is
+    usually just the feature with the smallest units; scaling each by the
+    feature's own spread over a real window puts them all in µg/m³.
+    """
+    from driftloop.data import replayable_source
+
+    profile = PROFILES[profile_key]
+    source = replayable_source(profile)
+    if source is None:
+        return None
+    tracking.setup(experiment, db_filename)
+    models = retrospect.registered_models(MlflowClient(), profile.loop.registered_model_name)
+    model = models.get(int(version))
+    if model is None:
+        return None
+    # Taken as a string so the cache key is a plain scalar rather than a
+    # Timestamp Streamlit has to reach for pickle to hash.
+    end = pd.Timestamp(as_of)
+    window = source.get_data(end - pd.Timedelta(profile.loop.monitor_days, unit="D"), end)
+    if window.empty:
+        return None
+    ranked = model.importance(window)
+    # The two clock terms are folded into one entry: separately they are half a
+    # daily cycle each and neither number means anything on its own.
+    rows = [(f, v) for f, v in ranked.items() if f in DRIFT_FEATURES]
+    rows.append(("hour of day", sum(v for f, v in ranked.items() if f not in DRIFT_FEATURES)))
+    rows.sort(key=lambda kv: kv[1], reverse=True)
+    return [f for f, _ in rows], [round(v, 3) for _, v in rows]
+
+
 def champion_age_days(runs: pd.DataFrame) -> tuple[int | None, str | None]:
     """How long the version currently serving has been the one serving."""
     if "tags.champion_version" not in runs or runs.empty:
@@ -200,6 +277,16 @@ profile_key = st.sidebar.radio(
     options=list(PROFILES),
     format_func=lambda k: PROFILES[k].label,
     index=0,
+)
+# What this app is *for*, said once. The published site is the argument, made
+# across all six cities at once and fixed at build time; this is the operator's
+# view of one backend, reading whatever the last run left in it, and it carries
+# the raw material the site distils away — every run as logged, every registered
+# version, the per-run distributions and residuals.
+st.sidebar.caption(
+    "The operator's view: one city's MLflow backend, live, as the last run left it. "
+    "[The published site](https://ldele.github.io/mlflow-drift-loop/) is the report — "
+    "all six cities on shared axes, fixed at build time."
 )
 PROFILE = PROFILES[profile_key]
 CFG = PROFILE.loop
@@ -257,9 +344,16 @@ promoted = runs[runs["tags.promotion_decision"] == "promoted"]
 retrained = runs[runs["tags.retrain_triggered"] == "True"]
 latest = runs.iloc[-1]
 run_by_as_of = dict(zip(runs["as_of"], runs["run_id"]))
+st.caption(
+    f"{len(runs)} weekly runs, {runs['as_of'].min():%b %Y} to {runs['as_of'].max():%b %Y}."
+)
 
 retro = load_retrospective(DB, CFG.experiment_name, profile_key)
 age_days, serving_version = champion_age_days(runs)
+# What retraining was worth, both ways. The paired reading is the headline: it
+# is the one the project's own evaluation says to trust, and it is what the loop
+# is *for*, so it belongs in the tile row rather than four charts down.
+value = retrospect.retraining_value(retro) if retro else {}
 
 # Three of these used to be counts of what the machine did, which says nothing
 # about whether any of it worked, and two of them had to be subtracted from each
@@ -301,7 +395,24 @@ c4.metric(
     f"worst: {latest['tags.worst_feature']}" if "tags.worst_feature" in latest else None,
     delta_color="off",
 )
-c5.metric("Weeks watched", len(runs))
+# "Weeks watched" was here, and it is a count of what the machine did rather
+# than a verdict on whether it worked — the same objection that retired three of
+# the other tiles. The count still appears in the caption above and in the Runs
+# tab. This is the number the whole loop exists to move.
+if "when_it_acted" in value:
+    c5.metric(
+        "Retraining was worth",
+        f"{value['when_it_acted']:+.1f}%",
+        f"over {value['acted_windows']} weeks it was serving · won {value['win_rate']:.0f}%",
+        delta_color="off",
+    )
+else:
+    c5.metric(
+        "Retraining was worth",
+        "—",
+        "nothing promoted yet" if retro else "needs a replayable city",
+        delta_color="off",
+    )
 
 tab_loop, tab_dist, tab_model, tab_sweep, tab_registry, tab_table = st.tabs(
     ["Drift loop", "Feature drift", "Model", "Knob sweep", "Registry", "Runs"]
@@ -432,14 +543,89 @@ with tab_loop:
                 fig, promoted["as_of"], promoted["metrics.challenger_rmse"], "promoted", theme.GOOD
             )
         st.plotly_chart(fig, width="stretch")
+        st.caption(
+            "Being newer is not a qualification. Both models sit the same exam, a week of air "
+            "neither has seen, and the challenger takes the job only by more than the "
+            f"{CFG.promotion_margin:.0%} margin. Whether passing it predicts anything is the "
+            "next question."
+        )
+
+    # Does passing the exam predict anything? The margin the gate decided on
+    # cannot also be the evidence it decided well, so this is the out-of-sample
+    # check: what each winner delivered against the model it displaced, scored
+    # on the windows it went on to serve.
+    if retro and retro.gate:
+        st.markdown("#### Did the exam predict anything?")
+        st.plotly_chart(
+            theme.gate_scatter(retro.gate, retrospect.GATE_LONG_WEEKS), width="stretch"
+        )
+        summary = retrospect.gate_summary(retro.gate)
+        short, long = summary["short"], summary["long"]
+        parts = []
+        if short["n"]:
+            parts.append(
+                f"Over {short['n']} promotion{'s' if short['n'] != 1 else ''} that served under "
+                f"{retrospect.GATE_LONG_WEEKS} weeks the exam promised {short['exam']:+.1%} and "
+                f"delivered {short['delivered']:+.1%}, with {short['harmful']} of {short['n']} "
+                "leaving the city worse off."
+            )
+        if long["n"]:
+            parts.append(
+                f"Over {long['n']} that served {retrospect.GATE_LONG_WEEKS} weeks or more it "
+                f"promised {long['exam']:+.1%} and delivered {long['delivered']:+.1%}, with "
+                f"{long['harmful']} of {long['n']} harmful."
+            )
+        st.caption(
+            " ".join(parts)
+            + " A seven-day exam certifies a model for about a month. The models that end up "
+            "serving half a year are the ones the ratcheted trigger above can no longer replace, "
+            "so the two faults compound."
+        )
+        if len(retro.gate) < 4:
+            st.caption(
+                f"Only {len(retro.gate)} promotions here, which is too few to read as "
+                "calibration on its own. The pooled version across all six cities is on the "
+                "published site."
+            )
 
 # --------------------------------------------------------------------------- #
 # Tab: feature distributions (the "why" behind PSI)                           #
 # --------------------------------------------------------------------------- #
 with tab_dist:
+    # The physical story first, because PSI is a summary of it and not the other
+    # way round. "0.25, significant" is a number nobody can picture; "fourteen
+    # degrees colder than anything the model was shown" is the actual argument.
+    band = load_training_band(DB, CFG.experiment_name, profile_key)
+    if retro and retro.feature_means and band:
+        stats, train_start, train_end = band
+        st.markdown("#### What changed in the world")
+        st.markdown(
+            "Each weather ingredient averaged over every monitoring window, in the units it "
+            "is measured in. The shaded band is the middle 80% of the *hourly* values that "
+            f"ingredient held while the first model was trained ({train_start:%Y-%m-%d} to "
+            f"{train_end:%Y-%m-%d}) — a percentile range rather than the full one, so a "
+            "single freak hour cannot widen it to cover everything. A line leaving its band "
+            "means the model is being asked about conditions it was never shown, which is the "
+            "case for retraining before any statistic is computed."
+        )
+        st.plotly_chart(
+            theme.factor_small_multiples(
+                retro.as_of, retro.feature_means, stats, DRIFT_FEATURES
+            ),
+            width="stretch",
+        )
+        st.caption(
+            "Read the bands as a rough guide rather than a test. They are hourly and the "
+            "lines are two-week means, so anything with a large day-to-night swing — "
+            "radiation most of all — gets a band far wider than a mean could ever leave. "
+            "Temperature is where the comparison bites: Kraków's spends the whole winter "
+            "below everything the first model was trained on."
+        )
+        st.divider()
+
+    st.markdown("#### The distributions PSI is summarising")
     st.markdown(
-        "The PSI number on the previous tab is a summary of *this*: how each "
-        "feature's distribution in the latest window (filled) has moved away from "
+        "How each feature's distribution in one window (filled) has moved away from "
         "the champion's training window (outline). This is what a data-drift "
         "monitor like Evidently shows — logged as an artifact every run."
     )
@@ -450,11 +636,25 @@ with tab_dist:
     )
     _, report = load_monitoring(DB, CFG.experiment_name, run_by_as_of[picked])
 
+    # Only what this run's artifact actually carries. A report is written once,
+    # at the time of the run, and the feature list has grown since — the Live
+    # schedule's backend was populated when the model had three features, so
+    # indexing DRIFT_FEATURES into it raised a KeyError and took the whole app
+    # down on that profile. An old run should render what it has and say what it
+    # does not, which is also what will happen to today's runs later.
+    shown = [f for f in DRIFT_FEATURES if f in report]
+    missing = [f for f in DRIFT_FEATURES if f not in report]
+    if missing:
+        st.info(
+            f"This run predates {', '.join(missing)}. Its drift report was written when the "
+            f"model had {len(shown)} features, and reports are not rewritten after the fact."
+        )
+
     # Three panels a row rather than one row of six: at six across, each
     # histogram is too narrow to read the shift the PSI number is summarising.
     per_row = 3
-    for start in range(0, len(DRIFT_FEATURES), per_row):
-        chunk = DRIFT_FEATURES[start : start + per_row]
+    for start in range(0, len(shown), per_row):
+        chunk = shown[start : start + per_row]
         for col, feature in zip(st.columns(per_row), chunk):
             entry = report[feature]
             label, color_ = psi_status(entry["psi"])
@@ -544,16 +744,52 @@ with tab_model:
         )
         st.dataframe(table, hide_index=True, width="stretch")
 
+        # What retraining was worth, both ways, because one of them lies.
+        #
+        # This was a single number taken off the two rows above — median served
+        # against median frozen — presented as the verdict. That comparison is
+        # unpaired: in a city that promotes nothing until week 14 of 20, most
+        # windows compare the first model against itself, both medians land on
+        # the same value, and it reads 0.0% while every window a retrained model
+        # actually served improved on the original. Publishing one without the
+        # other is the mistake the evaluation doc is written against.
         served = next((s for s in bench["scored"] if s["name"] == "champion_served"), None)
         frozen = next((s for s in bench["scored"] if s["name"] == "champion_frozen"), None)
-        if served and frozen:
-            gain = (1 - served["median_rmse"] / frozen["median_rmse"]) * 100
-            if gain >= 0:
-                st.success(f"Retraining is worth **{gain:+.1f}%** here against never retraining.")
+        across = value.get("across_replay")
+        if across is None and served and frozen:
+            across = (1 - served["median_rmse"] / frozen["median_rmse"]) * 100
+        if across is not None:
+            st.markdown("##### So was retraining worth it?")
+            paired, unpaired = st.columns(2)
+            if "when_it_acted" in value:
+                paired.metric(
+                    "Week by week",
+                    f"{value['when_it_acted']:+.1f}%",
+                    f"over the {value['acted_windows']} weeks a retrained model was serving · "
+                    f"won {value['win_rate']:.0f}% of them",
+                    delta_color="off",
+                )
             else:
+                paired.metric("Week by week", "—", "nothing retrained has served yet",
+                              delta_color="off")
+            unpaired.metric(
+                "Across the whole replay",
+                f"{across:+.1f}%",
+                f"median of all {value.get('windows', len(runs))} windows against a frozen model",
+                delta_color="off",
+            )
+            st.caption(
+                "**Trust the first when they disagree.** The second compares one median against "
+                "another, so where both are dominated by the same seasonal swing it largely "
+                "measures the season, and every week before the first promotion is a model "
+                "compared against itself. The first holds the window fixed, compares the two "
+                "models in it, and counts only the weeks a retrained model was actually serving."
+            )
+            if across < -0.05:
                 st.warning(
-                    f"Retraining costs **{gain:.1f}%** here: the champion was better left alone. "
-                    "Retraining a city whose world barely moves fits noise."
+                    "Negative across the replay: retraining cost more than it returned here. "
+                    "Retraining a city whose world barely moves fits noise, and that is a "
+                    "finding rather than a fault."
                 )
 
         alpha = bench.get("alpha")
@@ -589,6 +825,31 @@ with tab_model:
         st.info(
             f"No benchmark for **{PROFILE.label}** yet — run "
             f"`python scripts/benchmark.py --city all` to score it against the baselines."
+        )
+
+    # Answers the question the coefficient panels below cannot, and comes first
+    # for that reason: which of these ingredients actually drives the answer.
+    importance = (
+        load_importance(
+            DB, CFG.experiment_name, profile_key,
+            int(serving_version), runs["as_of"].iloc[-1].isoformat(),
+        )
+        if serving_version is not None
+        else None
+    )
+    if importance:
+        st.markdown("#### What moves the prediction")
+        st.markdown(
+            "How far the model's answer shifts when each ingredient moves by one of its own "
+            f"standard deviations, for v{serving_version} over the most recent window. This is "
+            "the comparable version of the coefficients below: those are per °C, per hPa, per "
+            "W/m², so the biggest of them is usually just the feature with the smallest units."
+        )
+        st.plotly_chart(theme.importance_bars(*importance), width="stretch")
+        st.caption(
+            "Boundary layer height — the depth of air pollution is diluted into — would very "
+            "likely top this list and is missing. Open-Meteo does not archive it at a seven-day "
+            "lead, so shortwave radiation stands in for it."
         )
 
     st.markdown("#### Coefficient evolution — a direct picture of concept drift")

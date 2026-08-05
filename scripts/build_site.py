@@ -76,11 +76,15 @@ SCHEDULE_KEY = "scheduled"
 # and why a city was chosen. If a sentence would be falsified by a re-run, it
 # belongs in a placeholder. See _story_facts for the available names.
 STORY = {
+    # Both readings, because this is the lead city and the page's own argument is
+    # that the across-the-replay number lies. Quoting only it here, where the two
+    # disagree by six points, was the page making the mistake it warns about.
     "openmeteo": "The city this started with. Kraków sits in a valley, and when the coal heating "
     "goes on for winter the smog has nowhere to escape to. A model trained on clean summer air "
     "goes from {rmse_first} to {rmse_peak} µg/m³ of error as that happens, and is replaced "
-    "{retrains} times over {runs} weeks. All that replacing is worth {retrain_gain}, near enough "
-    "a wash, and what it ends up with is {rank_phrase}.",
+    "{retrains} times over {runs} weeks. Measured across the whole replay that replacing is worth "
+    "{retrain_gain}, near enough a wash; held week by week over the {acted_weeks} weeks a "
+    "retrained model was serving, it is {retrain_acted}. What it ends up with is {rank_phrase}.",
     "openmeteo_delhi": "The violent one. The monsoon scrubs Delhi's air clean by September, then "
     "the crop stubble is burned and the winter air stops moving, and the pollution triples. The "
     "model's error runs from {rmse_first} to {rmse_peak} µg/m³ while the weather stops resembling "
@@ -666,6 +670,11 @@ def method_block() -> dict:
         "params": params,
         "params_uniform": uniform,
         "psi_bands": {"stable": PSI_STABLE, "significant": PSI_SIGNIFICANT},
+        # Where a promotion stops counting as short-serving on the gate chart.
+        # Published rather than repeated in the JavaScript, because the Streamlit
+        # app draws the same split and two hand-kept copies of one threshold is
+        # how the two UIs end up telling different stories.
+        "gate_long_weeks": retrospect.GATE_LONG_WEEKS,
     }
 
 

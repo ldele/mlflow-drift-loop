@@ -1,24 +1,68 @@
 # Handoff
 
-Last updated 2026-08-02.
+Last updated 2026-08-05.
 
 ## Where the project is
 
 Six cities run the full loop, the static site and Streamlit dashboard both
-publish, the weekly Action keeps the live profile advancing, and the promoted
-champion is now served over HTTP. `README.md` is the real documentation; this
-file only carries what a reader of the code could not work out for themselves.
+publish, and the promoted champion is served over HTTP. `README.md` is the real
+documentation; this file only carries what a reader of the code could not work
+out for themselves.
 
-## What landed on 2026-08-02
+## What landed on 2026-08-05
 
-- **Serving** (`src/driftloop/serving.py`, `scripts/serve.py`, `Dockerfile`).
-  FastAPI reading the `champion` alias, with `/health`, `/model`, `/predict`
-  and `/reload`. Ten tests in `tests/test_serving.py`.
-- **A CI gate** (`.github/workflows/ci.yml`). Nothing ran the tests before
-  this; the two existing workflows only deployed.
-- **A latent bug fixed.** `tracking.load_champion` returned `version` as an int
-  while the dataclass declared `str` and `log_and_register` coerced. It only
-  surfaced once serving compared the two.
+The Streamlit app had fallen behind the published site, and closing that gap
+surfaced one accounting bug in numbers both UIs publish.
+
+- **A first run that promotes was credited to the wrong model.**
+  `bootstrap_champion` registers v1 before any monitoring cycle exists, so a
+  first run that promotes has no earlier row to read the outgoing version off,
+  and the run's own tag has already been overwritten with the winner. Kraków and
+  Los Angeles both promote on their first run. `retrospect.build` now takes the
+  outgoing version from the registry there (the lowest registered version), which
+  moved Kraków's paired figure from +6.4% over 48 weeks to +6.5% over 47, Los
+  Angeles's from 0.0% over 37 to −2.8% over 36, and recovered one real promotion
+  per city into the gate calibration (27 → 29, conclusions unchanged). Pinned by
+  `test_a_first_run_that_promotes_was_served_by_the_bootstrap`.
+- **The dashboard reached parity on the analysis.** It gained the paired
+  retraining figure (it had been publishing only the unpaired one the evaluation
+  doc says lies), the gate calibration, the physical-factors chart with the
+  training band, and per-1-sd feature importance. `CITY_STORY` now covers all six
+  cities. The sidebar states what the app is for, since it and the site are no
+  longer answering the same question.
+- **`GATE_LONG_WEEKS` lives in `retrospect.py`** and is published through
+  `data.json`, because both UIs draw that split and a threshold kept by hand in
+  Python and JavaScript is how they end up telling different stories.
+- **`docs/methodology.md` was expanded** into something that explains the Ridge
+  rather than naming it — the objective, the closed form, why standardisation is
+  a correctness requirement, how the coefficients get back into real units and
+  why that is what makes `retrospect` possible — plus the PSI saturation
+  arithmetic, the skill score, and a reference list.
+
+## What landed on 2026-08-04
+
+The pages were reporting what the machine *did* rather than whether any of it
+worked. Six counters and a raw RMSE cannot answer "is the model healthy" or "did
+the loop earn its keep", and two of the numbers on the page were wrong in ways
+that flattered the system.
+
+- **`src/driftloop/retrospect.py`.** Scores every registered version on every
+  monitoring window by rebuilding it from its coefficient tags, so no model has
+  to be re-fitted or pickled. That unlocks per-model decay curves, a skill score
+  against a causally-available climatology, and the promotion-gate calibration.
+  Eleven tests in `tests/test_retrospect.py`.
+- **Two findings the page now carries.** The retrain trigger ratchets: its bar
+  is reset by every promotion and promotions happen at the seasonal peak, so
+  after a while nothing can cross it (Kraków spends 30 of 48 weeks that way).
+  And the seven-day promotion exam is well calibrated to about five weeks and
+  reverses sign beyond twenty. Both are in `docs/evaluation.md`.
+- **A pooled baseline** (`benchmark.fit_pooled`): one Ridge over all six cities
+  with a per-city intercept, never retrained. It loses to per-city models in five
+  of six, which is the evidence for the layout the project already had.
+- **`site/compare.html`** puts all six cities on shared axes. `site/shared.css`
+  is now shared by both pages; `tests/test_site_assets.py` guards the links,
+  because a mistyped `href` after that split would serve both pages unstyled with
+  every other test still green.
 
 ## Things that will bite you
 
@@ -35,13 +79,65 @@ file only carries what a reader of the code could not work out for themselves.
   site-packages. The Dockerfile installs with `-e` for that reason. It is also
   the hook the serving tests use: they monkeypatch it to a `tmp_path` to
   relocate the whole registry.
-- **Rendering the site needs headless Edge**, not the MCP browser, which times
-  out on live Plotly pages:
-  `msedge --headless=new --disable-gpu --window-size=1240,1560 --screenshot=out.png <url>`
+- **`champion_version` means two different things.** On a run that promotes, the
+  loop monitors with the *outgoing* champion and then overwrites the tag with the
+  winner. So the MLflow tag is the incoming version while `simulation_*.csv`
+  records the one that did the monitoring. `retrospect` keeps both:
+  `champion_version` (the tag, correct for "when did this model start") and
+  `serving_version` (correct for "what was in service"). Mixing them up credits a
+  new model with a window it never served, on data it trained on, and it is worth
+  a free point of apparent improvement.
+  **The first run is the awkward case**: there is no earlier row, because the
+  bootstrap champion is registered before any monitoring cycle. Its outgoing
+  version comes from the registry instead, as `min(models)`. Anything else that
+  wants "what was serving" needs the same two-part answer.
+- **Do not compare a logged float against a reconstructed one for equality.**
+  The coefficient tags carry six decimals, so the same model scored both ways
+  agrees only to about 1e-4. An `==` test there silently marked every window as
+  retrained and moved Johannesburg's paired result from +14.9% to zero.
+- **Rendering the site needs headless Edge**, not the MCP browser, which cannot
+  screenshot a page it is not compositing:
+  `msedge --headless=new --disable-gpu --hide-scrollbars --window-size=1240,9300 --virtual-time-budget=13000 --screenshot=out.png "http://localhost:8123/index.html?theme=light"`
+  `?theme=light` exists for this: it pins the palette so a capture does not
+  depend on the runner's dark-mode setting. Section crops in `docs/images/`
+  are cut from one full-height capture using offsets read off the live DOM at the
+  same 1240px width.
+- **Plotly falls back to a hard-coded 700px** when it cannot measure a container
+  during `newPlot`, which overflows the card and scrolls the page sideways. The
+  fix is `Plots.resize` after plotting. Writing a measured `layout.width` instead
+  is ~20% quicker and wrong: an explicit width opts the chart out of
+  `responsive`, so every plot then keeps a stale size through a viewport change.
+- **The globe does not animate, on purpose.** Re-projecting it costs 25-120ms a
+  frame whichever API drives it, so an eased spin ran at about 11fps and read as
+  a stutter. It cuts to the new centre and stays draggable.
 
 ## Open
 
 - `/reload` is called by hand. The loop promotes and nothing tells serving.
-  Closing that is the next obvious piece, and is what the README's remaining
-  serving limitation describes.
-- The lead-time sweep (error against 1–7 day lead) is still not run.
+- The lead-time sweep (error against 1-7 day lead) is still not run.
+- **The weekly Action has not been observed running.** The scheduled profile
+  holds two cycles, timestamped 09:14 and 09:50 UTC against a 06:00 cron, and the
+  repository contains no commits from the workflow's bot identity. That is
+  consistent with both having been run by hand. Whether the Action has ever
+  fired cannot be established from the repository, so the site claims only the
+  count and the dates. Worth checking in the Actions tab.
+- The retrain trigger is shipped with the ratchet intact, because the page's
+  argument is about making the failure visible. The fix is an absolute error
+  floor alongside the ratio, plus a model-independent yardstick.
+- `challenger_train_days` is still argued rather than swept. Cheapest experiment
+  left, now that `retrospect` can score any model on any window.
+- **`docs/images/dashboard.png` is the one screenshot still showing the old
+  Streamlit app.** `gate.png` and `compare.png` were regenerated on 2026-08-05
+  and the rest were unaffected. The headless-Edge recipe below does not work on
+  Streamlit: it serves a skeleton and fills it over a websocket, which
+  `--virtual-time-budget` does not wait for, so every capture comes back as the
+  ~15 KB grey placeholder. It needs a real browser window, or a driver that can
+  wait on a selector.
+- The wireframes in `docs/wireframes/` describe the original page layout, and the
+  compare page was never drawn.
+- **The training band on "what changed in the world" is hourly and the line is a
+  two-week mean**, on both UIs. That is fine for temperature, where the seasonal
+  swing dwarfs the diurnal one, and near-useless for shortwave radiation, where
+  the band spans night to noon and no mean could ever leave it. Both captions now
+  say so. The fix is a band of training-window *means* over the same window
+  length, and it has to land on both UIs at once or they start disagreeing.

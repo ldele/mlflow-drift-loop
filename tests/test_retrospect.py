@@ -202,6 +202,44 @@ def test_paired_value_counts_windows_by_who_served_them(source):
     assert scored["windows"] == 6
 
 
+def test_a_first_run_that_promotes_was_served_by_the_bootstrap(source):
+    """The one window with no earlier run to read the outgoing champion off.
+
+    ``bootstrap_champion`` registers v1 before any monitor cycle exists, so a
+    first run that promotes has no predecessor row -- and Kraków and Los Angeles
+    both promote on their first run. Reading the tag there credits the incoming
+    model with a window the bootstrap served, which counts that window as one
+    where retraining was in effect and quietly pads the paired result.
+    """
+    early = train(source.get_data(pd.Timestamp("2025-01-01"), pd.Timestamp("2025-03-01")))
+    late = train(source.get_data(pd.Timestamp("2025-05-01"), pd.Timestamp("2025-07-01")))
+    models = {1: _as_registered(early, 1), 2: _as_registered(late, 2)}
+
+    runs = pd.DataFrame(
+        {
+            "as_of": pd.date_range("2025-07-15", periods=4, freq="7D"),
+            # The tag is already v2 on the first row: that run monitored with v1
+            # and promoted v2 before writing the tag.
+            "champion_version": [2, 2, 2, 2],
+            "tags.promotion_decision": ["promoted", "none", "none", "none"],
+            "metrics.champion_rmse_holdout": [10.0, np.nan, np.nan, np.nan],
+            "metrics.challenger_rmse": [8.0, np.nan, np.nan, np.nan],
+        }
+    )
+
+    from driftloop.retrospect import retraining_value
+
+    result = build(source, runs, models, 14, 0, 0.05)
+
+    assert result.serving_version == [1, 2, 2, 2]
+    # Three windows served by a retrained model, not four.
+    assert retraining_value(result)["acted_windows"] == 3
+    # And the promotion is judged rather than dropped: what it replaced lives in
+    # the registry, as the lowest registered version, not in an earlier row.
+    (gate,) = result.gate
+    assert gate["version"] == 2 and gate["replaced"] == 1
+
+
 def test_gate_calibration_excludes_the_promotion_window_itself(source):
     """The delivered margin must not be measured on the challenger's own training data.
 

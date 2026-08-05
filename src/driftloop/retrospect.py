@@ -58,6 +58,14 @@ from driftloop.data.base import DataSource
 # which is the property that keeps this baseline honest across a full year.
 CLIMATOLOGY_DAYS = 30
 
+# Where a promotion stops counting as short-serving. The seven-day exam holds
+# its calibration for roughly five weeks and reverses sign past this, so the
+# split is drawn where the evidence puts it rather than at a round number that
+# happens to look tidy. It lives here because both UIs draw the same split, and
+# a constant duplicated across Python and JavaScript is one of them silently
+# telling a different story after an edit.
+GATE_LONG_WEEKS = 20
+
 
 def _rmse(actual: np.ndarray, predicted: np.ndarray) -> float:
     mask = ~(np.isnan(actual) | np.isnan(predicted))
@@ -260,6 +268,36 @@ def retraining_value(result: Retrospective) -> dict[str, float | int]:
     return out
 
 
+def gate_summary(gate: list[dict], long_weeks: int = GATE_LONG_WEEKS) -> dict[str, dict[str, float]]:
+    """The gate's calibration, split by how long the winner went on to serve.
+
+    Two groups rather than a correlation, because the interesting claim is not
+    "the exam is noisy" but "the exam has a shelf life": it is honest over the
+    horizon it tests and reverses sign beyond it. A single r would average those
+    two regimes into one unremarkable number.
+
+    ``harmful`` counts promotions that delivered a negative margin -- the winner
+    was worse over its service life than the model it displaced. That is the
+    only failure mode the gate exists to prevent, so it is counted rather than
+    left to be eyeballed off a scatter.
+    """
+    out: dict[str, dict[str, float]] = {}
+    for label, rows in (
+        ("short", [g for g in gate if g["weeks_served"] < long_weeks]),
+        ("long", [g for g in gate if g["weeks_served"] >= long_weeks]),
+    ):
+        if not rows:
+            out[label] = {"n": 0}
+            continue
+        out[label] = {
+            "n": len(rows),
+            "exam": float(np.mean([g["exam_margin"] for g in rows])),
+            "delivered": float(np.mean([g["delivered_margin"] for g in rows])),
+            "harmful": int(sum(1 for g in rows if g["delivered_margin"] < 0)),
+        }
+    return out
+
+
 def _service_spans(as_of: list[pd.Timestamp], versions: list[int]) -> dict[int, tuple[int, int]]:
     """First and last window index each version was the serving champion for."""
     spans: dict[int, tuple[int, int]] = {}
@@ -334,13 +372,26 @@ def build(
     #
     # The per-version curves keep using the tag, which is correct for them: a
     # decay curve should start where a model was promoted.
-    promoted = (
-        [str(v) == "promoted" for v in runs["tags.promotion_decision"]]
-        if "tags.promotion_decision" in runs
-        else [False] * len(champion_versions)
-    )
+    # Whether each run promoted. The loop tags every monitor run with its
+    # decision; where that tag is missing, fall back to the only other evidence
+    # the frame holds -- the champion tag changing between two runs, which a
+    # promotion does and nothing else does. That fallback cannot see a first run
+    # that promoted, because there is no earlier tag to differ from, so it
+    # degrades to the pre-tag behaviour rather than to something wrong.
+    if "tags.promotion_decision" in runs:
+        promoted = [str(v) == "promoted" for v in runs["tags.promotion_decision"]]
+    else:
+        promoted = [i > 0 and v != champion_versions[i - 1] for i, v in enumerate(champion_versions)]
+    # What was serving before the *first* run is not in the run log at all: the
+    # bootstrap champion is registered by `bootstrap_champion` before any monitor
+    # cycle exists. So on a first run that promotes -- which Kraków and Los
+    # Angeles both do -- there is no earlier row to read the outgoing version
+    # off, and taking the tag credits the incoming model with a window served by
+    # the bootstrap. The registry has the answer: the bootstrap is the lowest
+    # registered version, which is the same model `retraining_value` freezes.
+    bootstrap_version = min(models)
     result.serving_version = [
-        champion_versions[i - 1] if promoted[i] and i > 0 else v
+        (champion_versions[i - 1] if i > 0 else bootstrap_version) if promoted[i] else v
         for i, v in enumerate(champion_versions)
     ]
 
@@ -360,7 +411,9 @@ def build(
     for version, (first, _) in spans.items():
         result.promoted_at[version] = result.as_of[first]
 
-    result.gate = _gate_calibration(result, runs, spans, champion_versions, promotion_margin)
+    result.gate = _gate_calibration(
+        result, runs, spans, champion_versions, promoted, bootstrap_version, promotion_margin
+    )
     return result
 
 
@@ -369,6 +422,8 @@ def _gate_calibration(
     runs: pd.DataFrame,
     spans: dict[int, tuple[int, int]],
     champion_versions: list[int],
+    promoted: list[bool],
+    bootstrap_version: int,
     promotion_margin: float,
 ) -> list[dict]:
     """What the seven-day exam promised against what the winner went on to do.
@@ -384,9 +439,17 @@ def _gate_calibration(
     """
     out: list[dict] = []
     for version, (first, last) in sorted(spans.items()):
-        if first == 0:  # the bootstrap champion replaced nobody
+        # A span begins where the champion tag changed, which happens only on a
+        # promotion -- except at index 0, where the tag simply starts. Asking the
+        # run whether it promoted covers both, and it is what lets a first run
+        # that *did* promote be judged: the version it replaced is not in an
+        # earlier row (there is none) but in the registry, as the bootstrap.
+        # Without this, Kraków and Los Angeles each silently lost a promotion,
+        # and `champion_versions[first - 1]` at first == 0 would have indexed the
+        # end of the list.
+        if not promoted[first]:
             continue
-        replaced = champion_versions[first - 1]
+        replaced = champion_versions[first - 1] if first > 0 else bootstrap_version
         if replaced == version or version not in result.version_rmse or replaced not in result.version_rmse:
             continue
 

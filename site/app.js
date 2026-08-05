@@ -1080,10 +1080,13 @@ function renderPooled() {
  * Pooled across every city rather than drawn per city, because five points per
  * city cannot show a pattern and twenty-seven can, and because the pattern is a
  * property of the *rule* rather than of any one place. */
-const GATE_LONG_WEEKS = 20;
-
 function renderGate() {
   const section = document.getElementById("gate");
+  // Published in data.json rather than declared here: the Streamlit app draws
+  // the same split, and one threshold kept by hand in two languages is how the
+  // two UIs end up quietly telling different stories. The literal is the
+  // fallback for a data.json built before the field existed.
+  const GATE_LONG_WEEKS = DATA.method?.gate_long_weeks ?? 20;
   const rows = (DATA.profiles || []).flatMap((p) =>
     (p.retro?.gate || []).map((g) => ({ ...g, city: p.label })));
   section.hidden = rows.length < 4;

@@ -222,20 +222,33 @@ function renderValue() {
     ],
     traces, lay, "value-charts", true);
 
+  // Every claim here is counted off the data rather than asserted, including the
+  // lead. It used to open "retraining helped in every city once the comparison
+  // is paired", which was true when it was written and stopped being true the
+  // moment an accounting fix moved Los Angeles below zero. A sentence a re-run
+  // can falsify has to be derived from the re-run.
   const gap = rows
     .map((c) => ({ label: c.label, d: (c.stats.retrain_acted ?? 0) - c.stats.retrain_gain }))
     .sort((a, b) => b.d - a.d)[0];
-  const everyone = rows.every((c) => (c.stats.retrain_acted ?? 0) >= 0);
+  const acted = (c) => c.stats.retrain_acted ?? 0;
+  const helped = rows.filter((c) => acted(c) > 0).length;
+  const worst = rows.slice().sort((a, b) => acted(a) - acted(b))[0];
+  const lead = helped === rows.length
+    ? "Retraining helped in every city once the comparison is paired."
+    : `Pairing the comparison rescues most of these cities, and not all of them.`;
   document.getElementById("value-note").innerHTML =
-    `<strong>Retraining helped in every city once the comparison is paired.</strong> ` +
-    `Week by week it comes out positive in ${rows.filter((c) => (c.stats.retrain_acted ?? 0) > 0).length} ` +
-    `of ${rows.length}${everyone ? " and negative in none" : ""}, ` +
+    `<strong>${lead}</strong> ` +
+    `Week by week it comes out positive in ${helped} of ${rows.length}, ` +
     `against an across-the-replay reading that is zero or worse in ` +
     `${rows.filter((c) => c.stats.retrain_gain <= 0).length}. ` +
     `The widest gap is ${gap.label}, at ${gap.d.toFixed(1)} percentage points. ` +
-    `That does not make retraining free: Los Angeles wins about half the weeks it acts, which is a ` +
-    `coin toss, and the effort still has to be paid for. It does mean the headline number was ` +
-    `answering a different question than the one it appeared to answer.`;
+    (acted(worst) > 0
+      ? `That does not make retraining free: the weakest of them, ${worst.label}, gains only ` +
+        `${pct(acted(worst))}, and the effort still has to be paid for. `
+      : `And it does not make retraining free: ${worst.label} comes out at ${pct(acted(worst))} ` +
+        `even paired, winning about half the weeks it acts, which is a coin toss with a fee. `) +
+    `What it does mean is that the headline number was answering a different question ` +
+    `than the one it appeared to answer.`;
 
   plotAll(jobs);
 }

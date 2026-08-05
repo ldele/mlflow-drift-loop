@@ -72,15 +72,15 @@ retrained model was serving.
 |---|---|---|---|---|---|
 | **Delhi** | 42 → 127, crop burning after the monsoon | 40 | 9 | **+43.8%** | **+49.4%**, won 92% of 38 |
 | **Santiago** | 18 → 94, winter smog trapped in a bowl | 22 | 13 | **+12.9%** | **+17.3%**, won 100% of 16 |
-| **Kraków** | 8 → 57, coal heating in a valley | 48 | 14 | +0.2% | +6.4%, won 73% of 48 |
+| **Kraków** | 8 → 57, coal heating in a valley | 48 | 14 | +0.2% | +6.5%, won 72% of 47 |
 | **Johannesburg** | 23 → 84, winter coal smoke | 20 | 11 | 0.0% | **+14.9%**, won 100% of 6 |
 | **Melbourne** | 5 → 15, winter wood heaters | 31 | 8 | 0.0% | +1.2%, won 70% of 27 |
-| **Los Angeles** | 15 → 29, a mild winter bump | 37 | 3 | −8.9% | 0.0%, won 49% of 37 |
+| **Los Angeles** | 15 → 29, a mild winter bump | 37 | 3 | −8.9% | −2.8%, won 50% of 36 |
 
 In Delhi, where the air transforms, keeping the model fresh roughly halves its
-error. In Los Angeles it is a coin toss, winning 49% of the weeks it acted and
-netting nothing either way. Los Angeles is the control, and it earns its place by
-failing.
+error. In Los Angeles it is a coin toss that costs money to play: exactly half
+the weeks it acted came out ahead, and the median week came out 2.8% behind. Los
+Angeles is the control, and it earns its place by failing.
 
 Johannesburg is where the promotion gate does its most visible work, and where
 the unpaired number misleads hardest. Eleven retrains, three shipped, the other
@@ -94,8 +94,8 @@ season.
 
 **A seven-day exam certifies a model for a month, not for half a year.** Every
 promotion left a prediction behind, the margin the challenger won by, so the gate
-can be checked against what each winner went on to deliver. Across 27 promotions
-it is well calibrated for about five weeks: +12.7% promised, +10.1% delivered,
+can be checked against what each winner went on to deliver. Across 29 promotions
+it is well calibrated for about five weeks: +12.3% promised, +9.7% delivered,
 none of them harmful. Beyond twenty weeks it reverses sign, promising +13.9% and
 delivering −5.9%, with all three harmful. And the models that serve half a year
 are the ones the ratcheted trigger can no longer replace, so the two faults
@@ -177,8 +177,10 @@ tests/            data contract, drift math, no-leak guards, baseline fairness,
                   retrospective scoring, serving, charts, site assets
 ```
 
-- **[methodology.md](docs/methodology.md)** covers how it works: the model, the
-  features and why each one, the window layout, the guards against cheating.
+- **[methodology.md](docs/methodology.md)** covers how it works: what a Ridge
+  actually does and why it is barely doing it here, the features and the physics
+  behind each one, what PSI computes and where it stops meaning anything, the
+  window layout, the guards against cheating, and a reading list.
 - **[evaluation.md](docs/evaluation.md)** covers whether it works: per-city
   results, the baselines, the controlled experiment, and the limitations.
 

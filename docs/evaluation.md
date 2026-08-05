@@ -16,10 +16,10 @@ season that ruins it, and then out the other side.
 |---|---|---|---|---|---|---|
 | **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 20.0 → 99.0 | 9 / 40 | **+43.8%** | **+49.4%**, won 92% of 38 |
 | **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.4 → 68.3 | 13 / 22 | **+12.9%** | **+17.3%**, won 100% of 16 |
-| **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 14 / 48 | +0.2% | +6.4%, won 73% of 48 |
+| **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 14 / 48 | +0.2% | +6.5%, won 72% of 47 |
 | **Johannesburg** | Nov 25 → Jul 26 | 23 → 84, Highveld coal smoke | 11.6 → 82.3 | 11 / 20 | 0.0% | **+14.9%**, won 100% of 6 |
 | **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.3 → 15.0 | 8 / 31 | 0.0% | +1.2%, won 70% of 27 |
-| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 17.3 → 19.5 | 3 / 37 | −8.9% | 0.0%, won 49% of 37 |
+| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 17.3 → 19.5 | 3 / 37 | −8.9% | −2.8%, won 50% of 36 |
 
 The two retraining columns disagree, and the second is the one to trust when they
 do. "Across replay" compares the median error of what was served against the
@@ -36,6 +36,16 @@ two error figures differ. The served figure is the loop's own logged error and
 the frozen one is rebuilt from coefficient tags, so for the identical model they
 agree only to six decimals; testing them for equality marks every window as
 retrained and averages in the ones from before anything was promoted.
+
+The same question has a boundary case at the very first run. The bootstrap
+champion is registered before any monitoring cycle exists, so a first run that
+promotes — which Kraków and Los Angeles both do — has no earlier row to read the
+outgoing version off, and the run's own tag has already been overwritten with the
+winner. The version it replaced is in the registry rather than in the run log: it
+is the lowest registered version, the same model the frozen comparison uses.
+Without that, one window per affected city counted as retrained when the
+bootstrap was serving it, and one real promotion per city went unjudged by the
+gate calibration below.
 
 The cities were picked on measurements rather than reputation. Eighteen
 candidates were fetched and ranked by PM2.5 swing before any of them was wired
@@ -83,9 +93,9 @@ replay past the point that flatters the system.
 Los Angeles is the control, and the measurements chose it for that. It was picked
 as the summer-smog city; hourly PM2.5 over 2025–26 peaks in November and bottoms
 out in June. Its model barely moves across 37 weeks and only three retrains ever
-fire. Week by week, retraining wins 49% of the weeks it acted and nets nothing
-either way, which is a coin toss and the fair verdict on the city. There has to
-be drift for a drift loop to earn anything.
+fire. Week by week, retraining wins exactly half the weeks it acted and the
+median week comes out 2.8% behind — a coin toss with a fee, and the fair verdict
+on the city. There has to be drift for a drift loop to earn anything.
 
 Johannesburg is where the promotion gate does the most visible work. Error
 climbs from 11.6 to 82.3 µg/m³, the worst on the page, and eleven retrains
@@ -262,11 +272,11 @@ the loop has no reason to compute at the time, and which
 [`retrospect.py`](../src/driftloop/retrospect.py) computes afterwards by
 rebuilding every registered version from its logged coefficients.
 
-27 promotions across six cities:
+29 promotions across six cities:
 
 | promotions that served | n | exam promised | delivered | made things worse |
 |---|---|---|---|---|
-| under 20 weeks | 24 | +12.7% | **+10.1%** | 0 |
+| under 20 weeks | 26 | +12.3% | **+9.7%** | 0 |
 | 20 weeks or more | 3 | +13.9% | **−5.9%** | **3 of 3** |
 
 The gate is honest and well calibrated over the horizon it tests, and not one

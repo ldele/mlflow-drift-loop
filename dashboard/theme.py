@@ -210,6 +210,196 @@ def coef_small_multiples(
     return fig
 
 
+def factor_small_multiples(
+    x,
+    values: dict[str, list[float]],
+    bands: dict[str, dict[str, float]],
+    features: list[str],
+    ncols: int = 3,
+) -> go.Figure:
+    """One panel per weather feature: its window mean over time, against the
+    range it held while the first champion was trained.
+
+    This is the covariate-drift claim before it is compressed into a statistic.
+    PSI says "0.25, significant", which is a number nobody can picture; this says
+    "it got fourteen degrees colder than anything the model was shown", which is
+    the actual argument for retraining.
+
+    Small multiples for the same reason as the coefficients: °C, hPa and W/m² on
+    one axis leaves five of the six features pinned flat against the sixth.
+
+    The band is the 10th-90th percentile of the training window rather than its
+    full range, so one freak hour cannot widen it to cover everything. A line
+    leaving its band is the model being asked about conditions it never saw.
+    """
+    features = [f for f in features if f in values]
+    nrows = -(-len(features) // ncols)  # ceil
+    fig = make_subplots(
+        rows=nrows,
+        cols=ncols,
+        shared_xaxes=True,
+        subplot_titles=features,
+        vertical_spacing=0.14,
+        horizontal_spacing=0.08,
+    )
+
+    for i, feature in enumerate(features):
+        row, col = divmod(i, ncols)
+        row, col = row + 1, col + 1
+        color = FEATURE_COLOR.get(feature, SERIES[i % len(SERIES)])
+        band = bands.get(feature) or {}
+        series = [v for v in values[feature] if v is not None and not pd.isna(v)]
+
+        # The trace goes in first, and the order matters: `add_hrect` with
+        # row/col resolves against the subplot's axes and silently does nothing
+        # on a panel that holds no trace yet. `layer="below"` keeps the band
+        # behind the line regardless of insertion order.
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=values[feature],
+                name=feature,
+                mode="lines",
+                line=dict(color=color, width=2),
+                hovertemplate="%{x|%Y-%m-%d}: %{y:.1f}<extra>" + feature + "</extra>",
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
+        )
+
+        if "lo" in band and "hi" in band:
+            # Tinted with the feature's own colour rather than grey, so the band
+            # and the line that leaves it read as one object.
+            fig.add_hrect(
+                y0=band["lo"],
+                y1=band["hi"],
+                row=row,
+                col=col,
+                fillcolor=color,
+                opacity=0.13,
+                line_width=0,
+                layer="below",
+            )
+            # Plotly's autorange ignores shapes, so a feature that spent the whole
+            # replay outside its training range would scroll the band off the
+            # panel entirely -- losing exactly the case the chart exists to show.
+            # Range both together instead.
+            if series:
+                lo = min(min(series), band["lo"])
+                hi = max(max(series), band["hi"])
+                pad = (hi - lo) * 0.08 or 1.0
+                fig.update_yaxes(range=[lo - pad, hi + pad], row=row, col=col)
+
+    fig.update_layout(
+        paper_bgcolor=SURFACE,
+        plot_bgcolor=SURFACE,
+        font=dict(family=FONT, size=12, color=INK_SECONDARY),
+        margin=dict(l=48, r=24, t=40, b=36),
+        height=190 * nrows + 60,
+        hovermode="closest",
+        showlegend=False,
+    )
+    fig.update_xaxes(showgrid=False, linecolor=AXIS, tickfont=dict(color=MUTED, size=10), zeroline=False)
+    fig.update_yaxes(gridcolor=GRID, linecolor=AXIS, tickfont=dict(color=MUTED, size=10), zeroline=False)
+    for annotation in fig.layout.annotations:  # the subplot titles
+        annotation.font = dict(family=FONT, size=12, color=INK)
+    return fig
+
+
+def importance_bars(features: list[str], values: list[float]) -> go.Figure:
+    """How far the prediction moves when each feature moves by one of its own
+    standard deviations, in µg/m³.
+
+    The comparable version of the coefficient panels. Raw slopes are per original
+    unit, so the largest of them is usually just the feature with the smallest
+    units -- a slope per hPa and a slope per W/m² are answers to different
+    questions. Multiplying by the feature's own spread puts every one of them in
+    µg/m³ and makes "which of these actually drives the answer" a fair question.
+    """
+    fig = base_figure(None, None, height=60 + 34 * max(len(features), 1))
+    fig.update_layout(hovermode="closest", margin=dict(l=150, r=24, t=16, b=48), showlegend=False)
+    fig.add_trace(
+        go.Bar(
+            # Reversed: Plotly stacks the first category at the bottom of a
+            # horizontal bar chart, and the biggest should read at the top.
+            y=features[::-1],
+            x=values[::-1],
+            orientation="h",
+            marker=dict(color=SERIES[0]),
+            hovertemplate="%{x:.1f} µg/m³ per 1-sd<extra>%{y}</extra>",
+        )
+    )
+    fig.update_yaxes(showgrid=False, title=None)
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor=GRID,
+        title=dict(text="µg/m³ of prediction per 1-sd move", font=dict(color=MUTED, size=11)),
+    )
+    return fig
+
+
+def gate_scatter(rows: list[dict], long_weeks: int) -> go.Figure:
+    """What the seven-day exam promised against what the winner delivered.
+
+    One point per promotion. The exam margin is the number the gate decided
+    *on*, so it cannot also be evidence the decision was right; the delivered
+    margin is the out-of-sample check, measured against the model it displaced
+    over the windows it went on to serve.
+
+    Two colours rather than a gradient, because the finding is a threshold and
+    not a trend: short-serving promotions land near the diagonal, long-serving
+    ones fall below zero regardless of how convincingly they passed.
+    """
+    exam = [g["exam_margin"] * 100 for g in rows]
+    delivered = [g["delivered_margin"] * 100 for g in rows]
+    span = [*exam, *delivered, 0.0]
+    lo, hi = min(span) - 4, max(span) + 4
+
+    fig = base_figure(None, "what it went on to deliver (%)", height=380)
+    fig.update_layout(hovermode="closest", margin=dict(l=60, r=24, t=24, b=52))
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor=GRID,
+        title=dict(text="margin on the seven-day exam (%)", font=dict(color=MUTED, size=11)),
+    )
+    # y = x: where a perfectly calibrated exam would put every point.
+    fig.add_trace(
+        go.Scatter(
+            x=[lo, hi], y=[lo, hi], mode="lines", name="perfect calibration",
+            line=dict(color=MUTED, width=1, dash="dot"), hoverinfo="skip",
+        )
+    )
+    # Below this the promotion was worse than leaving the old model alone.
+    fig.add_hline(y=0, line=dict(color=CRITICAL, width=1))
+    fig.add_annotation(
+        xref="paper", x=0, y=0, text="0 · no better than the model it replaced",
+        showarrow=False, font=dict(color=MUTED, size=10),
+        xanchor="left", yanchor="bottom", xshift=3, yshift=2, bgcolor=SURFACE, borderpad=1,
+    )
+
+    for name, color, keep in (
+        (f"served under {long_weeks} weeks", SERIES[2], lambda w: w < long_weeks),
+        (f"served {long_weeks}+ weeks", CRITICAL, lambda w: w >= long_weeks),
+    ):
+        group = [g for g in rows if keep(g["weeks_served"])]
+        if not group:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=[g["exam_margin"] * 100 for g in group],
+                y=[g["delivered_margin"] * 100 for g in group],
+                mode="markers",
+                name=name,
+                text=[f"v{g['version']} replaced v{g['replaced']} · served {g['weeks_served']}w"
+                      for g in group],
+                marker=dict(color=color, size=12, line=dict(color=SURFACE, width=1.5)),
+                hovertemplate="%{text}<br>exam %{x:+.1f}% → delivered %{y:+.1f}%<extra></extra>",
+            )
+        )
+    return fig
+
+
 def hist_overlay(edges: list[float], reference: list[int], current: list[int], color: str) -> go.Figure:
     """Reference vs current distribution of one feature, shared bins.
 
