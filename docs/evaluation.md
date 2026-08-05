@@ -254,10 +254,71 @@ a 210-day-old model. In that city `corr(champion_rmse, ratio)` is 0.29 while
 `corr(baseline_rmse, ratio)` is −0.72: the signal tracks *which champion happens
 to be in service* more strongly than how well that champion is doing.
 
-Two changes fix it, and the page now says so. Measure the trigger against
-something outside the model, as the skill score above does, since it holds still
-when a model is promoted. Then put an absolute error floor alongside the ratio,
-so being bad in absolute terms is sufficient on its own.
+Two changes were proposed for it. Measure the trigger against something outside
+the model, as the skill score above does, since it holds still when a model is
+promoted. And put an absolute error floor alongside the ratio, so being bad in
+absolute terms is sufficient on its own.
+
+Both have now been built and measured, and the answer is not the one the proposal
+expected.
+
+### Fixing it: one of the two cannot be built, and the other does not pay
+
+**The absolute floor is not implementable.** A floor has to be one number for
+every city, or the thresholds stop being identical and the cities stop being
+comparable — which is the property the whole six-city comparison rests on. There
+is no such number. Los Angeles's deaf stretch tops out at 18.1 µg/m³, so waking
+it needs a floor below 18; at 15 µg/m³ Delhi fires on 100% of its runs and
+Johannesburg on 80%, and at 25 Los Angeles never fires at all. The gap between
+"wakes the quietest city" and "does not retrain the dirtiest city every week" is
+empty. An absolute floor is a per-city tuning knob wearing a disguise.
+
+**The model-independent yardstick can be built, and it changes almost nothing.**
+`LoopConfig.skill_floor` fires a retrain when the champion's skill against the
+30-day daily profile drops below a floor. Being a ratio against something outside
+the model it is scale-free, so one number does work for every city, and it cannot
+be moved by promoting anything. [`sweep_skill_floor.py`](../scripts/sweep_skill_floor.py)
+replays all six cities at several floors — a full replay each, because a changed
+trigger changes which models exist and therefore the whole trajectory.
+
+It does wake the trigger up. Kraków's longest silence falls from 30 weeks to 5,
+Los Angeles's from 29 to 12. Median champion error, µg/m³, lower is better:
+
+| | trigger off | skill < 0 | skill < −0.25 | skill < −0.5 |
+|---|---|---|---|---|
+| **Kraków** | **17.49** | 18.79 | 18.55 | 17.49 |
+| **Delhi** | **40.33** | 44.52 | 44.92 | 40.33 |
+| **Los Angeles** | 11.05 | **10.27** | 10.93 | 10.96 |
+| **Santiago** | 23.48 | 23.48 | 23.48 | 23.48 |
+| **Johannesburg** | 21.01 | 21.01 | 21.01 | 21.01 |
+| **Melbourne** | 3.87 | 3.87 | 3.87 | 3.87 |
+
+At the conservative floor it is a no-op in **five of the six**, to the last
+decimal. Kraków is the clearest case of why: it fires six extra retrains there
+and the gate rejects every one, so the loop does more work and ships nothing.
+Only Los Angeles moves at all, by 0.8%.
+
+At the aggressive floor it fires two to three times as often and the result is
+worse in two cities, better in one, and unchanged in three. Retraining Delhi 31
+times instead of 9 costs 10% of its error.
+
+So the ratchet is real as a mechanism and close to inert as a harm. In the cities
+where the trigger goes deaf there was little left to gain by firing, and the one
+city where firing more did help — Los Angeles — is the control, where the honest
+reading is that it did less harm rather than more good: even at its best setting
+it goes from losing 8.9% to losing 1.2%.
+
+**The most consistent explanation is that the trigger was never the bottleneck.**
+Firing more often only pushes more challengers at a gate that certifies for about
+five weeks, which is the finding immediately below. Delhi's promotions go from 8
+to 13 and its error rises with them. Los Angeles is the exception that fits: its
+air barely moves, so successive models are nearly identical and a short
+certificate costs it nothing. That points the next experiment at the length of
+the exam rather than at the sensitivity of the trigger.
+
+The floor therefore ships **off by default**. It is a knob with a measured effect
+of roughly zero, and turning it on by default would move every number on this
+page in exchange for nothing.
 
 ## A seven-day exam certifies a model for a month, not half a year
 
@@ -326,13 +387,15 @@ is here: it is the evidence, and the cities are the application.
   still near zero or negative in several. Predicting an hour's PM2.5 from a
   week-old weather forecast is hard, and the page should be read with
   that in mind: the loop is the demonstration, not the model.
-- The retrain trigger ratchets, and is now measured rather than merely noted.
-  See [The retrain trigger stops measuring staleness](#the-retrain-trigger-stops-measuring-staleness)
-  above: the bar rises at every promotion and never falls, so after the seasonal
-  peak the trigger cannot fire at all. It is still shipped as-is, because the
-  page's argument is about making the failure visible rather than about hiding
-  it; the fix is an absolute floor alongside the ratio, plus a model-independent
-  yardstick.
+- The retrain trigger ratchets, and it is shipped that way on purpose. The bar
+  rises at every promotion and never falls, so after the seasonal peak the
+  trigger cannot fire at all. The fix for it now exists in the code
+  (`LoopConfig.skill_floor`) and is switched off, because replaying all six
+  cities with it on changes nothing at a cautious setting and makes two of them
+  worse at an aggressive one. See
+  [Fixing it](#fixing-it-one-of-the-two-cannot-be-built-and-the-other-does-not-pay).
+  What that leaves open is the exam's length rather than the trigger's
+  sensitivity, and that experiment has not been run.
 - The skill baseline sees recent PM2.5 and the model does not. That is stated
   wherever the number appears, and it is deliberate: it is the alternative you
   could deploy. A like-for-like baseline would have to be built from the

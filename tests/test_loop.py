@@ -76,3 +76,88 @@ def test_a_healthy_champion_is_left_alone(isolated_mlflow):
     assert not result.retrain_triggered
     assert result.promotion_decision == "none"
     assert result.challenger_rmse is None
+
+
+# --------------------------------------------------------------------------- #
+# The skill floor: the second trigger, which does not move when a model is      #
+# promoted. See config.LoopConfig.skill_floor for why it is a skill score and   #
+# not the absolute RMSE floor the docs originally proposed.                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_skill_floor_is_off_unless_asked_for(isolated_mlflow):
+    """The default must reproduce the pre-floor loop exactly.
+
+    Every published number was produced without it, so a default that quietly
+    switched it on would move all of them and make the before/after comparison
+    the project is built on impossible to state.
+    """
+    cfg = isolated_mlflow
+    assert cfg.skill_floor is None
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    result = run_cycle(src, pd.Timestamp("2025-07-15"), cfg)
+    assert pd.isna(result.champion_skill)
+    assert not result.skill_drift_detected
+
+
+def test_the_skill_floor_can_fire_when_the_ratio_cannot(isolated_mlflow):
+    """The failure the whole change exists for.
+
+    A floor of +1.0 is unreachable -- it demands a perfect model -- so it stands
+    in for "the ratio has ratcheted out of reach while the champion is failing".
+    The loop must still train a challenger.
+    """
+    from dataclasses import replace
+
+    cfg = isolated_mlflow
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+
+    as_of = pd.Timestamp("2025-07-15")  # pre-drift: the ratio stays quiet here
+    assert not run_cycle(src, as_of, cfg).retrain_triggered
+
+    floored = replace(cfg, skill_floor=1.0)
+    result = run_cycle(src, as_of, floored)
+    assert not result.perf_drift_detected, "the ratio must still be quiet"
+    assert result.skill_drift_detected
+    assert result.retrain_triggered
+    assert result.challenger_rmse is not None, "a challenger must actually be trained"
+
+
+def test_the_skill_floor_only_ever_adds_reasons_to_fire(isolated_mlflow):
+    """It is a second way to trigger, never a way to suppress the first.
+
+    A floor of -inf can never be crossed, so the decision has to come down to the
+    ratio alone -- with the skill still computed and logged, which is the point:
+    the yardstick is worth recording even on runs it does not act on.
+
+    Asserted on a single cycle rather than by running with and without. Two
+    cycles are not comparable: the first one promotes, so the second faces a
+    fresher champion and a different question.
+    """
+    from dataclasses import replace
+
+    cfg = isolated_mlflow
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+
+    result = run_cycle(src, pd.Timestamp("2025-11-01"), replace(cfg, skill_floor=float("-inf")))
+
+    assert not result.skill_drift_detected
+    assert result.retrain_triggered == result.perf_drift_detected
+    assert not pd.isna(result.champion_skill), "skill is measured even when it cannot fire"
+
+
+def test_the_skill_floor_reads_the_lead_off_the_source(isolated_mlflow):
+    """The baseline's causality rule depends on the forecast lead.
+
+    A source that does not declare one would silently be treated as lead 0,
+    which lets the baseline average hours the forecaster could not have seen.
+    """
+    assert SyntheticSource().forecast_lead_days == 0
+
+    from driftloop.data import OpenMeteoSource
+    from driftloop.config import FORECAST_LEAD_DAYS
+
+    assert OpenMeteoSource().forecast_lead_days == FORECAST_LEAD_DAYS

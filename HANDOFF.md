@@ -9,6 +9,34 @@ publish, and the promoted champion is served over HTTP. `README.md` is the real
 documentation; this file only carries what a reader of the code could not work
 out for themselves.
 
+## What landed on 2026-08-05 (second pass): the trigger fix, and its result
+
+The top open item was "build the trigger fix", which had been documented and not
+implemented. It is now built, measured, and switched off — and the measurement is
+the useful part.
+
+- **`LoopConfig.skill_floor`** adds a second retrain trigger: skill against the
+  30-day daily profile dropping below a floor. Scale-free, so one number works
+  for every city, and nothing about promoting a model can move it. Strictly an
+  additional way to fire, never a way to suppress the ratio. `retrain_reason` is
+  tagged per run (`ratio` / `skill` / `both` / `none`).
+- **It does not pay.** [`scripts/sweep_skill_floor.py`](scripts/sweep_skill_floor.py)
+  replays all six cities at several floors — a real replay per arm, because a
+  changed trigger changes which models exist. At `-0.5` the outcome is identical
+  in all six. At `0.0` it fires 2-3× as often and is worse in two cities (Delhi
+  +10% error, Kraków +7%), better in one (Los Angeles), unchanged in three.
+  Default is `None`.
+- **The absolute floor, the other proposed fix, cannot be built.** Waking Los
+  Angeles needs a floor below 18 µg/m³; at 15 Delhi fires on every run. The gap
+  is empty, so it is a per-city knob in disguise and the cities stop being
+  comparable. That is now argued from the measurement rather than asserted.
+- **What it points at instead:** firing more often only feeds more challengers to
+  a gate that certifies for about five weeks. The next experiment is the length
+  of the exam (`holdout_days`), not the sensitivity of the trigger.
+- `DataSource` now declares `forecast_lead_days`, because the skill baseline's
+  causality rule depends on it and the loop should ask the source rather than be
+  handed a config that might disagree with the data.
+
 ## What landed on 2026-08-05
 
 The Streamlit app had fallen behind the published site, and closing that gap
@@ -121,11 +149,15 @@ that flattered the system.
   consistent with both having been run by hand. Whether the Action has ever
   fired cannot be established from the repository, so the site claims only the
   count and the dates. Worth checking in the Actions tab.
-- The retrain trigger is shipped with the ratchet intact, because the page's
-  argument is about making the failure visible. The fix is an absolute error
-  floor alongside the ratio, plus a model-independent yardstick.
-- `challenger_train_days` is still argued rather than swept. Cheapest experiment
-  left, now that `retrospect` can score any model on any window.
+- The retrain trigger is shipped with the ratchet intact. Not for want of a fix
+  any more: the fix exists, is tested, and measures out at roughly zero. See the
+  2026-08-05 second-pass notes above.
+- **Sweep `holdout_days`.** This is now the top open experiment, and the trigger
+  work is what promoted it: if the exam's shelf life is the real constraint, a
+  longer holdout should move the gate calibration and the delivered margins.
+  `sweep_skill_floor.py` is the pattern to copy — a full replay per arm, into a
+  temp backend, scored with `retrospect`.
+- `challenger_train_days` is still argued rather than swept.
 - **`docs/images/dashboard.png` is the one screenshot still showing the old
   Streamlit app.** `gate.png` and `compare.png` were regenerated on 2026-08-05
   and the rest were unaffected. The headless-Edge recipe below does not work on

@@ -436,11 +436,46 @@ champion in the same stretch is at its worst rather than its best: skill of −1
 against a 30-day daily profile, having been +0.43 in January.
 
 So the loop reaches the right answer by a route that had stopped working. Both
-halves of that are true and both are published. The two fixes it needs are named
-rather than implemented — an absolute error floor alongside the ratio, so being
-bad in absolute terms is sufficient on its own, and a model-independent yardstick
-for which the skill score already exists. See
-[evaluation.md](evaluation.md#the-retrain-trigger-stops-measuring-staleness).
+halves of that are true and both are published.
+
+### The second trigger, and why it is switched off
+
+Two fixes were proposed for that: an absolute error floor alongside the ratio,
+and a yardstick that does not move when a model is promoted. Both have now been
+built and measured, which changed the conclusion.
+
+The absolute floor turned out to be unbuildable. A floor has to be one number
+for every city or the thresholds stop being identical, and there is no such
+number: waking Los Angeles needs a floor under 18 µg/m³, where Delhi retrains
+every single week. The gap between the two is empty.
+
+The yardstick is implementable, and it is `LoopConfig.skill_floor`:
+
+```
+retrain if   rmse_now / rmse_at_training > 1.25      (the ratchet)
+        or   1 − rmse_now / rmse_climatology < floor  (holds still on promotion)
+```
+
+The second term is scale-free, so one number does work everywhere, and nothing
+about promoting a model can move it. It is strictly an additional way to fire,
+never a way to suppress the first — a model can be bad against its own history
+or bad against the cheap alternative, and either is grounds for training a
+challenger. The gate still decides whether one ships. `retrain_reason` is tagged
+on every run as `ratio`, `skill`, `both` or `none`, so how often each rule was
+the one that spoke is a fact on the record rather than an inference.
+
+It ships at `None`, meaning off, and the reason is that it was measured:
+[`sweep_skill_floor.py`](../scripts/sweep_skill_floor.py) replays all six cities
+at several floors, and at a conservative floor the outcome is identical to the
+last decimal in five of the six, while at an aggressive floor it makes two cities
+measurably worse for one improvement. It wakes the trigger up exactly as designed
+and the waking turns out not to be worth having.
+The numbers are in
+[evaluation.md](evaluation.md#fixing-it-one-of-the-two-cannot-be-built-and-the-other-does-not-pay).
+
+A knob whose measured effect is zero is still worth having in the code, because
+the *next* person to propose this fix should find it already built and already
+answered rather than spend a week rediscovering it.
 
 ---
 

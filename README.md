@@ -43,9 +43,20 @@ higher bar than the one it replaced and the bar never comes back down. Kraków's
 rises from 3.7 to 45.8 µg/m³, after which nothing can cross it: the last 30 of
 its 48 weeks are a 210-day-old model reported as healthier than it has ever
 been, while its skill against a plain 30-day daily profile is the worst it has
-ever been. Finding that is what the site is now built to do, and the two fixes it
-needs, a model-independent yardstick and an absolute error floor, are named on
-the page rather than left in a footnote.
+ever been. Finding that is what the site is built to do.
+
+**Then the fix for it was built, and it does not pay.** Two were proposed. An
+absolute error floor cannot be built at all: waking the quietest city needs a
+floor low enough to retrain the dirtiest one every week, and the gap between them
+is empty. A model-independent yardstick can be — the trigger also fires when
+skill against the daily profile drops below a floor, which nothing about
+promoting a model can move. It wakes the trigger up exactly as intended: Kraków's
+longest silence falls from 30 weeks to 5. Replayed across all six cities it then
+changes nothing in five of six at a conservative setting, and at an aggressive
+one makes two of them measurably worse for one improvement. So it ships switched
+off, and the evidence says the trigger was never the bottleneck — the seven-day
+exam below is. That is the more useful finding, and it only exists because the
+fix was measured instead of assumed.
 
 **Nothing is graded on work it has already seen.** The replacement trains on a
 window that stops before the exam, the incumbent was trained long before it, and
@@ -152,6 +163,7 @@ uv venv && uv pip install -e ".[dev]"
 
 python scripts/run_openmeteo.py --fresh     # all six cities (--city krakow|santiago|delhi|joburg|melbourne|la)
 python scripts/benchmark.py                 # baselines + alpha sweep
+python scripts/sweep_skill_floor.py         # does waking the retrain trigger help? (no)
 python scripts/build_site.py                # -> site/data.json
 
 streamlit run dashboard/app.py              # the full app
@@ -168,7 +180,8 @@ as the main file, Python 3.12.
 
 ```
 src/driftloop/    config, data sources, drift math, model, loop, retrospect, benchmark, serving
-scripts/          run_openmeteo · benchmark · build_site · run_scheduled · sweep_knobs · serve
+scripts/          run_openmeteo · benchmark · build_site · run_scheduled · sweep_knobs ·
+                  sweep_skill_floor · serve
 site/             committed shell (index.html + app.js, compare.html + compare.js,
                   shared.css) + generated data.json
 dashboard/        Streamlit app and shared chart theme

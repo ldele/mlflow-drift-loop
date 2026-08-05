@@ -134,6 +134,10 @@ class OpenMeteoSource:
         self.cache_dir = cache_dir or CACHE_DIR
         self._timeline: pd.DataFrame | None = None
 
+    @property
+    def forecast_lead_days(self) -> int:
+        return self.config.forecast_lead_days
+
     def _cache_path(self) -> Path:
         cfg = self.config
         # The lead is part of the identity of the data: the same place over the

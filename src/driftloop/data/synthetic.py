@@ -124,6 +124,10 @@ def _full_timeline(cfg: SyntheticConfig) -> pd.DataFrame:
 class SyntheticSource:
     """Data source implementing the ``get_data`` contract."""
 
+    # The synthetic world has no forecast in it: features and target are drawn
+    # for the same hour, which is a lead of zero.
+    forecast_lead_days = 0
+
     def __init__(self, config: SyntheticConfig | None = None) -> None:
         self.config = config or SyntheticConfig()
 

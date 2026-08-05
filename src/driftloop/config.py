@@ -86,7 +86,30 @@ class LoopConfig:
 
     # Retrain trigger: champion RMSE on the monitor window vs. its RMSE at
     # training time. 1.25 == "the model got 25% worse".
+    #
+    # This one ratchets, and it is the documented failure the project is built
+    # around. The denominator is the champion's *own* baseline, so every
+    # promotion resets it, and promotions happen at the seasonal peak -- so each
+    # new champion inherits a higher bar than the model it replaced and the bar
+    # never comes back down. Kraków spends its last 30 of 48 runs unable to fire
+    # at any error whatsoever. Kept, because it is still the cheap first check;
+    # the floor below is what stops it going permanently deaf.
     perf_drift_threshold: float = 1.25
+    # The second trigger, and the one that does not move when a model is
+    # promoted: skill against a 30-day hour-of-day profile of recent pollution.
+    # -0.5 reads as "the champion is now 50% worse than doing nothing clever",
+    # which is a statement about the model rather than about its own history.
+    #
+    # Scale-free on purpose. The other candidate fix was an absolute RMSE floor,
+    # and it cannot be built: to wake Los Angeles, whose deaf stretch tops out at
+    # 18 µg/m³, the floor has to sit below 18 -- where Delhi fires on 100% of its
+    # runs and Johannesburg on 80%. There is no value in between, so an
+    # "absolute" floor is a per-city tuning knob wearing a disguise, and the
+    # cities stop being comparable. A ratio against a yardstick that holds still
+    # is the same idea without that defect.
+    #
+    # None disables it, which is the pre-2026-08 behaviour.
+    skill_floor: float | None = None
     # PSI above this counts as a significant feature-distribution shift.
     # (Industry convention: <0.10 stable, 0.10-0.25 moderate, >0.25 significant.)
     psi_threshold: float = 0.25

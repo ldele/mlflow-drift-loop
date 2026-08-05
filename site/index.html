@@ -162,11 +162,20 @@
             staircase in “when it retrains, and against what bar”. Once it has ratcheted to the
             seasonal peak the alarm cannot fire again, whatever the model does. Kraków spends its
             last 30 weeks that way, serving a 210-day-old model while the trigger reports it as
-            healthier than it has ever been. Two changes would fix it, and neither is exotic.
-            Measure the trigger against something outside the model, as the skill score this page
-            now leads with does, since that does not move when a model is promoted. And put an
-            absolute error floor alongside the ratio, so being bad in absolute terms is enough on
-            its own.
+            healthier than it has ever been.
+          </p>
+          <p class="why">
+            <strong>And what happened when it was fixed:</strong> two changes were proposed, and
+            building them settled the question differently. An absolute error floor turns out to be
+            impossible — waking the quietest city needs a floor low enough to retrain the dirtiest
+            one every single week, and there is nothing in between. A yardstick that holds still
+            when a model is promoted <em>is</em> buildable, and the loop now carries it: it also
+            fires when skill against the daily profile drops below a floor. It wakes the alarm up
+            exactly as intended, taking Kraków's longest silence from 30 weeks down to 5. Replayed
+            across all six cities it then changes nothing in five of the six at a cautious setting,
+            and at an aggressive one makes two of them worse for one improvement. So it ships off.
+            The alarm going quiet was never what was costing anything — the seven-day exam below
+            is — and that is only knowable because the fix was measured rather than assumed.
           </p>
         </section>
 

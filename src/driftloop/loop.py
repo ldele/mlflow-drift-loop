@@ -29,6 +29,7 @@ from driftloop.config import DRIFT_FEATURES, LoopConfig
 from driftloop.data.base import DataSource
 from driftloop.drift import DataDriftResult, compute_data_drift, compute_perf_drift, distribution_report
 from driftloop.model import error_metrics, predictions_frame, rmse, train
+from driftloop.retrospect import climatology_skill
 from driftloop.tracking import CHALLENGER_ALIAS, CHAMPION_ALIAS, load_champion, log_and_register, promote
 
 HOUR = pd.Timedelta(1, unit="h")
@@ -52,6 +53,11 @@ class CycleResult:
     perf_drift_detected: bool
     retrain_triggered: bool
     promotion_decision: str  # "none" | "promoted" | "rejected"
+    # Skill against a 30-day daily profile, and whether it crossed the floor.
+    # NaN and False when the floor is disabled, so a backend that predates it
+    # reads the same as one that has it switched off.
+    champion_skill: float = float("nan")
+    skill_drift_detected: bool = False
     challenger_rmse: float | None = None
     champion_rmse_holdout: float | None = None
     performance_gap: float | None = None
@@ -95,7 +101,8 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
     if champion is None:
         raise RuntimeError("no champion registered -- run bootstrap_champion first")
 
-    monitor = source.get_data(as_of - pd.Timedelta(cfg.monitor_days, unit="D"), as_of)
+    monitor_start = as_of - pd.Timedelta(cfg.monitor_days, unit="D")
+    monitor = source.get_data(monitor_start, as_of)
     reference = source.get_data(champion.train_start, champion.train_end + HOUR)
 
     # --- Signal 1: data drift (no model involved) ---
@@ -105,6 +112,28 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
     champion_metrics = error_metrics(champion.pipeline, monitor)
     champion_rmse = champion_metrics["rmse"]
     perf = compute_perf_drift(champion.baseline_rmse, champion_rmse, cfg.perf_drift_threshold)
+
+    # --- Signal 2b: the same question against a yardstick that holds still ---
+    #
+    # `perf` divides by the champion's own training error, so a promotion resets
+    # it and the bar ratchets upward until nothing can cross it. This asks
+    # instead whether the champion still beats a 30-day hour-of-day profile of
+    # recent pollution -- a baseline that knows nothing about which model is in
+    # service, and so cannot be moved by promoting one.
+    #
+    # It is an *additional* way to fire, never a way to suppress: a model can be
+    # bad against its own history, or bad against the cheap alternative, and
+    # either is grounds for training a challenger. The gate still decides whether
+    # one ships.
+    champion_skill = float("nan")
+    skill_detected = False
+    if cfg.skill_floor is not None:
+        champion_skill = climatology_skill(
+            source, monitor, monitor_start, source.forecast_lead_days, champion_rmse
+        )
+        # NaN means the baseline had no data to average, which is no opinion
+        # rather than a failing model.
+        skill_detected = not pd.isna(champion_skill) and champion_skill < cfg.skill_floor
 
     result = CycleResult(
         as_of=as_of,
@@ -119,13 +148,15 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
         perf_drift_ratio=perf.ratio,
         data_drift_detected=data_drift.detected(cfg.psi_threshold),
         perf_drift_detected=perf.detected,
-        retrain_triggered=perf.detected,
+        retrain_triggered=perf.detected or skill_detected,
         promotion_decision="none",
         per_feature_psi=dict(data_drift.per_feature_psi),
+        champion_skill=champion_skill,
+        skill_drift_detected=skill_detected,
     )
 
     challenger = None
-    if perf.detected:
+    if result.retrain_triggered:
         holdout_start = as_of - pd.Timedelta(cfg.holdout_days, unit="D")
         challenger_start = as_of - pd.Timedelta(cfg.challenger_train_days, unit="D")
 
@@ -190,6 +221,18 @@ def _log_cycle(
                 "cycle_type": "monitor",
                 "data_drift_detected": str(result.data_drift_detected),
                 "perf_drift_detected": str(result.perf_drift_detected),
+                "skill_drift_detected": str(result.skill_drift_detected),
+                # Which rule woke the loop up. "ratio" is the champion against
+                # its own training error, "skill" is it against the daily
+                # profile, "both" when they agree. Recorded because the whole
+                # point of adding the second one is being able to see how often
+                # the first had gone quiet while the model was failing.
+                "retrain_reason": (
+                    "both" if result.perf_drift_detected and result.skill_drift_detected
+                    else "ratio" if result.perf_drift_detected
+                    else "skill" if result.skill_drift_detected
+                    else "none"
+                ),
                 "retrain_triggered": str(result.retrain_triggered),
                 "promotion_decision": result.promotion_decision,
                 "data_drift_label": result.data_drift_label,
@@ -210,6 +253,11 @@ def _log_cycle(
             "retrain_triggered": float(result.retrain_triggered),
             "promotion_event": float(result.promotion_decision == "promoted"),
         }
+        # Only when the floor is on. Logging NaN would put a metric on the run
+        # that reads as a measurement rather than as "not computed", and the
+        # dashboards would then have to distinguish the two.
+        if not pd.isna(result.champion_skill):
+            metrics["champion_skill"] = result.champion_skill
         for feature, value in data_drift.per_feature_psi.items():
             metrics[f"psi_{feature}"] = value
         for feature, value in data_drift.per_feature_ks.items():

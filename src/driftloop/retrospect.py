@@ -156,6 +156,32 @@ def climatology_prediction(
     return hours.map(by_hour).to_numpy(dtype=float)
 
 
+def climatology_skill(
+    source: DataSource,
+    window: pd.DataFrame,
+    window_start: pd.Timestamp,
+    lead_days: int,
+    model_rmse: float,
+    days: int = CLIMATOLOGY_DAYS,
+) -> float:
+    """``1 - model_rmse / climatology_rmse`` on one window.
+
+    Lives here rather than in ``loop`` so the live retrain trigger and the
+    after-the-fact analysis answer to the *same* baseline, computed by the same
+    function under the same causality rule. Two implementations of "what would a
+    daily profile have said" is precisely the kind of near-duplicate that drifts
+    apart and then makes the trigger and the chart disagree about the same model.
+
+    NaN where the baseline is unavailable, which the caller must treat as "no
+    opinion" rather than as a failing model.
+    """
+    actual = window[TARGET].to_numpy(dtype=float)
+    reference = _rmse(actual, climatology_prediction(source, window, window_start, lead_days, days))
+    if not reference or np.isnan(reference) or np.isnan(model_rmse):
+        return float("nan")
+    return 1.0 - model_rmse / reference
+
+
 def training_window_stats(source: DataSource, model: RegisteredModel) -> dict[str, dict[str, float]]:
     """Each feature's central range over the window a model was trained on.
 

@@ -38,6 +38,14 @@ def add_cyclical_features(df: pd.DataFrame) -> pd.DataFrame:
 class DataSource(Protocol):
     """Anything that can serve a time window of feature/target rows."""
 
+    # How far ahead the features look. Part of the identity of the data rather
+    # than of the loop reading it: at lead 7 the features are the forecast issued
+    # a week before the target hour, at lead 0 they are the analysis for it, and
+    # the two are different datasets over the same span. Anything applying a
+    # causality rule -- "the baseline may only average what was observable when
+    # the forecast went out" -- has to ask the source, not a config it was handed.
+    forecast_lead_days: int
+
     def get_data(self, window_start: pd.Timestamp, window_end: pd.Timestamp) -> pd.DataFrame:
         ...
 
