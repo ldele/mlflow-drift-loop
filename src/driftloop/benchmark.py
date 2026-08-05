@@ -46,7 +46,7 @@ ALPHA_GRID: tuple[float, ...] = (0.001, 0.01, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 10
 USES_PAST_TARGET = {"persistence", "seasonal_naive"}
 
 DETAIL = {
-    "champion_served": "the model the loop actually served, retrained as needed",
+    "champion_served": "the model the loop served, retrained as needed",
     "champion_frozen": "the first champion, never retrained",
     "pooled_cities": "one model trained on all six cities at once, never retrained",
     "persistence": "repeat the previous observation",

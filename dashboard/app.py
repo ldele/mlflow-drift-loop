@@ -49,20 +49,20 @@ st.set_page_config(page_title="Drift loop", page_icon="~", layout="wide")
 # model walking into the winter heating season" is worse than no story at all.
 CITY_STORY = {
     "openmeteo": " Here it's a summer-trained model walking into the winter heating season, "
-    "when basin inversions over a coal-heated valley drive PM2.5 up several-fold — and then "
-    "back out the other side, which is the half of the year that exposed the retrain rule.",
+    "when basin inversions over a coal-heated valley drive PM2.5 up several-fold, then "
+    "back out the other side. That second half of the year is what exposed the retrain rule.",
     "openmeteo_delhi": " Here it's a monsoon-trained model walking into the post-monsoon "
     "burning season, which triples Delhi's PM2.5, the most violent of the six.",
     "openmeteo_la": " Los Angeles is the quiet one: barely a season at all, so the champion "
     "mostly holds and the loop mostly declines to retrain. It is the control, and it earns "
-    "its place by failing — there has to be drift for a drift loop to be worth anything.",
+    "its place by failing: there has to be drift for a drift loop to be worth anything.",
     "openmeteo_santiago": " Santiago is Kraków's twin, half a year out of phase: the same "
     "basin trapping the same winter inversions, walked into from a southern-summer-trained "
     "model. Same thresholds, opposite season, which is how you can tell the loop has no "
     "calendar in it.",
     "openmeteo_joburg": " Johannesburg is where the promotion gate does its most visible "
     "work. Highveld coal smoke takes the error from 12 to 82 µg/m³, eleven retrains fire, "
-    "and only three challengers clear the 5% margin — the other eight are trained and "
+    "and only three challengers clear the 5% margin. The other eight are trained and "
     "thrown away.",
     "openmeteo_melbourne": " Melbourne stays near the WHO guideline all year and its model "
     "still decays to more than four times its training error, which is the case against "
@@ -285,7 +285,7 @@ profile_key = st.sidebar.radio(
 # version, the per-run distributions and residuals.
 st.sidebar.caption(
     "The operator's view: one city's MLflow backend, live, as the last run left it. "
-    "[The published site](https://ldele.github.io/mlflow-drift-loop/) is the report — "
+    "[The published site](https://ldele.github.io/mlflow-drift-loop/) is the report: "
     "all six cities on shared axes, fixed at build time."
 )
 PROFILE = PROFILES[profile_key]
@@ -438,7 +438,7 @@ with tab_loop:
         story += CITY_STORY.get(profile_key, "")
     st.markdown(story)
 
-    fig = theme.base_figure("Data drift — PSI per feature vs. the champion's training window", "PSI")
+    fig = theme.base_figure("Data drift: PSI per feature against the champion's training window", "PSI")
     theme.drift_region(fig, drift_date, runs["as_of"].max())
     # DRIFT_FEATURES, not FEATURES: the two cyclical hour terms are fitted but
     # carry no PSI, because every monitoring window contains all 24 hours and
@@ -533,7 +533,7 @@ with tab_loop:
     else:
         judged = runs.iloc[:0]
     if judged.empty:
-        st.info("No challenger has been trained yet — performance drift never crossed the threshold.")
+        st.info("No challenger has been trained yet: performance drift never crossed the threshold.")
     else:
         theme.drift_region(fig, drift_date, runs["as_of"].max())
         theme.line(fig, judged["as_of"], judged["metrics.champion_rmse_holdout"], "champion", theme.SERIES[0])
@@ -603,7 +603,7 @@ with tab_dist:
             "Each weather ingredient averaged over every monitoring window, in the units it "
             "is measured in. The shaded band is the middle 80% of the *hourly* values that "
             f"ingredient held while the first model was trained ({train_start:%Y-%m-%d} to "
-            f"{train_end:%Y-%m-%d}) — a percentile range rather than the full one, so a "
+            f"{train_end:%Y-%m-%d}), a percentile range rather than the full one, so a "
             "single freak hour cannot widen it to cover everything. A line leaving its band "
             "means the model is being asked about conditions it was never shown, which is the "
             "case for retraining before any statistic is computed."
@@ -616,8 +616,8 @@ with tab_dist:
         )
         st.caption(
             "Read the bands as a rough guide rather than a test. They are hourly and the "
-            "lines are two-week means, so anything with a large day-to-night swing — "
-            "radiation most of all — gets a band far wider than a mean could ever leave. "
+            "lines are two-week means, so anything with a large day-to-night swing, radiation "
+            "most of all, gets a band far wider than a mean could ever leave. "
             "Temperature is where the comparison bites: Kraków's spends the whole winter "
             "below everything the first model was trained on."
         )
@@ -627,7 +627,7 @@ with tab_dist:
     st.markdown(
         "How each feature's distribution in one window (filled) has moved away from "
         "the champion's training window (outline). This is what a data-drift "
-        "monitor like Evidently shows — logged as an artifact every run."
+        "monitor like Evidently shows, logged as an artifact every run."
     )
     options = list(runs["as_of"])
     picked = st.selectbox(
@@ -783,7 +783,7 @@ with tab_model:
                 "another, so where both are dominated by the same seasonal swing it largely "
                 "measures the season, and every week before the first promotion is a model "
                 "compared against itself. The first holds the window fixed, compares the two "
-                "models in it, and counts only the weeks a retrained model was actually serving."
+                "models in it, and counts only the weeks a retrained model was in service."
             )
             if across < -0.05:
                 st.warning(
@@ -823,7 +823,7 @@ with tab_model:
             st.caption(caption)
     else:
         st.info(
-            f"No benchmark for **{PROFILE.label}** yet — run "
+            f"No benchmark for **{PROFILE.label}** yet. Run "
             f"`python scripts/benchmark.py --city all` to score it against the baselines."
         )
 
@@ -847,27 +847,27 @@ with tab_model:
         )
         st.plotly_chart(theme.importance_bars(*importance), width="stretch")
         st.caption(
-            "Boundary layer height — the depth of air pollution is diluted into — would very "
+            "Boundary layer height, the depth of air pollution is diluted into, would very "
             "likely top this list and is missing. Open-Meteo does not archive it at a seven-day "
             "lead, so shortwave radiation stands in for it."
         )
 
-    st.markdown("#### Coefficient evolution — a direct picture of concept drift")
+    st.markdown("#### Coefficient evolution, a direct picture of concept drift")
     st.markdown(
         "The Ridge is one slope per weather feature and an intercept, in real "
         "units: PM2.5 per °C, per m/s wind, per %RH, per mm, per hPa, per W/m². "
         "Concept drift *is* these slopes changing, so watch them move each time "
-        "the champion is retrained — the temperature slope in particular crosses "
+        "the champion is retrained. The temperature slope in particular crosses "
         "zero as the summer relationship gives way to autumn."
     )
     st.caption(
         "One panel per feature, because these are per-unit slopes in units that "
         "are not comparable: on a shared axis the large-unit features flatten "
         "the rest against zero. The two cyclical hour terms are fitted but not "
-        "drawn — they encode the daily cycle, which does not invert."
+        "drawn, because they encode the daily cycle, which does not invert."
     )
     if versions.empty or versions["coef_temperature"].isna().all():
-        st.info("No coefficient tags found — re-run `scripts/run_simulation.py --fresh`.")
+        st.info("No coefficient tags found. Re-run `scripts/run_simulation.py --fresh`.")
     else:
         st.plotly_chart(
             theme.coef_small_multiples(versions, DRIFT_FEATURES), width="stretch"
@@ -923,7 +923,7 @@ with tab_sweep:
     sweep_path = REPO_ROOT / "outputs" / "sweep.csv"
     if not IS_SYNTHETIC:
         st.info(
-            "The knob sweep is a **synthetic-only** diagnostic — it dials concept "
+            "The knob sweep is a **synthetic-only** diagnostic. It dials concept "
             "drift and covariate drift independently to prove the two detectors are "
             "separable. Real data has no such knobs. Switch to the Synthetic profile "
             "in the sidebar to see it."
@@ -933,7 +933,7 @@ with tab_sweep:
     else:
         sweep = pd.read_csv(sweep_path)
         st.markdown(
-            "Each knob moves **its own** detector and leaves the other flat — which is "
+            "Each knob moves **its own** detector and leaves the other flat, which is "
             "why two signals are worth having. `feature_shift` changes the world's "
             "feature distributions (PSI sees it, with no model and no labels); "
             "`drift_strength` changes the relationship being learned (only the "
@@ -959,7 +959,7 @@ with tab_sweep:
 with tab_registry:
     st.markdown(
         f"Registered model **`{CFG.registered_model_name}`**. MLflow 3 replaced "
-        "Staging/Production stages with aliases — a promotion moves the `champion` "
+        "Staging/Production stages with aliases, so a promotion moves the `champion` "
         "alias onto a new version."
     )
     versions = load_versions(DB, CFG.experiment_name, CFG.registered_model_name)
@@ -994,7 +994,7 @@ with tab_registry:
 # Tab: raw run table                                                           #
 # --------------------------------------------------------------------------- #
 with tab_table:
-    st.caption("Every scheduled run, exactly as logged to MLflow.")
+    st.caption("Every scheduled run, as logged to MLflow.")
     cols = {
         "as_of": "as_of",
         "metrics.data_drift_psi": "max PSI",

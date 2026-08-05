@@ -28,15 +28,22 @@ One run a week, four steps:
 | **3. Train a rival** | error is 1.25× what it used to be, so train a fresh model on the last 180 days | only if step 2 says so |
 | **4. Make it earn the job** | both sit the same exam, a week of air neither has seen | the newcomer wins by 5% or it is thrown away |
 
-**Why two signals and not one.** The first looks only at the weather coming in,
-so it can raise a hand immediately, without waiting to find out whether the model
-was wrong. But "the world looks different" is not the same as "the model is
-failing". Kraków shows the gap: through the summer its weather drifts further
-from training than anywhere else here, while the model quietly gets better. So
-the cheap alarm watches, and only the expensive one, the one that asks whether we
-got this wrong, can authorise spending money on a retrain.
+Why two signals and not one? The first looks only at the weather coming in, so it
+can raise a hand immediately, without waiting to find out whether the model was
+wrong. But "the world looks different" is not the same as "the model is failing".
+Kraków shows the gap: through the summer its weather drifts further from training
+than anywhere else here, while the model quietly gets better. So the cheap alarm
+watches, and only the expensive one, the one that asks whether we got this wrong,
+can authorise spending money on a retrain.
 
-**And the expensive one is measurably the wrong shape.** It compares the model
+Nothing is graded on work it has already seen. The replacement trains on a window
+that stops before the exam, the incumbent was trained long before it, and both
+are marked on the same unseen week. Details in
+[methodology.md](docs/methodology.md).
+
+### The alarm that goes deaf
+
+**The expensive signal is measurably the wrong shape.** It compares the model
 against *its own* error at training time, and every promotion resets that
 comparison. Retrains fire in the dirty season, so each new model inherits a
 higher bar than the one it replaced and the bar never comes back down. Kraków's
@@ -45,23 +52,18 @@ its 48 weeks are a 210-day-old model reported as healthier than it has ever
 been, while its skill against a plain 30-day daily profile is the worst it has
 ever been. Finding that is what the site is built to do.
 
-**Then the fix for it was built, and it does not pay.** Two were proposed. An
-absolute error floor cannot be built at all: waking the quietest city needs a
-floor low enough to retrain the dirtiest one every week, and the gap between them
-is empty. A model-independent yardstick can be — the trigger also fires when
-skill against the daily profile drops below a floor, which nothing about
-promoting a model can move. It wakes the trigger up exactly as intended: Kraków's
-longest silence falls from 30 weeks to 5. Replayed across all six cities it then
-changes nothing in five of six at a conservative setting, and at an aggressive
-one makes two of them measurably worse for one improvement. So it ships switched
-off, and the evidence says the trigger was never the bottleneck — the seven-day
-exam below is. That is the more useful finding, and it only exists because the
-fix was measured instead of assumed.
-
-**Nothing is graded on work it has already seen.** The replacement trains on a
-window that stops before the exam, the incumbent was trained long before it, and
-both are marked on the same unseen week. Details in
-[methodology.md](docs/methodology.md).
+Then the fix was built, and it does not pay. Two were proposed. An absolute error
+floor cannot be built at all: waking the quietest city needs a floor low enough
+to retrain the dirtiest one every week, and the gap between them is empty. A
+model-independent yardstick can be, and now is. The trigger also fires when skill
+against the daily profile drops below a floor, which nothing about promoting a
+model can move, and it wakes the alarm as intended: Kraków's longest silence
+falls from 30 weeks to 5. Replayed across all six cities it then changes nothing
+in five of six at a conservative setting, and at an aggressive one makes two of
+them worse for one improvement. So it ships switched off, and the evidence says
+the trigger was never the bottleneck. The seven-day exam is. That is the more
+useful finding, and it exists only because the fix was measured instead of
+assumed.
 
 ## Six cities that disagree
 
@@ -89,9 +91,9 @@ retrained model was serving.
 | **Los Angeles** | 15 → 29, a mild winter bump | 37 | 3 | −8.9% | −2.8%, won 50% of 36 |
 
 In Delhi, where the air transforms, keeping the model fresh roughly halves its
-error. In Los Angeles it is a coin toss that costs money to play: exactly half
-the weeks it acted came out ahead, and the median week came out 2.8% behind. Los
-Angeles is the control, and it earns its place by failing.
+error. In Los Angeles it is a coin toss that costs money to play: half the weeks
+it acted came out ahead, and the median week came out 2.8% behind. Los Angeles is
+the control, and it earns its place by failing.
 
 Johannesburg is where the promotion gate does its most visible work, and where
 the unpaired number misleads hardest. Eleven retrains, three shipped, the other
@@ -191,9 +193,9 @@ tests/            data contract, drift math, no-leak guards, baseline fairness,
 ```
 
 - **[methodology.md](docs/methodology.md)** covers how it works: what a Ridge
-  actually does and why it is barely doing it here, the features and the physics
-  behind each one, what PSI computes and where it stops meaning anything, the
-  window layout, the guards against cheating, and a reading list.
+  does and why it is barely doing it here, the features and the physics behind
+  each one, what PSI computes and where it stops meaning anything, the window
+  layout, the guards against cheating, and a reading list.
 - **[evaluation.md](docs/evaluation.md)** covers whether it works: per-city
   results, the baselines, the controlled experiment, and the limitations.
 

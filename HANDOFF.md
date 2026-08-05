@@ -12,8 +12,8 @@ out for themselves.
 ## What landed on 2026-08-05 (second pass): the trigger fix, and its result
 
 The top open item was "build the trigger fix", which had been documented and not
-implemented. It is now built, measured, and switched off — and the measurement is
-the useful part.
+implemented. It is now built, measured, and switched off. The measurement is the
+useful part.
 
 - **`LoopConfig.skill_floor`** adds a second retrain trigger: skill against the
   30-day daily profile dropping below a floor. Scale-free, so one number works
@@ -21,7 +21,7 @@ the useful part.
   additional way to fire, never a way to suppress the ratio. `retrain_reason` is
   tagged per run (`ratio` / `skill` / `both` / `none`).
 - **It does not pay.** [`scripts/sweep_skill_floor.py`](scripts/sweep_skill_floor.py)
-  replays all six cities at several floors — a real replay per arm, because a
+  replays all six cities at several floors, a real replay per arm, because a
   changed trigger changes which models exist. At `-0.5` the outcome is identical
   in all six. At `0.0` it fires 2-3× as often and is worse in two cities (Delhi
   +10% error, Kraków +7%), better in one (Los Angeles), unchanged in three.
@@ -62,9 +62,9 @@ surfaced one accounting bug in numbers both UIs publish.
   `data.json`, because both UIs draw that split and a threshold kept by hand in
   Python and JavaScript is how they end up telling different stories.
 - **`docs/methodology.md` was expanded** into something that explains the Ridge
-  rather than naming it — the objective, the closed form, why standardisation is
+  rather than naming it: the objective, the closed form, why standardisation is
   a correctness requirement, how the coefficients get back into real units and
-  why that is what makes `retrospect` possible — plus the PSI saturation
+  why that is what makes `retrospect` possible. Plus the PSI saturation
   arithmetic, the skill score, and a reference list.
 
 ## What landed on 2026-08-04
@@ -155,7 +155,7 @@ that flattered the system.
 - **Sweep `holdout_days`.** This is now the top open experiment, and the trigger
   work is what promoted it: if the exam's shelf life is the real constraint, a
   longer holdout should move the gate calibration and the delivered margins.
-  `sweep_skill_floor.py` is the pattern to copy — a full replay per arm, into a
+  `sweep_skill_floor.py` is the pattern to copy: a full replay per arm, into a
   temp backend, scored with `retrospect`.
 - `challenger_train_days` is still argued rather than swept.
 - **`docs/images/dashboard.png` is the one screenshot still showing the old

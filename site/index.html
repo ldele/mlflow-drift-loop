@@ -167,15 +167,15 @@
           <p class="why">
             <strong>And what happened when it was fixed:</strong> two changes were proposed, and
             building them settled the question differently. An absolute error floor turns out to be
-            impossible — waking the quietest city needs a floor low enough to retrain the dirtiest
-            one every single week, and there is nothing in between. A yardstick that holds still
-            when a model is promoted <em>is</em> buildable, and the loop now carries it: it also
-            fires when skill against the daily profile drops below a floor. It wakes the alarm up
-            exactly as intended, taking Kraków's longest silence from 30 weeks down to 5. Replayed
-            across all six cities it then changes nothing in five of the six at a cautious setting,
-            and at an aggressive one makes two of them worse for one improvement. So it ships off.
-            The alarm going quiet was never what was costing anything — the seven-day exam below
-            is — and that is only knowable because the fix was measured rather than assumed.
+            impossible: waking the quietest city needs a floor low enough to retrain the dirtiest
+            one every week, and there is nothing in between. A yardstick that holds still when a
+            model is promoted <em>is</em> buildable, and the loop now carries it. It also fires
+            when skill against the daily profile drops below a floor, which wakes the alarm up as
+            intended, taking Kraków's longest silence from 30 weeks down to 5. Replayed across all
+            six cities it then changes nothing in five of the six at a cautious setting, and at an
+            aggressive one makes two of them worse for one improvement. So it ships switched off.
+            The alarm going quiet was never what cost anything. The seven-day exam below is, and
+            that is knowable only because the fix was measured rather than assumed.
           </p>
         </section>
 
@@ -189,9 +189,9 @@
             <div class="card-head"><h3>The model</h3></div>
             <p class="desc">
               It answers one question: given the weather we expect in a week, how dirty will the
-              air be? It is fed the weather forecasts that were actually published at the time,
-              rather than the weather that turned out to happen, so it starts a step behind in the
-              same way anyone forecasting a week out really would. It is never told how dirty the
+              air be? It is fed the weather forecasts as they were published at the time, rather
+              than the weather that turned out to happen, so it starts a step behind in the same
+              way anyone forecasting a week out really would. It is never told how dirty the
               air has been recently, which would be an easy shortcut and would hide the effect
               being demonstrated. Keeping it simple is a choice: a simple model visibly falls apart
               when the world shifts, where a clever one papers over the cracks and you learn

@@ -39,9 +39,9 @@ retrained and averages in the ones from before anything was promoted.
 
 The same question has a boundary case at the very first run. The bootstrap
 champion is registered before any monitoring cycle exists, so a first run that
-promotes — which Kraków and Los Angeles both do — has no earlier row to read the
-outgoing version off, and the run's own tag has already been overwritten with the
-winner. The version it replaced is in the registry rather than in the run log: it
+promotes has no earlier row to read the outgoing version off, and its own tag has
+already been overwritten with the winner. Kraków and Los Angeles both promote on
+their first run. The version it replaced is in the registry rather than in the run log: it
 is the lowest registered version, the same model the frozen comparison uses.
 Without that, one window per affected city counted as retrained when the
 bootstrap was serving it, and one real promotion per city went unjudged by the
@@ -93,9 +93,9 @@ replay past the point that flatters the system.
 Los Angeles is the control, and the measurements chose it for that. It was picked
 as the summer-smog city; hourly PM2.5 over 2025–26 peaks in November and bottoms
 out in June. Its model barely moves across 37 weeks and only three retrains ever
-fire. Week by week, retraining wins exactly half the weeks it acted and the
-median week comes out 2.8% behind — a coin toss with a fee, and the fair verdict
-on the city. There has to be drift for a drift loop to earn anything.
+fire. Week by week, retraining wins half the weeks it acted and the median week
+comes out 2.8% behind: a coin toss with a fee, and the fair verdict on the city.
+There has to be drift for a drift loop to earn anything.
 
 Johannesburg is where the promotion gate does the most visible work. Error
 climbs from 11.6 to 82.3 µg/m³, the worst on the page, and eleven retrains
@@ -266,7 +266,7 @@ expected.
 
 **The absolute floor is not implementable.** A floor has to be one number for
 every city, or the thresholds stop being identical and the cities stop being
-comparable — which is the property the whole six-city comparison rests on. There
+comparable, which is the property the whole six-city comparison rests on. There
 is no such number. Los Angeles's deaf stretch tops out at 18.1 µg/m³, so waking
 it needs a floor below 18; at 15 µg/m³ Delhi fires on 100% of its runs and
 Johannesburg on 80%, and at 25 Los Angeles never fires at all. The gap between
@@ -278,8 +278,8 @@ empty. An absolute floor is a per-city tuning knob wearing a disguise.
 30-day daily profile drops below a floor. Being a ratio against something outside
 the model it is scale-free, so one number does work for every city, and it cannot
 be moved by promoting anything. [`sweep_skill_floor.py`](../scripts/sweep_skill_floor.py)
-replays all six cities at several floors — a full replay each, because a changed
-trigger changes which models exist and therefore the whole trajectory.
+replays all six cities at several floors, a full replay per arm, because a
+changed trigger changes which models exist and therefore the whole trajectory.
 
 It does wake the trigger up. Kraków's longest silence falls from 30 weeks to 5,
 Los Angeles's from 29 to 12. Median champion error, µg/m³, lower is better:
@@ -303,10 +303,10 @@ worse in two cities, better in one, and unchanged in three. Retraining Delhi 31
 times instead of 9 costs 10% of its error.
 
 So the ratchet is real as a mechanism and close to inert as a harm. In the cities
-where the trigger goes deaf there was little left to gain by firing, and the one
-city where firing more did help — Los Angeles — is the control, where the honest
-reading is that it did less harm rather than more good: even at its best setting
-it goes from losing 8.9% to losing 1.2%.
+where the trigger goes deaf there was little left to gain by firing. The one city
+where firing more did help is Los Angeles, the control, and even there the fair
+reading is that it did less harm rather than more good: at its best setting it
+goes from losing 8.9% to losing 1.2%.
 
 **The most consistent explanation is that the trigger was never the bottleneck.**
 Firing more often only pushes more challengers at a gate that certifies for about
@@ -315,6 +315,40 @@ to 13 and its error rises with them. Los Angeles is the exception that fits: its
 air barely moves, so successive models are nearly identical and a short
 certificate costs it nothing. That points the next experiment at the length of
 the exam rather than at the sensitivity of the trigger.
+
+#### Checked against other measures, and against fixed baselines
+
+A conclusion that rests on one summary statistic deserves a second look, so the
+three cities that move were re-run and scored two further ways. The first swaps
+the statistic: mean RMSE and median MAE instead of median RMSE. The second drops
+the arm-against-arm comparison and scores every arm against the same fixed
+predictors, which cannot be moved by anything the trigger does.
+
+| | floor | median RMSE | mean RMSE | median MAE | vs. climatology | vs. persistence | vs. training mean |
+|---|---|---|---|---|---|---|---|
+| **Kraków** | skill < 0 | ×1.074 | ×1.032 | ×1.074 | 0.965 → 1.037 | 1.041 → 1.118 | 0.950 → 1.021 |
+| | skill < −0.5 | ×1.000 | ×1.000 | ×1.000 | unchanged | unchanged | unchanged |
+| **Delhi** | skill < 0 | ×1.104 | ×1.016 | ×1.068 | 0.977 → 1.079 | 0.812 → 0.897 | 0.890 → 0.983 |
+| | skill < −0.5 | ×1.000 | ×1.000 | ×1.000 | unchanged | unchanged | unchanged |
+| **Los Angeles** | skill < 0 | ×0.929 | ×0.955 | ×0.907 | 1.005 → 0.934 | 0.801 → 0.744 | 1.056 → 0.982 |
+| | skill < −0.5 | ×0.992 | ×0.992 | ×0.969 | 1.005 → 0.998 | 0.801 → 0.795 | 1.056 → 1.048 |
+
+The first three columns are ratios against that city's own trigger-off arm, so
+above 1 means the floor made it worse. The baseline columns are the served
+model's error over that baseline's, so below 1 means the model wins.
+
+All three statistics agree in direction in all three cities, which rules out an
+artifact of the median. The baseline columns then say something the
+arm-against-arm comparison could not. Switching the floor on flips Kraków's
+served model from beating a constant to losing to one, 0.950 to 1.021, and flips
+both Kraków and Delhi from beating the daily profile to losing to it. Los Angeles
+moves the other way on both.
+
+Two smaller readings. Mean RMSE moves less than median in the harmed cities,
+×1.032 against ×1.074 in Kraków, so the damage sits in the typical week rather
+than in the tail. And the conservative floor is a true no-op only in Kraków and
+Delhi; in Los Angeles it shifts everything by under 1% on RMSE and 3% on MAE,
+which is the same small improvement seen in the main table.
 
 The floor therefore ships **off by default**. It is a knob with a measured effect
 of roughly zero, and turning it on by default would move every number on this
