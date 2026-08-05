@@ -606,7 +606,7 @@ function render() {
       "What the model is worth",
       `These models earn their keep in the dirty season and lose to a rule of thumb in the clean one. ` +
       `Above the line the model beats the rule of thumb, which is "this hour usually looks like it did over the last ${days} days". Below the line it loses to it. ` +
-      `That baseline gets to see recent pollution readings and the model never does, so it is a hard bar rather than a fair fight. It is here because it is the thing you could deploy instead.`,
+      `That baseline gets to see recent pollution readings and the model never does, so it is a hard bar rather than a fair fight. It is here because it is the alternative you could deploy instead.`,
       [{ label: `skill vs. ${days}-day daily profile`, color: pal.series[2], kind: "line" }],
       [lineT(p.as_of, R.skill.champion, "skill", pal.series[2], null, { hover: "%{y:+.2f}" })],
       lay);
@@ -999,7 +999,7 @@ function renderBenchmark(p) {
   }
 
   card.innerHTML =
-    `<div class="card-head"><h3>Does the model beat anything?</h3></div>` +
+    `<div class="card-head"><h3>Does it beat the baselines?</h3></div>` +
     `<p class="desc">Median error across the ${b.windows} monitoring windows of ` +
     `${b.monitor_days} days each, the same slices the charts above report on. Grouped by what ` +
     `each predictor is allowed to see: a forecaster issuing ${days(b.lead_days)} out may use ` +
@@ -1137,7 +1137,7 @@ function renderGate() {
   chartCard(jobs,
     "What the exam promised against what it delivered",
     `One point per promotion, across every city. Horizontal is the margin the challenger won its exam by, which is the number the gate decided on. Vertical is what it went on to deliver over the weeks it then served, measured against the model it replaced and scored on those same windows. ` +
-    `On the dotted diagonal the exam predicted the outcome perfectly. Below the red line the promotion made things worse.`,
+    `On the dotted diagonal the exam predicted the outcome perfectly. Below the red line the promotion left the city worse off.`,
     [
       { label: `served under ${GATE_LONG_WEEKS} weeks`, color: pal.series[2], kind: "dot" },
       { label: `served ${GATE_LONG_WEEKS}+ weeks`, color: pal.crit, kind: "dot" },
@@ -1150,7 +1150,7 @@ function renderGate() {
     `<strong>The result:</strong> the exam is honest and well calibrated over the horizon it tests. ` +
     `Across ${short.length} promotions that served under ${GATE_LONG_WEEKS} weeks it promised ` +
     `${pct(mean(short, "exam") * 100, 1)} and delivered ${pct(mean(short, "delivered") * 100, 1)}, and not one of them ` +
-    `made things worse. But every one of the ${long.length} models that ended up serving ${GATE_LONG_WEEKS} weeks or more ` +
+    `left its city worse off. But every one of the ${long.length} models that ended up serving ${GATE_LONG_WEEKS} weeks or more ` +
     `delivered a <em>negative</em> margin, ${pct(mean(long, "exam") * 100, 1)} promised against ` +
     `${pct(mean(long, "delivered") * 100, 1)} delivered, despite passing the same exam just as convincingly. ` +
     `A seven-day exam can certify a model for about a month. It cannot certify one for half a year. ` +
@@ -1224,12 +1224,12 @@ function renderControl(sweep) {
   if (fs && ds) {
     document.getElementById("control-note").innerHTML =
       `<strong>The result:</strong> turn the dial that changes how weather becomes pollution, and ` +
-      `the "is it getting things wrong" alarm climbs ${last(ds.perf_rel).toFixed(1)}× while the ` +
+      `the "is the error rising" alarm climbs ${last(ds.perf_rel).toFixed(1)}× while the ` +
       `"does the weather look different" alarm does not move at all ` +
       `(${last(ds.psi_rel).toFixed(2)}×). It is right not to: the weather has not changed. Turn ` +
       `the other dial and it reverses, with the weather alarm climbing ` +
       `${last(fs.psi_rel).toFixed(1)}× and the error alarm staying put ` +
-      `(${last(fs.perf_rel).toFixed(2)}×). Each answers only to the thing it is supposed to ` +
+      `(${last(fs.perf_rel).toFixed(2)}×). Each answers only to the cause it is meant to ` +
       `watch, which is the whole reason for having two, and it is the one claim no real city can ` +
       `settle, because in a real city nobody knows what the right answer was.`;
   }
@@ -1263,7 +1263,7 @@ function renderMethod(m) {
 
   const steps = [
     ["Mark its homework", `Take the model in service and check the last ${days(p.monitor_days)} of forecasts against what the air did.`],
-    ["Look for trouble, two ways", "First, whether the weather has stopped resembling what the model learned from. Separately, whether the model is getting things wrong. The first can fire before any damage shows. Only the second is allowed to spend money."],
+    ["Look for trouble, two ways", "First, whether the weather has stopped resembling what the model learned from. Separately, whether the model's error is rising. The first can fire before any damage shows. Only the second is allowed to spend money."],
     ["Train a rival", `If the error is ${p.perf_drift_threshold}× what it used to be, train a fresh model on the last ${days(p.challenger_train_days)} and let it apply for the job.`],
     ["Make it earn the job", `Both sit the same exam, ${days(p.holdout_days)} of air neither has seen. The newcomer has to win by ${pct(p.promotion_margin)} rather than squeak past, or it is thrown away.`],
   ];

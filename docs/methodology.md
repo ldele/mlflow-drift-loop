@@ -1,92 +1,99 @@
 # Methodology
 
-How the thing works. For whether it works, see [evaluation.md](evaluation.md).
+How the system works. For whether it works, see [evaluation.md](evaluation.md).
 
-The short version: a small linear model guesses a city's air quality a week ahead
-from the weather forecast, and a loop around it marks its own homework every
-week, trains a replacement when the marks slip, and refuses to ship that
-replacement unless it wins a fair exam. Most of what follows is about the loop.
-The model is the part you could throw away.
+A linear model forecasts a city's hourly PM2.5 a week ahead from the weather
+forecast. Once a week a loop scores that model on the fortnight just gone, checks
+two independent drift signals, trains a replacement when either fires, and
+promotes the replacement only if it wins a blind exam. This document follows that
+weekly run from raw weather to a promotion decision, then covers the machinery
+that keeps the result honest.
+
+## Vocabulary
+
+Used precisely throughout, so the prose does not stop to re-explain them.
+
+| term | meaning |
+|---|---|
+| **champion** | the model currently in service, pointed at by the `champion` alias in the MLflow registry |
+| **challenger** | a freshly trained model competing to replace the champion |
+| **bootstrap champion** | the first champion, trained before any monitoring run exists |
+| **promotion** | moving the `champion` alias onto a challenger. This is the deployment step |
+| **promotion gate** | the rule that decides it: the challenger must beat the champion by more than 5% on the holdout |
+| **monitor window** | the 14 days ending at the run date, used to score the champion and measure drift |
+| **holdout** | the last 7 days before the run date, excluded from challenger training, used as the exam |
+| **forecast lead** | how far ahead the features look. At lead 7 the features are the forecast issued a week before the target hour |
+| **covariate drift** | the incoming feature distributions have moved away from training. Needs no labels and no model |
+| **concept drift** | the relationship between features and target has changed. Only visible in error |
+| **PSI** | Population Stability Index, the statistic used to quantify covariate drift |
+| **skill score** | error relative to a reference predictor: `1 − RMSE_model / RMSE_reference` |
+| **climatology** | the reference predictor for skill: the hour-of-day mean of the previous 30 days |
+| **the ratchet** | the retrain trigger's failure mode, where its threshold rises at every promotion and never falls |
+| **replay** | running the weekly loop over a fixed historical span, one simulated week at a time |
 
 ---
 
-## What the model predicts
+## The prediction task
 
-A city's hourly PM2.5 concentration, in micrograms per cubic metre, seven days
-ahead.
+Hourly PM2.5 concentration in µg/m³, seven days ahead.
 
 The features are the weather forecast *for the target hour, as it stood a week
-earlier*. They come from Open-Meteo's archive of previous model runs, which
+earlier*, taken from Open-Meteo's archive of previous model runs. That archive
 stores what the forecast said at the time rather than what the weather turned out
-to be. So the model answers a question a city could ask on a Monday: given what
-we currently expect next Monday's weather to be, how dirty will the air be?
+to be, so the model answers a question a city could ask on a Monday: given the
+weather we currently expect next Monday, how dirty will the air be?
 
-That framing costs something, and the cost is worth stating up front. At a
-seven-day lead the weather forecast is already wrong by about 4.5 °C on
-temperature, and the PM2.5 model inherits every bit of that before adding any
-error of its own. Two error sources stacked is why the benchmarks in
-[evaluation.md](evaluation.md) come out where they do.
+The framing has a cost worth stating up front. At a seven-day lead the weather
+forecast is already wrong by about 4.5 °C on temperature, and the PM2.5 model
+inherits that error before adding any of its own. Two error sources stacked is
+why the benchmarks in [evaluation.md](evaluation.md) land where they do.
 
-The lead is one number, `FORECAST_LEAD_DAYS` in `config.py`. Set it to 0 and the
-features come from the ERA5 reanalysis instead, which turns the same code into a
-same-hour estimator with no forecasting in it. Seven is the ceiling rather than a
-choice: Open-Meteo archives previous model runs out to day seven and no further.
+The forecast lead is one constant, `FORECAST_LEAD_DAYS`. At 0 the features come
+from the ERA5 reanalysis instead, which turns the same code into a same-hour
+estimator with no forecasting in it. Seven is the ceiling rather than a choice:
+Open-Meteo archives previous model runs out to day seven and no further.
 
-Nothing downstream of the data fetch knows which of those two things it is doing.
-The features and the target share one timestamp in the column contract, so the
-horizon lives entirely in *which* weather the source goes and gets. The same
-loop, the same drift maths and the same registry served both framings without a
-line of modification, which is the strongest evidence that the machinery is not
-secretly coupled to the problem.
+Nothing downstream of the data fetch knows which of the two it is doing. Features
+and target share one timestamp in the column contract, so the horizon lives
+entirely in which weather the source retrieves. The same loop, drift maths and
+registry served both framings unmodified, which is the strongest evidence that
+the machinery is not coupled to the problem.
 
 ---
 
-## The model: Ridge, from the top
+## The model
 
 ![Method](images/method.png)
 
-`StandardScaler → Ridge(alpha=1.0)` on eight features, trained on a chronological
-80/20 tail split, never a random one, then refit on the full window.
+`StandardScaler → Ridge(alpha=1.0)` on eight features, fitted on a chronological
+80/20 tail split, then refit on the full window. The tail split is what produces
+the champion's **baseline RMSE**, the number performance drift is later measured
+against.
 
-That is one line of scikit-learn and about five ideas underneath it. Here they
-are in order, because "we used ridge regression" is the kind of sentence that
-sounds like an explanation and isn't.
+### What ridge regression does
 
-### Least squares, and where it comes apart
+Ordinary least squares picks coefficients minimising squared error, with the
+closed form `β = (XᵀX)⁻¹Xᵀy`. It has two weaknesses. When feature columns are
+close to collinear, `XᵀX` approaches singular and its inverse produces enormous,
+mutually cancelling coefficients that fit the training window and mean nothing
+individually. And every coefficient is fitted at full strength, including noise.
 
-Start with the model that has no ridge in it. Fit
-
-```
-pm25  ≈  β₀  +  β₁·temperature  +  β₂·wind_speed  +  …  +  β₈·hour_cos
-```
-
-by picking the βs that make the sum of squared errors as small as possible. There
-is a closed-form answer, and every statistics course writes it the same way:
+Ridge adds a penalty on coefficient size:
 
 ```
-β = (XᵀX)⁻¹ Xᵀy
+minimise   Σᵢ (yᵢ − β₀ − Σⱼ βⱼxᵢⱼ)²   +   α · Σⱼ βⱼ²
 ```
 
-Two things go wrong with that in general.
+which has the closed form `β = (XᵀX + αI)⁻¹Xᵀy`. Adding α down the diagonal of
+`XᵀX` is the ridge the method is named after, and it makes the matrix invertible
+even under collinearity. Hoerl and Kennard proposed it in 1970 for that purpose.
+The trade is bias: ridge returns coefficients that are too small, in exchange for
+coefficients that do not lurch when the training window shifts by a week. β₀ is
+excluded from the penalty, since shrinking the intercept would pull the model
+toward predicting zero pollution rather than toward the mean.
 
-**Correlated features make the answer unstable.** When the columns of `X` are
-close to collinear, `XᵀX` is close to singular, and inverting something close to
-singular produces enormous numbers: typically a large positive slope on one
-feature, almost cancelled by a large negative one on its neighbour. Those slopes
-fit the training window beautifully and mean nothing individually. Shift the
-window by a week and they can swap signs.
-
-**Every coefficient is fitted at full strength, including the ones that are
-noise.** Least squares has no way to say "this feature is probably not doing
-much". It gives each one whatever slope minimises training error.
-
-In most projects that instability is only an accuracy problem. Here it would be
-worse, because the coefficients are not a by-product. They are logged to the
-registry on every version, plotted on both UIs, and the whole concept-drift
-narrative is *watch this slope cross zero as the season turns*. A slope that
-swings because two features are collinear tells that story loudly and falsely.
-
-The weather features here *are* correlated, over Kraków's training window:
+Here that insurance is barely exercised. The weather features are correlated over
+Kraków's training window:
 
 ```
                      temp   wind   humid  precip  press  radiation
@@ -95,83 +102,29 @@ humidity            -0.66   0.02   1.00    0.33  -0.34  -0.62
 shortwave_radiation  0.61   0.10  -0.62   -0.08   0.11   1.00
 ```
 
-Warm hours are sunny and dry, which is no surprise. But correlated is a long way
-from collinear, and this design sits nowhere near the pathological case. The
-condition number of the standardised feature matrix is **6.9**. Trouble starts
-somewhere north of 30, and an ill-posed problem runs into the thousands; six
-weather variables against 1,464 hourly rows is a comfortable ratio.
+but correlated is a long way from collinear. The condition number of the
+standardised feature matrix is **6.9**, where trouble starts north of 30 and an
+ill-posed problem runs into the thousands. At the shipped α = 1.0 the fitted
+coefficients match plain least squares to three decimal places, so **the
+regularisation is close to inert at the setting that ships**. It stays because
+every challenger is fitted on a different 180-day window that nobody inspects
+first.
 
-That leads somewhere worth stating up front. At the shipped α = 1.0 the fitted
-slopes match plain least squares to three decimal places, so **the regularisation
-is close to inert at the setting that ships.** It is insurance the model has not
-yet had to claim on: cheap, correct to carry, and currently doing almost nothing.
-The alpha section below has the measurement.
+### Why the features are standardised
 
-### The ridge, and where the name came from
+`Σβⱼ²` sums coefficients as though they were comparable. They are not: surface
+pressure runs around 1000 hPa and precipitation around 0.1 mm, so the slope per
+hPa is tiny and the slope per mm large before any physics is considered.
+Penalising them together in raw units would decide that pressure matters less
+than rain because of the recording unit. `StandardScaler` puts every feature on
+mean 0, standard deviation 1 first, so the penalty applies to how much the
+prediction moves per typical move in that feature. Ridge on unstandardised
+features is a defect, not a style choice.
 
-Ridge regression adds one term to what is being minimised:
+### Reading the coefficients
 
-```
-minimise   Σᵢ (yᵢ − β₀ − Σⱼ βⱼxᵢⱼ)²   +   α · Σⱼ βⱼ²
-           └───── fit the data ─────┘       └ stay small ┘
-```
-
-α is a dial between two things you want and cannot have both of. At α = 0 this is
-plain least squares. As α → ∞ every slope is crushed to zero and the model
-becomes "predict the training mean, forever", which happens to be one of the
-baselines in [evaluation.md](evaluation.md). The dumbest predictor on that page
-is this model with the dial turned all the way up.
-
-The closed form is where the name comes from:
-
-```
-β = (XᵀX + αI)⁻¹ Xᵀy
-```
-
-`αI` adds α down the diagonal of `XᵀX`, a ridge running along the middle of the
-matrix. That alone makes it invertible even when the columns are collinear, which
-is the whole trick, and it is what Hoerl and Kennard proposed in 1970 under the
-title "biased estimation for nonorthogonal problems". Nonorthogonal is the
-correlated-columns problem above.
-
-The word *biased* in that title is doing real work. Ridge returns coefficients
-that are too small on purpose. In exchange it returns coefficients that do not
-lurch about when the training window moves by a week. For a model whose slopes
-are published every time it retrains, that is a good trade, and it is the reason
-to keep carrying it even where the design is well enough conditioned that it is
-barely exercised. Every challenger is fitted on a *different* 180-day window that
-nobody inspects first.
-
-The intercept is left out of the penalty. Shrinking β₀ toward zero would shrink
-the model toward predicting zero micrograms of pollution rather than toward
-predicting the average, which is an absurd assumption rather than a modest one.
-scikit-learn handles this by centring internally, so `Ridge` never penalises the
-intercept and you do not have to remember to ask.
-
-### Why the features must be standardised first
-
-`Σβⱼ²` adds coefficients together as though they were comparable quantities. They
-are not. Surface pressure sits around 1000 hPa and precipitation around 0.1 mm,
-so the slope per hPa is tiny and the slope per mm large before anything about the
-physics is considered. Penalise them together in raw units and you have not
-regularised the model; you have decided that pressure matters less than rain
-because of the unit somebody chose to record it in.
-
-`StandardScaler` puts every feature on mean 0 and standard deviation 1 before the
-Ridge sees it, so the penalty applies to something meaningful: how much the
-prediction moves per *typical* move in that feature. This is why the pipeline is
-`StandardScaler → Ridge` and never a bare `Ridge`, and it is a correctness
-requirement rather than a matter of taste. A ridge on unstandardised features is
-a quiet bug, not a style choice.
-
-### Getting the slopes back into units a person can read
-
-The scaling happens inside the pipeline, so `ridge.coef_` comes out in z-score
-units: µg/m³ per standard deviation of temperature, where the standard deviation
-is whatever this particular training window happened to have. Two versions
-trained on different windows are not comparable in those units at all. The axis
-moves under them.
-
+Because scaling happens inside the pipeline, `ridge.coef_` is in z-score units
+tied to one training window's spread, so two versions are not comparable.
 `model.effective_coefficients` folds the scaler back in:
 
 ```
@@ -179,52 +132,38 @@ slope_j    = coef_j / scale_j
 intercept  = intercept_ − Σⱼ coef_j · mean_j / scale_j
 ```
 
-which gives µg/m³ per °C, per m/s, per %RH, per mm, per hPa, per W/m². Those are
-comparable across versions, they are directly plottable, and they are what the
-coefficient charts in both UIs draw.
+giving µg/m³ per °C, per m/s, per hPa. Those are comparable across versions and
+are what the coefficient charts plot.
 
-They are also load-bearing for something less obvious. Because a fitted model is
-now eight slopes and an intercept, `log_and_register` can write the whole thing
-into registry *tags*, and [`retrospect.py`](../src/driftloop/retrospect.py) can
-rebuild any version from the registry alone and score it on any window as a
-weighted sum of columns. No unpickling, no refitting, no artifact paths to
-resolve. Scoring Kraków's fifteen versions across its forty-eight windows is 720
-model-window scorings, and the cost is dominated by reading the windows off disk
-rather than by the models. Half the analysis on the published page exists because
-a linear model can be serialised into nine numbers, and would have been
-prohibitively awkward otherwise.
+They also carry more weight than presentation. A fitted model is now eight slopes
+and an intercept, so `log_and_register` writes it into registry tags, and
+[`retrospect.py`](../src/driftloop/retrospect.py) rebuilds any version from the
+registry alone and scores it on any window as a weighted sum of columns: no
+unpickling, no refitting, no artifact paths. Much of the analysis below exists
+because a linear model serialises into nine numbers.
 
-### Why not lasso, or a gradient-boosted tree
+### Why not lasso, or gradient boosting
 
-Lasso (an `|βⱼ|` penalty instead of `βⱼ²`) would drive some coefficients to zero
-and hand back a shorter feature list. That is usually a selling point and is the
-wrong thing here: a coefficient chart where three of six features are pinned flat
-at zero tells you less about how the world is changing, not more. Ridge keeps
-every feature in the story with a slope you can watch move.
+Lasso would zero some coefficients and shorten the feature list. That is usually
+a selling point and is wrong here: a coefficient chart with three features pinned
+flat at zero says less about how the world is changing, not more.
 
-A gradient-boosted tree would score better. It would also absorb some of the
-drift instead of decaying through it, which is what people mean when they call a
-flexible model resilient, and the demonstration depends on the decay staying
-legible. A bigger model would blur the thing this repository is built to show.
+Gradient boosting would score better and would absorb some of the drift rather
+than decaying through it, which is what people mean when they call a flexible
+model resilient. The demonstration depends on the decay staying legible.
 
-So the model is kept small on purpose, and **the modelling is not the interesting
-part of this project.** The loop around it is, and every part of that loop would
-be unchanged if you dropped in something far better. Every threshold is identical
-across all six cities, so where two cities behave differently it is their air
-that differs and not their tuning.
+So the model is small on purpose, and **the modelling is not the interesting part
+of this project**. Every threshold below is identical across all six cities, so
+where two cities behave differently it is their air that differs, not their
+tuning.
 
-### Choosing alpha, and what the answer says
+### Choosing alpha
 
-`alpha=1.0` ships, which is scikit-learn's default and therefore needs a
-justification rather than a shrug.
-
-It is swept per city on a logarithmic grid, because α's effect is multiplicative
-and linear steps would spend most of their samples at the insensitive end. The
-scoring is five-fold forward-chaining cross-validation (`TimeSeriesSplit`), which
-never lets a fold train on rows that come *after* the rows it scores. On
-autocorrelated hourly data a random split leaks badly enough to make every value
-of α look fine, which is a documented trap rather than a hypothetical one
-(Bergmeir & Benítez, 2012).
+`alpha=1.0` ships, which is scikit-learn's default and so needs justifying. It is
+swept per city on a logarithmic grid, scored by five-fold forward-chaining
+cross-validation (`TimeSeriesSplit`), which never lets a fold train on rows that
+follow the rows it scores. On autocorrelated hourly data a random split leaks
+badly enough to make every α look fine (Bergmeir & Benítez, 2012).
 
 Every city wants heavier regularisation than 1.0:
 
@@ -238,272 +177,81 @@ Every city wants heavier regularisation than 1.0:
 | Delhi | 1000 | 11.9% |
 
 The curve is nearly flat, which is why 1.0 survives a sweep that disagrees with
-it in every city. It is worth being concrete about how little α = 1.0 does. On
-Kraków's training window, the effective slopes at α = 1.0 and at α = 10⁻⁸ agree
-to three decimal places; at α = 1000 each has shrunk by somewhere between 15%
-(temperature) and 49% (surface pressure). So shipping 1.0 is, to a good
-approximation, shipping ordinary least squares with a safety net attached.
-
-But the shape of the sweep's answer is the most useful thing it produces.
-**If pushing every slope most of the way to zero costs between 0.1% and 12% of
-error, the relationship this model can express is weak.** A fit that is barely
-better than shrinking it away is not a fit to be proud of. That single
-observation is the fairest summary of the modelling in this repository, and the
-reason its interest lies elsewhere.
+it everywhere. On Kraków's window, α = 1000 shrinks each coefficient by 15%
+(temperature) to 49% (surface pressure), and costs 3.6%. **If shrinking every
+slope most of the way to zero costs between 0.1% and 12% of error, the
+relationship this model can express is weak.** That is the fairest one-line
+summary of the modelling here, and the reason the project's interest lies in the
+loop.
 
 ---
 
-## The features, and why each one
+## The features
 
-Six observed weather variables, chosen for how pollution physically accumulates
-and clears rather than for what was easy to fetch, plus two terms that encode the
-clock.
+Six observed weather variables, chosen for how pollution accumulates and clears,
+plus two terms encoding the clock.
 
-**temperature.** Cold air near the surface with warmer air above it is an
-inversion: a lid, with the city underneath it. Temperature is also the cleanest
-proxy available for the heating season in Kraków and the wood-burner season in
-Melbourne, which is where those cities' pollution comes from in the first place.
+**temperature.** Cold air under warmer air is an inversion: a lid, with the city
+underneath. It is also the cleanest available proxy for the heating season in
+Kraków and the wood-burner season in Melbourne.
 
-**wind_speed.** Ventilation, and the most intuitive term in the model. Still air
-lets pollution pile up; moving air carries it somewhere else. It is also the
-slope most likely to change sign between versions, because wind that clears a
-valley can equally import smoke from outside it.
+**wind_speed.** Ventilation. Still air lets pollution accumulate; moving air
+carries it away. Its slope is the one most likely to change sign between
+versions, because wind that clears a valley can equally import smoke into it.
 
-**humidity.** Damp particles grow. Water condenses onto existing aerosol, which
-makes it heavier and optically larger, and high humidity also feeds the chemistry
-that turns gases into new particles.
+**humidity.** Water condenses onto existing aerosol, making particles heavier and
+optically larger, and high humidity feeds the chemistry that forms new ones.
 
-**precipitation.** Rain washes particulates out of the air, which atmospheric
-chemists call wet deposition and everyone else notices as the air smelling better
-after a storm. It is the most direct removal mechanism in the list and the most
-awkward feature statistically: zero for between 70% of hours (Johannesburg) and
-96% (Santiago), so its distribution is a spike at zero with a thin tail rather
-than anything a decile split handles gracefully.
+**precipitation.** Wet deposition: rain scavenges particulates out of the air. The
+most direct removal mechanism here and the most awkward feature statistically,
+being zero for between 70% of hours (Johannesburg) and 96% (Santiago), so its
+distribution is a spike at zero with a thin tail.
 
-**surface_pressure.** High pressure means air sinking from above, which warms as
-it descends and forms a subsidence inversion. This is the mechanism behind
-Kraków's and Santiago's winter smog: a stable high parks over a basin and keeps a
-lid on it for days.
+**surface_pressure.** High pressure means subsiding air, which warms as it
+descends and caps the city with a subsidence inversion. This is the mechanism
+behind Kraków's and Santiago's winter smog.
 
-**shortwave_radiation.** Sunlight heats the ground, the ground heats the air, the
-air rises, and the layer that pollution mixes into gets deeper. A deeper mixing
-layer is a bigger box to dilute the same emissions into. Radiation also drives
-the photochemistry that makes secondary particles, so its slope is ambiguous in
-sign and interesting to watch.
+**shortwave_radiation.** Sunlight heats the ground, the ground heats the air, and
+the mixing layer deepens: a larger volume to dilute the same emissions into. It
+also drives the photochemistry forming secondary particles, so its slope is
+ambiguous in sign.
 
-**The one that is missing** is boundary layer height, the depth of that box. It
-would summarise most of the above in a single number and would very likely top
-the "what moves the prediction" chart. Open-Meteo does not archive previous model
-runs for it, so at a seven-day lead it comes back null, and using it would mean
-abandoning the forecast framing. Shortwave radiation is the stand-in. This is a
-limitation rather than a modelling preference. Seinfeld and Pandis is the
-standard reference for every mechanism above, if you want the version with the
-equations in it.
+**Missing: boundary layer height**, the depth of that mixing layer. It would
+summarise most of the above in one number and would likely dominate the
+feature-importance chart. Open-Meteo does not archive previous model runs for it,
+so at a seven-day lead it returns null, and using it would mean abandoning the
+forecast framing. Shortwave radiation stands in. Seinfeld and Pandis is the
+reference for every mechanism above.
 
-### The clock, on a circle
-
-The two remaining features are
+### The clock
 
 ```
-hour_sin = sin(2π · hour / 24)
-hour_cos = cos(2π · hour / 24)
+hour_sin = sin(2π · hour / 24)      hour_cos = cos(2π · hour / 24)
 ```
 
-Handing a linear model the raw integer hour would tell it that 23:00 is
-twenty-three units away from midnight, when it is one hour away. Putting the day
-on a circle fixes that: hour 23 and hour 0 sit next to each other, as they should,
-and the pair together lets the model express a smooth daily cycle.
+A raw integer hour would tell a linear model that 23:00 sits twenty-three units
+from midnight rather than one. The sine-cosine pair places the day on a circle,
+so hour 23 neighbours hour 0 and the model can express a daily cycle.
 
-One limitation is worth stating. A single sine-and-cosine pair can express one
-peak and one trough per day, and urban PM2.5 is usually *bimodal*: a morning
-traffic peak and an evening one, often with an overnight inversion peak as well.
-Fitting both would need a second harmonic, `sin` and `cos` of `4π·hour/24`. As it
-stands the model is fitting one hump to a two-hump shape. Closing that gap is a
-cheap experiment that has not been run.
+One limitation: a single harmonic expresses one peak and one trough per day, and
+urban PM2.5 is usually bimodal, with morning and evening traffic peaks. Fitting
+both needs a second harmonic at `4π·hour/24`. The model currently fits one hump
+to a two-hump shape, and closing that gap is a cheap experiment not yet run.
 
-The obvious alternative, twenty-four one-hot dummies, was rejected for two
-reasons. It would add twenty-four columns to a model with six real features, each
-fitted from a twenty-fourth of the data. And a table of per-hour means *is* the
-climatology baseline the model is measured against later, so building it into the
-model would fold the yardstick into the thing being measured.
+Twenty-four one-hot dummies were rejected twice over: they would add twenty-four
+columns to a model with six real features, and a table of per-hour means *is* the
+climatology baseline the model is later measured against, so building it in would
+fold the yardstick into what it measures.
 
-Only the six weather features carry a PSI. The clock cannot drift: every
-monitoring window contains all 24 hours, so its distribution is fixed by
-construction, and a drift chart plotting it would show a flat line forever. That
-is why `DRIFT_FEATURES` and `FEATURES` are two separate lists in `config.py`
-rather than one.
+Only the six weather features carry a PSI. The clock cannot drift, because every
+monitor window contains all 24 hours and its distribution is fixed by
+construction. That is why `DRIFT_FEATURES` and `FEATURES` are separate lists.
 
 ---
 
-## Why two signals, and not one
+## One weekly run
 
-| Signal | What it measures | Needs labels? | Needs a model? |
-|---|---|---|---|
-| Data drift (PSI) | the world changed | no | no |
-| Performance drift | the model is failing | yes | the champion |
-
-Data drift needs no labels and no model at all, which is what makes it the early
-warning: it can raise a hand the moment incoming weather stops looking familiar,
-without waiting to find out whether anyone got hurt. Performance drift needs the
-truth to have arrived, so it is always late. It is also the only one allowed to
-authorise spending money on a retrain.
-
-Deciding "has it drifted?" by comparing champion against challenger would be
-circular, and it is worth saying plainly because it is a tempting design: you
-would need a challenger before you were allowed to decide you needed one.
-
-### Data drift, and what PSI computes
-
-Sort the training window's values for one ingredient into ten equal buckets, then
-drop this fortnight's values into the same buckets and see how differently they
-fall. If they land the same way, the world still looks like training. The measure
-of that difference is:
-
-```
-Σ over buckets  (current_share − reference_share) · ln(current_share / reference_share)
-```
-
-The bucket edges come from the *training* deciles, so training is even across
-buckets by construction and any imbalance belongs to the current window rather
-than to the binning. The statistic is the Population Stability Index, PSI.
-
-Formally it is the symmetrised Kullback–Leibler divergence between the two binned
-distributions, known as Jeffreys divergence. Informally: if you were expecting
-training's weather, how surprised would this fortnight make you? Zero means not
-at all. The conventional reading, inherited from credit scoring, is below 0.10
-stable, 0.10 to 0.25 moderate, above 0.25 significant.
-
-### Where PSI stops meaning what it looks like it means
-
-The formula divides by `reference_share` and takes a log, so both shares are
-clamped away from zero at ε = 1e-6 to keep it finite. That clamp is where the
-statistic quietly stops being a magnitude.
-
-A bucket holding zero current rows contributes
-
-```
-(1e-6 − 0.1) · ln(1e-6 / 0.1)  ≈  (−0.1) × (−11.5)  ≈  +1.15
-```
-
-That is a fixed amount, whether the current data missed the bucket by a degree or
-by thirty. With ten training deciles the ceiling is about 11.5, and nine empty
-buckets put roughly 10.4 of it on the board before the one surviving bucket has
-said anything at all.
-
-Here that is the normal state rather than a corner case. Take a late Kraków
-window: temperature PSI is 12.20, and **10.24 of it, 84%, comes from buckets
-holding zero current rows**, because July and December temperatures do not
-overlap. Every city on the page sits above the 0.25 line on almost every run,
-with medians ten to forty times the threshold.
-
-So PSI is dependable as a yes/no and undependable as a how-much. Both UIs say
-only the part that holds: the drift chart shows a green, amber or red band
-instead of a number, and the copy reads "properly different" rather than quoting
-a magnitude nobody can interpret.
-
-A two-sample Kolmogorov–Smirnov statistic is logged alongside as a cross-check,
-since it is bounded in [0, 1] and cannot saturate the same way. It is not led
-with either. On 336 hourly rows per window, KS p-values come out vanishingly
-small for effects of no practical size, which is the usual fate of significance
-testing on plenty of data.
-
-### Performance drift, and why it is built wrong
-
-The retrain trigger is the champion's RMSE on the monitor window against its own
-RMSE at training time, at 1.25×. The model has got a quarter worse than it was
-when it was born, so it gets sent back to school.
-
-Kraków is the clearest demonstration that the two signals must stay separate, and
-the clearest demonstration that this second one is broken. Through the second
-half of its replay its features drift further from the training window than any
-other city on the page, while the champion runs comfortably *under* its training
-error. Distribution shift alone would have ordered twenty pointless retrains
-there. The loop declines, and it is right to decline.
-
-But "under its training error" is doing all the work in that sentence, and the
-bar it is under was set in deep winter. The champion serving that stretch was
-promoted at the seasonal peak, so its baseline is 45.8 µg/m³ and almost nothing
-can cross 1.25× of it. Because every promotion resets the denominator and
-promotions happen when things are at their worst, the bar ratchets: each new
-champion inherits a higher one than the model it replaced, and it never comes
-back down.
-
-Measured against a yardstick that *holds still* when a model is promoted, the same
-champion in the same stretch is at its worst rather than its best: skill of −1.67
-against a 30-day daily profile, having been +0.43 in January.
-
-So the loop reaches the right answer by a route that had stopped working. Both
-halves of that are true and both are published.
-
-### The second trigger, and why it is switched off
-
-Two fixes were proposed for that: an absolute error floor alongside the ratio,
-and a yardstick that does not move when a model is promoted. Both have now been
-built and measured, which changed the conclusion.
-
-The absolute floor turned out to be unbuildable. A floor has to be one number
-for every city or the thresholds stop being identical, and there is no such
-number: waking Los Angeles needs a floor under 18 µg/m³, where Delhi retrains
-every single week. The gap between the two is empty.
-
-The yardstick is implementable, and it is `LoopConfig.skill_floor`:
-
-```
-retrain if   rmse_now / rmse_at_training > 1.25      (the ratchet)
-        or   1 − rmse_now / rmse_climatology < floor  (holds still on promotion)
-```
-
-The second term is scale-free, so one number works everywhere, and nothing about
-promoting a model can move it. It only ever adds a way to fire, never suppresses
-the first: a model can be bad against its own history or bad against the cheap
-alternative, and either is grounds for training a challenger. The gate still
-decides whether one ships. Every run is tagged `retrain_reason` as `ratio`,
-`skill`, `both` or `none`, so how often each rule spoke is on the record rather
-than left to inference.
-
-It ships at `None`, meaning off, and the reason is that it was measured:
-[`sweep_skill_floor.py`](../scripts/sweep_skill_floor.py) replays all six cities
-at several floors, and at a conservative floor the outcome is identical to the
-last decimal in five of the six, while at an aggressive floor it makes two cities
-measurably worse for one improvement. It wakes the trigger up as designed, and
-the waking turns out not to be worth having.
-The numbers are in
-[evaluation.md](evaluation.md#fixing-it-one-of-the-two-cannot-be-built-and-the-other-does-not-pay).
-
-A knob whose measured effect is zero is still worth having in the code, because
-the *next* person to propose this fix should find it already built and already
-answered rather than spend a week rediscovering it.
-
----
-
-## How much history a challenger gets
-
-`challenger_train_days = 180`, and the number has a story worth reading.
-
-It was 45. Forty-five days looks like a natural choice: recent, responsive,
-plenty of hourly rows. It was wrong for a reason only a full year of replay could
-expose. PM2.5 is seasonal, so a challenger trained on six weeks only ever sees
-one season. It wins its holdout exam honestly, serves well for a month, and is
-mismatched the moment the year turns.
-
-With replays that stopped at the winter peak this was completely invisible;
-retraining looked like an unambiguous win everywhere. Extending the replays
-through the recovery, as the air gets clean again, reversed the sign: retraining
-came out 29.6% *worse* in Kraków and 4.3% worse in Delhi. Widening the window to
-180 days took Delhi from −4.3% to +43.8%. See
-[evaluation.md](evaluation.md#what-a-full-year-exposed).
-
-180 is argued rather than tuned, on the grounds that it spans more than one
-season. A proper sweep of retrain window against retraining value has not been
-run, and it is the cheapest experiment left on the table now that `retrospect`
-can score any model on any window.
-
----
-
-## No evaluation leak
-
-Every number in this repository is produced on data the model being scored has
-never seen. That is easy to claim and easy to get wrong, so here is the layout:
+Four steps, of which the last two are conditional.
 
 ```
 ...........[==== challenger train ====][= holdout =] as_of
@@ -511,68 +259,143 @@ never seen. That is easy to claim and easy to get wrong, so here is the layout:
 [== champion train ==]  (much earlier, never overlaps holdout)
 ```
 
-The challenger trains on a window that stops before the holdout begins. The
-champion was trained long before it. Both are scored on the same unseen week, and
-the challenger has to clear a 5% margin rather than edge ahead by a nose.
+### Step 1: score the champion
 
-Two guards make this structural rather than aspirational. The loop **raises**
-rather than warns if the holdout would overlap the champion's training data. And
-`run_simulation` refuses a cadence shorter than the holdout, which would let a
-freshly promoted champion be judged on its own training data a week later. Both
-are asserted in `tests/test_loop.py`, because a leak that only shows up as
-"suspiciously good results" is the kind of bug you talk yourself into believing.
+The champion predicts the monitor window and its RMSE, MAE and R² are logged.
+That RMSE feeds both drift signals below.
+
+### Step 2: two drift signals
+
+| signal | what it measures | needs labels? | needs a model? |
+|---|---|---|---|
+| covariate drift (PSI) | the world changed | no | no |
+| performance drift | the model is failing | yes | the champion |
+
+Covariate drift needs neither labels nor a model, which makes it the early
+warning: it can raise a hand the moment incoming weather stops looking familiar,
+before any error is observable. Performance drift needs the truth to have
+arrived, so it is always late, and it is the only one allowed to authorise a
+retrain. Detecting drift by comparing champion against challenger would be
+circular, since you would need a challenger before being allowed to decide you
+needed one.
+
+**Covariate drift, and what PSI computes.** Sort the training window's values for
+one feature into ten equal buckets, drop the monitor window's values into the
+same buckets, and measure how differently they fall:
+
+```
+PSI = Σ over buckets  (current_share − reference_share) · ln(current_share / reference_share)
+```
+
+Bucket edges come from training deciles, so training is even by construction and
+any imbalance belongs to the current window. Formally this is the symmetrised
+Kullback–Leibler divergence between the binned distributions, known as Jeffreys
+divergence. The conventional reading, inherited from credit scoring, is below
+0.10 stable, 0.10 to 0.25 moderate, above 0.25 significant.
+
+**PSI saturates here, and the charts say only what survives that.** Both shares
+are clamped at ε = 1e-6 to keep the logarithm finite, so a bucket holding zero
+current rows contributes a fixed `(1e-6 − 0.1)·ln(1e-6/0.1) ≈ 1.15` however far
+away the current data has moved. With ten deciles the ceiling is about 11.5. In
+a late Kraków window, temperature PSI is 12.20 and **10.24 of it, 84%, comes from
+empty buckets**, because July and December temperatures do not overlap. Every
+city sits above 0.25 on almost every run, with medians ten to forty times the
+threshold. So PSI is dependable as a yes/no and undependable as a magnitude, and
+both UIs show a green/amber/red band rather than a number. A Kolmogorov–Smirnov
+statistic is logged as a cross-check, but on 336 hourly rows its p-values are
+vanishingly small for effects of no practical size.
+
+**Performance drift, and the ratchet.** The trigger is the champion's monitor
+RMSE against its own baseline RMSE, at 1.25×: a quarter worse than at training
+time sends it back to school.
+
+Kraków demonstrates both why the two signals must stay separate and why this one
+is built wrong. Through the second half of its replay its features drift further
+from training than any other city while the champion runs under its baseline, so
+covariate drift alone would have ordered twenty pointless retrains. The loop
+declines, correctly.
+
+But that baseline was set in deep winter. Because every promotion resets the
+denominator and promotions happen at the seasonal peak, the threshold ratchets
+upward and never falls: the champion serving that stretch has a baseline of
+45.8 µg/m³, and almost nothing can cross 1.25× of it. Measured against a
+reference that holds still, the same champion is at its worst there rather than
+its best, with skill of −1.67 against climatology having been +0.43 in January.
+See [evaluation.md](evaluation.md#the-retrain-trigger-stops-measuring-staleness).
+
+**A second trigger exists for that, and ships disabled.** `LoopConfig.skill_floor`
+also fires when skill against climatology drops below a floor:
+
+```
+retrain if   rmse_now / baseline_rmse > 1.25        (ratchets)
+        or   1 − rmse_now / rmse_climatology < floor  (holds still on promotion)
+```
+
+Being a ratio against something outside the model, it is scale-free, so one
+number works for every city and no promotion can move it. It only ever adds a way
+to fire. Every run is tagged `retrain_reason` as `ratio`, `skill`, `both` or
+`none`.
+
+It ships at `None` because it was measured rather than assumed:
+[`sweep_skill_floor.py`](../scripts/sweep_skill_floor.py) replays all six cities
+at several floors, and a conservative floor leaves the outcome identical in five
+of six while an aggressive one makes two cities worse for one improvement. It
+wakes the trigger as designed, and the waking is not worth having. Numbers in
+[evaluation.md](evaluation.md#fixing-the-trigger-one-fix-is-impossible-the-other-does-not-pay).
+The knob stays in the code so the next person to propose this fix finds it
+already built and already answered.
+
+### Step 3: train a challenger
+
+`challenger_train_days = 180`, and the number has a history.
+
+It was 45, which looks natural: recent, responsive, plenty of hourly rows. It was
+wrong for a reason only a full year of replay exposed. PM2.5 is seasonal, so a
+challenger trained on six weeks sees one season, wins its exam honestly, and is
+mismatched the moment the year turns. Replays that stopped at the winter peak hid
+this entirely. Extended through the recovery, retraining came out 29.6% worse in
+Kraków and 4.3% worse in Delhi; widening to 180 days took Delhi to +43.8%. See
+[evaluation.md](evaluation.md#what-a-full-year-exposed).
+
+180 is argued rather than tuned, on the grounds that it spans more than one
+season. Sweeping it is the cheapest experiment left.
+
+### Step 4: the promotion gate
+
+Champion and challenger both predict the holdout, a week neither has trained on,
+and the challenger is promoted only if its RMSE is more than 5% lower.
+
+**No evaluation leak**, and two guards make that structural rather than
+aspirational. The loop raises rather than warns if the holdout would overlap the
+champion's training data, and `run_simulation` refuses a replay cadence shorter
+than the holdout, which would let a freshly promoted champion be judged on its
+own training data a week later. Both are asserted in `tests/test_loop.py`,
+because a leak that surfaces only as suspiciously good results is a defect you
+talk yourself into believing.
 
 The baselines are held to the same rule. A forecaster issuing seven days out may
-use readings up to that moment and no later, so persistence repeats a *week-old*
-observation rather than yesterday's. That makes it a much weaker baseline than
-the textbook version, and a fair one.
+use readings up to that moment and no later, so persistence repeats a week-old
+observation rather than yesterday's. That makes it much weaker than the textbook
+version, and fair.
 
 ---
 
-## Scoring old models on windows they never served
+## Judging the loop afterwards
 
-The loop logs what it decided at the time: which champion was serving, what its
-error was, and the ratio that drove the retrain. That is enough to *run* the loop
-and not enough to *judge* it, because three questions need a model scored on
-windows it never served.
+The loop logs what it decided at the time, which is enough to run it and not
+enough to judge it. Three questions need a model scored on windows it never
+served:
 
 - **Does an individual model decay?** The logged champion error is one line
   across eight different champions, so no single model's decay is visible in it.
-- **Is the model worth having?** An error is only a verdict against an
+- **Is the model worth having?** An error is a verdict only against an
   alternative you could have deployed instead.
-- **Did the promotion gate work?** That needs the *replaced* champion scored on
-  the windows its replacement went on to serve, a counterfactual the loop has no
-  reason to compute at the time.
+- **Did the gate work?** That needs the *replaced* champion scored on the windows
+  its replacement went on to serve, a counterfactual the loop never computes.
 
-[`retrospect.py`](../src/driftloop/retrospect.py) answers all three without
-refitting anything, using the coefficient tags described earlier. Reconstruction
-is exact to the six decimals the tags carry, which `tests/test_retrospect.py`
-asserts against the loop's own independently logged RMSE.
-
-Three windowing rules keep it honest.
-
-**The skill baseline's reference period ends a full forecast lead before the
-window it scores**, so every hour it averages was observable when that forecast
-was issued.
-
-**The delivered-margin comparison starts at the run *after* a promotion.** The
-monitor window at the promotion itself runs from 14 days before `as_of` while the
-challenger trained up to 7 days before it, so half that window sits inside the
-challenger's own training data.
-
-**The version that *served* a window is not always the version tagged on it.** A
-run that promotes monitors with the outgoing champion and then overwrites the tag
-with the winner, so on promotion runs the two differ by one. `retrospect` keeps
-both: `champion_version` (the tag, correct for "when did this model start", so
-decay curves use it) and `serving_version` (correct for "what was in service", so
-the retraining comparison uses it).
-
-The very first run has no predecessor at all, because the bootstrap champion is
-registered before any monitoring cycle exists. So a first run that promotes takes
-its outgoing version from the registry instead, as the lowest registered version.
-Kraków and Los Angeles both promote on their first run, and without that rule
-each lost a real promotion from the gate calibration and gained a phantom week of
-retraining credit.
+[`retrospect.py`](../src/driftloop/retrospect.py) answers all three from the
+coefficient tags, reconstructed to the six decimals they carry, which
+`tests/test_retrospect.py` asserts against the loop's independently logged RMSE.
 
 ### The skill score
 
@@ -580,107 +403,111 @@ retraining credit.
 skill = 1 − RMSE_model / RMSE_reference
 ```
 
-1 is perfect, 0 matches the reference, and negative means the reference beat you.
-This is a skill score in the sense forecast verification has used for decades
-(Murphy, 1988). The family is usually written over MSE and this uses RMSE, which
-gives the same ordering on a gentler scale. The choice of reference is the whole
-content of the metric.
+1 is perfect, 0 matches the reference, negative means the reference won. This is
+a skill score in the sense forecast verification has used for decades (Murphy,
+1988); the family is usually written over MSE, and RMSE gives the same ordering
+on a gentler scale. The choice of reference is the whole content of the metric.
 
-Here the reference is the **hour-of-day mean of the previous 30 days**: for each
-hour of the day, what has that hour typically looked like lately. A month is long
-enough to average out weather and short enough to still be the current season.
+The reference here is climatology: the hour-of-day mean of the previous 30 days.
+A month is long enough to average out weather and short enough to remain the
+current season. Two properties earn it the job. It is scale-free, so a filthy
+city and a clean one become comparable, and so do two seasons of one city. And
+its yardstick does not move when a model is promoted, which is the property the
+retrain ratio lacks and the reason the two disagree about the same model at the
+same moment.
 
-Two properties earn it the job. It is scale-free, so a filthy city and a clean
-one become comparable, and so do two seasons of the same city; raw RMSE never
-can. And **its yardstick does not move when a model is promoted**, the property
-the retrain ratio lacks, which is why the two disagree about the same model at
-the same moment.
+Why not R²? R² is the same construction with the reference swapped for the
+window's own mean. In a calm fortnight that mean is an unusually strong
+predictor, so R² reports catastrophe, −5.93 in Kraków's final window, for a
+modest absolute error. It measures the window's variance more than the model.
 
-Why not R²? R² is the same idea with the reference swapped for the *window's own
-mean*, and the ratio taken over squared errors rather than root-mean-squared
-ones. That reference is the problem. In a calm fortnight the window's own mean is
-an unusually strong predictor, so R² reports catastrophe, −5.93 in Kraków's final
-window, for a modest absolute error. It ends up measuring the window's variance
-more than the model.
+One caveat, repeated wherever the number appears: climatology sees recent PM2.5
+and the model never does, so this is a hard bar rather than a like-for-like
+comparison. That is the intent, since climatology is a predictor you could deploy
+instead. A like-for-like reference would have to come from the champion's own
+training window, which inherits its staleness and so cannot measure it.
 
-One caveat, stated wherever the number appears rather than buried: the
-climatology baseline sees recent PM2.5 readings and the model never does. It is a
-hard bar rather than a like-for-like comparison. That is the intent, because it
-is the thing you could deploy instead, and if a month-old daily profile beats the
-model then the model is not paying for itself. A like-for-like baseline would
-have to come from the champion's own training window, which inherits the
-champion's staleness and so cannot measure it.
+### Three windowing rules
 
----
+**The climatology reference ends a full forecast lead before the window it
+scores**, so every hour it averages was observable when that forecast was issued.
 
-## What MLflow tracks
+**The delivered-margin comparison starts at the run after a promotion.** The
+monitor window at the promotion itself begins 14 days before the run date while
+the challenger trained up to 7 days before it, so half that window lies inside
+the challenger's own training data.
 
-Per monitoring run, as time-series metrics: `data_drift_psi`, `perf_drift_ratio`,
-`champion_rmse`/`mae`/`r2`, `champion_baseline_rmse`, per-feature `psi_*` and
-`ks_*`, plus `challenger_rmse`, `champion_rmse_holdout` and `performance_gap`
-when a challenger exists. Tags record `drift_detected`, `retrain_triggered` and
-`promotion_decision`. Each run also leaves two artifacts behind: the champion's
-predictions on the window, and a per-feature distribution report. Those are what
-let the dashboard show per-run detail without ever touching the data source.
-
-Registered versions carry their learned coefficients as tags, and a promotion
-moves the `champion` **alias**, which gives an auditable version history for free.
-
-> The Model Registry needs a database backend, so this uses a local SQLite file.
-> MLflow 3 replaced the old `Staging`/`Production` stage transitions with
-> aliases, which is why nothing here uses stages.
+**The version that served a window is not always the version tagged on it.** A
+promoting run monitors with the outgoing champion, then overwrites the tag with
+the winner, so the two differ by one on promotion runs. `retrospect` keeps
+`champion_version` (the tag, correct for when a model started, so decay curves
+use it) and `serving_version` (correct for what was in service, so the retraining
+comparison uses it). The first run has no predecessor at all, since the bootstrap
+champion predates every monitoring cycle, so a first run that promotes reads its
+outgoing version from the registry as the lowest registered version. Kraków and
+Los Angeles both promote on their first run; without that rule each lost a real
+promotion from the gate calibration and gained a phantom week of credit.
 
 ---
 
-## Serving
-
-Three properties, because they are the ones a reviewer asks about.
+## Serving the champion
 
 **The alias is the contract, not a version number.** Nothing in the service pins
-a version. Promote in the registry and `POST /reload` picks the new one up
-without a redeploy or a config change. That alias is the whole seam joining the
-weekly loop to production.
+a version. Promote in the registry, call `POST /reload`, and the new champion is
+live without a redeploy. That alias is the seam joining the weekly loop to
+production.
 
 **Serving never writes to the tracking store.** It sets the tracking URI and
 reads. It does not call `setup()`, which would create an experiment as a side
 effect; a read-only consumer should leave no trace.
 
 **The hour encoding is not reimplemented.** `add_cyclical_features` is the same
-function the training path uses, so the served features cannot drift away from
-the trained ones. That is the classic training/serving skew, closed by
-construction rather than by discipline.
+function the training path uses, so served features cannot diverge from trained
+ones. That closes training/serving skew by construction rather than by
+discipline.
 
-Timestamps are normalised to naive UTC before the hour is read off them. The
-training data is GMT, so an aware timestamp from another zone has to be converted
-first or the diurnal encoding would be hours out of phase with what the model
-learned. `tests/test_serving.py` asserts that `12:00Z` and `14:00+02:00` predict
-identically.
+Timestamps are normalised to naive UTC before the hour is read off them, because
+the training data is GMT and an aware timestamp from another zone would put the
+diurnal encoding out of phase. `tests/test_serving.py` asserts that `12:00Z` and
+`14:00+02:00` predict identically.
 
-Predictions come back twice: `pm25` floored at zero for whoever is consuming it,
-and `pm25_raw` as the model said it. A clamp that hides what your model is doing
-is how you stop noticing that it is doing it.
+Predictions return twice: `pm25` floored at zero for the consumer, and `pm25_raw`
+as the model said it. A clamp that hides what a model is doing is how you stop
+noticing that it is doing it.
 
 The Docker image replays the loop from the committed parquet cache at build time
 instead of copying the SQLite backend in. That is forced rather than chosen:
 MLflow stores artifact locations as absolute URIs, so a backend built on a
-developer's machine resolves to paths the container does not have. Rebuilding
-inside the image is also what proves the replay is deterministic, since it
-reproduces the same champion with the same baseline RMSE from the same committed
-data. The install is editable for a related reason: `tracking.REPO_ROOT` is
-derived from the package file's location, so a non-editable install would put the
-backend inside `site-packages`.
+developer's machine resolves to paths the container lacks. Rebuilding inside the
+image also proves the replay is deterministic, reproducing the same champion with
+the same baseline RMSE from the same committed data. The install is editable for
+a related reason: `tracking.REPO_ROOT` derives from the package file's location,
+so a non-editable install would put the backend inside `site-packages`.
 
 ---
 
-## Nothing gathered is thrown away
+## What is recorded
 
-Raw hourly observations are committed as `data_cache/*.parquet` rather than
-re-fetched, so the charts always match a fixed, inspectable dataset. The forecast
-lead is part of each cache filename, because the same place over the same span
-holds different features at lead 0 and lead 7. The weekly Action commits
-`mlflow_scheduled.db` back to the repository so each cycle continues from the
-last. The published site carries its own data: a distilled `data.json` plus one
-raw CSV per city, both downloadable from the live page.
+**Per run, to MLflow.** Time-series metrics `data_drift_psi`,
+`perf_drift_ratio`, `champion_rmse`/`mae`/`r2`, `champion_baseline_rmse`,
+per-feature `psi_*` and `ks_*`, plus `challenger_rmse`, `champion_rmse_holdout`
+and `performance_gap` when a challenger exists. Tags record `drift_detected`,
+`retrain_triggered`, `retrain_reason` and `promotion_decision`. Two artifacts per
+run, the champion's predictions and a per-feature distribution report, let the
+dashboard show per-run detail without touching the data source.
+
+**Per version, to the registry.** Learned coefficients as tags, and the
+`champion` alias moved on promotion, which gives an auditable version history.
+
+> The Model Registry needs a database backend, so this uses a local SQLite file.
+> MLflow 3 replaced `Staging`/`Production` stage transitions with aliases.
+
+**Per city, to the repository.** Raw hourly observations are committed as
+`data_cache/*.parquet` rather than re-fetched, so every chart matches a fixed,
+inspectable dataset. The forecast lead is part of each filename, because one
+place over one span holds different features at lead 0 and lead 7. The weekly
+Action commits `mlflow_scheduled.db` back so each cycle continues from the last,
+and the published site carries a distilled `data.json` plus one raw CSV per city.
 
 ---
 
@@ -689,8 +516,7 @@ raw CSV per city, both downloadable from the live page.
 **Ridge regression**
 
 - Hoerl, A. E., & Kennard, R. W. (1970). *Ridge Regression: Biased Estimation for
-  Nonorthogonal Problems.* Technometrics, 12(1), 55–67. The original, and still
-  the clearest statement of what the bias buys you.
+  Nonorthogonal Problems.* Technometrics, 12(1), 55–67.
 - Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical
   Learning*, 2nd ed., §3.4. [Free PDF](https://hastie.su.domains/ElemStatLearn/).
 - scikit-learn user guide,
@@ -699,8 +525,7 @@ raw CSV per city, both downloadable from the live page.
 **Validating models on time series**
 
 - Bergmeir, C., & Benítez, J. M. (2012). *On the use of cross-validation for time
-  series predictor evaluation.* Information Sciences, 191, 192–213. Why a random
-  split flatters an autocorrelated series.
+  series predictor evaluation.* Information Sciences, 191, 192–213.
 - scikit-learn,
   [`TimeSeriesSplit`](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.TimeSeriesSplit.html).
 
@@ -708,25 +533,22 @@ raw CSV per city, both downloadable from the live page.
 
 - Gama, J., Žliobaitė, I., Bifet, A., Pechenizkiy, M., & Bouchachia, A. (2014).
   *A Survey on Concept Drift Adaptation.* ACM Computing Surveys, 46(4). The
-  vocabulary this project uses: covariate shift versus concept drift, detect
-  versus adapt.
+  source of the covariate/concept drift distinction used above.
 - Widmer, G., & Kubat, M. (1996). *Learning in the Presence of Concept Drift and
   Hidden Contexts.* Machine Learning, 23(1), 69–101. Where "hidden context" comes
   from, which is what a season is.
 - Sculley, D., et al. (2015). *Hidden Technical Debt in Machine Learning
-  Systems.* NeurIPS. The paper that named the problem this repository is a small
-  answer to.
+  Systems.* NeurIPS.
 - Breck, E., Cai, S., Nielsen, E., Salib, M., & Sculley, D. (2017). *The ML Test
   Score: A Rubric for ML Production Readiness and Technical Debt Reduction.* IEEE
   Big Data.
 
 **PSI and distribution distance**
 
-- Siddiqi, N. (2006). *Credit Risk Scorecards.* Wiley. Where PSI and its
-  0.10 / 0.25 conventions come from.
+- Siddiqi, N. (2006). *Credit Risk Scorecards.* Wiley. The origin of PSI and its
+  0.10 / 0.25 conventions.
 - Jeffreys, H. (1946). *An invariant form for the prior probability in estimation
-  problems.* Proc. R. Soc. A, 186, 453–461. PSI is this divergence, on binned
-  data.
+  problems.* Proc. R. Soc. A, 186, 453–461.
 - scipy,
   [`ks_2samp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ks_2samp.html).
 
@@ -741,20 +563,19 @@ raw CSV per city, both downloadable from the live page.
 **Air quality and the weather that drives it**
 
 - Seinfeld, J. H., & Pandis, S. N. (2016). *Atmospheric Chemistry and Physics:
-  From Air Pollution to Climate Change*, 3rd ed. Wiley. The standard reference
-  for inversions, mixing height, wet deposition and hygroscopic growth.
-- WHO (2021). [*Global Air Quality Guidelines: particulate matter, ozone,
-  nitrogen dioxide, sulfur dioxide and carbon
-  monoxide*](https://www.who.int/publications/i/item/9789240034228). The 5 µg/m³
-  annual and 15 µg/m³ 24-hour PM2.5 guidelines Melbourne is measured against.
+  From Air Pollution to Climate Change*, 3rd ed. Wiley. Inversions, mixing
+  height, wet deposition and hygroscopic growth.
+- WHO (2021). [*Global Air Quality
+  Guidelines*](https://www.who.int/publications/i/item/9789240034228). The
+  5 µg/m³ annual and 15 µg/m³ 24-hour PM2.5 guidelines Melbourne is measured
+  against.
 - Hersbach, H., et al. (2020). *The ERA5 global reanalysis.* Quarterly Journal of
-  the Royal Meteorological Society, 146(730), 1999–2049. What the lead-0 framing
-  reads from.
+  the Royal Meteorological Society, 146(730), 1999–2049.
 - [Open-Meteo](https://open-meteo.com/) historical forecast and air-quality APIs.
-  Free for non-commercial use, no key, and it archives previous forecast runs.
-  That last part is the only reason the seven-day framing is possible at all.
+  Free for non-commercial use, and it archives previous forecast runs, which is
+  the only reason the seven-day framing is possible.
 
 **Tooling**
 
 - [MLflow Model Registry](https://mlflow.org/docs/latest/model-registry.html),
-  including the alias model that replaced stage transitions in MLflow 3.
+  including the aliases that replaced stage transitions in MLflow 3.

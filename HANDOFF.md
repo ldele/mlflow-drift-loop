@@ -61,8 +61,7 @@ surfaced one accounting bug in numbers both UIs publish.
 - **`GATE_LONG_WEEKS` lives in `retrospect.py`** and is published through
   `data.json`, because both UIs draw that split and a threshold kept by hand in
   Python and JavaScript is how they end up telling different stories.
-- **`docs/methodology.md` was expanded** into something that explains the Ridge
-  rather than naming it: the objective, the closed form, why standardisation is
+- **`docs/methodology.md` was expanded** to explain the Ridge rather than name it: the objective, the closed form, why standardisation is
   a correctness requirement, how the coefficients get back into real units and
   why that is what makes `retrospect` possible. Plus the PSI saturation
   arithmetic, the skill score, and a reference list.

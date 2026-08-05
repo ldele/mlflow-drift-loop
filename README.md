@@ -24,7 +24,7 @@ One run a week, four steps:
 | | | |
 |---|---|---|
 | **1. Mark its homework** | check the last 14 days of forecasts against what the air did | |
-| **2. Look for trouble, two ways** | has the weather stopped looking like what the model learned from, and separately, is the model getting things wrong? | two signals, on purpose |
+| **2. Look for trouble, two ways** | has the weather stopped looking like what the model learned from, and separately, is the model's error rising? | two signals, on purpose |
 | **3. Train a rival** | error is 1.25× what it used to be, so train a fresh model on the last 180 days | only if step 2 says so |
 | **4. Make it earn the job** | both sit the same exam, a week of air neither has seen | the newcomer wins by 5% or it is thrown away |
 
@@ -116,8 +116,8 @@ compound.
 
 [evaluation.md](docs/evaluation.md) has the city-by-city detail, how the model
 scores against four "do nothing clever" baselines, the gate calibration in full,
-and a controlled experiment showing that each of the two alarms answers only to
-the thing it is meant to watch.
+and a controlled experiment showing that each alarm responds to its own cause and
+ignores the other.
 
 ### What a full year exposed
 
@@ -131,7 +131,7 @@ the last 45 days only ever sees one season. It is excellent in the season it was
 born in and wrong as soon as the year turns. Widening that window to 180 days
 took Delhi from −4.3% to +43.8%.
 
-This is the most useful thing in the repository. The loop was behaving correctly
+This is the most useful finding in the repository. The loop was behaving correctly
 the whole time, faithfully shipping replacements that won their exam and then
 aged badly, and only a full year of data made it visible.
 
@@ -150,7 +150,7 @@ docker run -p 8000:8000 drift-serve
 ```
 
 Kraków serves the model left standing after 14 retrains, and `/model` reports the
-window it was trained on, so you can see how old the thing answering you is.
+window it was trained on, so you can see how stale the model answering you is.
 
 It does not poll. A new model is picked up when `/reload` is called, because
 swapping the model under live traffic without anyone asking is worse than serving

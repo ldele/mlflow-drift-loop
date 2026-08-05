@@ -724,7 +724,7 @@ with tab_model:
     bench_path = REPO_ROOT / "outputs" / f"benchmark_{profile_key}.json"
     if bench_path.exists():
         bench = json.loads(bench_path.read_text(encoding="utf-8"))
-        st.markdown("#### Does it beat anything?")
+        st.markdown("#### Does it beat the baselines?")
         st.markdown(
             f"Median error across the {bench['windows']} monitoring windows of "
             f"{bench['monitor_days']} days each, so the served champion, the "

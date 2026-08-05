@@ -41,11 +41,11 @@ The same question has a boundary case at the very first run. The bootstrap
 champion is registered before any monitoring cycle exists, so a first run that
 promotes has no earlier row to read the outgoing version off, and its own tag has
 already been overwritten with the winner. Kraków and Los Angeles both promote on
-their first run. The version it replaced is in the registry rather than in the run log: it
-is the lowest registered version, the same model the frozen comparison uses.
-Without that, one window per affected city counted as retrained when the
-bootstrap was serving it, and one real promotion per city went unjudged by the
-gate calibration below.
+their first run. The replaced version is in the registry rather than in the run
+log: it is the lowest registered version, the same model the frozen comparison
+uses. Without that rule, one window per affected city counted as retrained while
+the bootstrap champion was serving it, and one real promotion per city went
+unjudged by the gate calibration below.
 
 The cities were picked on measurements rather than reputation. Eighteen
 candidates were fetched and ranked by PM2.5 swing before any of them was wired
@@ -154,7 +154,7 @@ A further source, synthetic, has two independent drift knobs and backs the
 offline correctness proof in [`sweep_knobs.py`](../scripts/sweep_knobs.py). It is
 not published.
 
-## Does the model beat anything?
+## Does it beat the baselines?
 
 ![Benchmarks](images/benchmark.png)
 
@@ -262,7 +262,7 @@ absolute terms is sufficient on its own.
 Both have now been built and measured, and the answer is not the one the proposal
 expected.
 
-### Fixing it: one of the two cannot be built, and the other does not pay
+## Fixing the trigger: one fix is impossible, the other does not pay
 
 **The absolute floor is not implementable.** A floor has to be one number for
 every city, or the thresholds stop being identical and the cities stop being
@@ -316,7 +316,7 @@ air barely moves, so successive models are nearly identical and a short
 certificate costs it nothing. That points the next experiment at the length of
 the exam rather than at the sensitivity of the trigger.
 
-#### Checked against other measures, and against fixed baselines
+### Verified against other measures and fixed baselines
 
 A conclusion that rests on one summary statistic deserves a second look, so the
 three cities that move were re-run and scored two further ways. The first swaps
@@ -369,13 +369,13 @@ rebuilding every registered version from its logged coefficients.
 
 29 promotions across six cities:
 
-| promotions that served | n | exam promised | delivered | made things worse |
+| promotions that served | n | exam promised | delivered | harmful |
 |---|---|---|---|---|
 | under 20 weeks | 26 | +12.3% | **+9.7%** | 0 |
 | 20 weeks or more | 3 | +13.9% | **−5.9%** | **3 of 3** |
 
 The gate is honest and well calibrated over the horizon it tests, and not one
-short-serving promotion made things worse. But every model that ended up serving
+short-serving promotion left its city worse off. But every model that ended up serving
 twenty weeks or more delivered a *negative* margin despite passing the same exam
 just as convincingly. A seven-day exam can certify a model for about a month and
 cannot certify it for half a year.
@@ -410,7 +410,7 @@ entire concept sweep is not merely stable, it is identical to fifteen decimal
 places, because changing the relationship between features and target cannot move
 a statistic computed on the features alone.
 
-The two-signal design rests on that property, and it is the one thing the six
+The two-signal design rests on that property, and it is the one property the six
 cities cannot demonstrate. It is published on the page for the same reason it
 is here: it is the evidence, and the cities are the application.
 
@@ -427,7 +427,7 @@ is here: it is the evidence, and the cities are the application.
   (`LoopConfig.skill_floor`) and is switched off, because replaying all six
   cities with it on changes nothing at a cautious setting and makes two of them
   worse at an aggressive one. See
-  [Fixing it](#fixing-it-one-of-the-two-cannot-be-built-and-the-other-does-not-pay).
+  [Fixing it](#fixing-the-trigger-one-fix-is-impossible-the-other-does-not-pay).
   What that leaves open is the exam's length rather than the trigger's
   sensitivity, and that experiment has not been run.
 - The skill baseline sees recent PM2.5 and the model does not. That is stated
@@ -439,8 +439,8 @@ is here: it is the evidence, and the cities are the application.
   season after 45 was shown to fail, not swept. A proper sweep of the retrain
   window against retraining value is the obvious next experiment.
 - Boundary layer height is missing, and it is the feature I most want. It sets
-  the volume pollution is diluted into and would likely matter more than anything
-  in the list. Open-Meteo does not archive previous model runs for it, so at a
+  the volume pollution is diluted into, and would likely dominate the feature
+  importance ranking. Open-Meteo does not archive previous model runs for it, so at a
   seven-day lead it returns null. Shortwave radiation is the stand-in.
 - No autoregressive features. Giving the model a lag term would help most in
   the low-drift cities where a constant currently beats it. It would also blunt
