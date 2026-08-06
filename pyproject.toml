@@ -1,7 +1,7 @@
 [project]
 name = "mlflow-drift-loop"
 version = "0.1.0"
-description = "Track -> detect drift -> retrain challenger -> promote. Phase 1: synthetic data."
+description = "A weekly MLflow loop that catches a model going stale, retrains it, and refuses to promote a replacement that does not beat the incumbent on unseen data."
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "mlflow>=3.1,<4",
