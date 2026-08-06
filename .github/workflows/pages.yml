@@ -23,16 +23,21 @@ permissions:
   pages: write
   id-token: write
 
+# Queue Pages runs, never cancel one that is already deploying. This used to be
+# `cancel-in-progress: true`, which is wrong for a deployment: a cancelled run
+# can leave a deployment it had already created sitting server-side, and every
+# later run then queues behind it and times out in `deployment_queued`. Several
+# pushes in a row is all it takes, and that is exactly the shape of a day spent
+# committing. GitHub's own Pages template sets this to false for this reason.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  build-deploy:
+  # Split from the deploy so a five-minute rebuild does not hold the Pages
+  # environment open, and so a failed deploy can be re-run on its own.
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
 
@@ -54,5 +59,12 @@ jobs:
         with:
           path: site
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - id: deploy
         uses: actions/deploy-pages@v5
