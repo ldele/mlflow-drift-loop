@@ -297,10 +297,10 @@ divergence. The conventional reading, inherited from credit scoring, is below
 are clamped at ε = 1e-6 to keep the logarithm finite, so a bucket holding zero
 current rows contributes a fixed `(1e-6 − 0.1)·ln(1e-6/0.1) ≈ 1.15` however far
 away the current data has moved. With ten deciles the ceiling is about 11.5. In
-a late Kraków window, temperature PSI is 12.20 and **10.24 of it, 84%, comes from
-empty buckets**, because July and December temperatures do not overlap. Every
-city sits above 0.25 on almost every run, with medians ten to forty times the
-threshold. So PSI is dependable as a yes/no and undependable as a magnitude, and
+Kraków's worst temperature window scores 11.53, near that ceiling, and **9.22 of
+it, 80%, comes from eight empty buckets**, because a January fortnight and the
+previous June do not overlap. Every city sits above 0.25 on almost every run,
+with median readings twelve to thirty-eight times the threshold. So PSI is dependable as a yes/no and undependable as a magnitude, and
 both UIs show a green/amber/red band rather than a number. A Kolmogorov–Smirnov
 statistic is logged as a cross-check, but on 336 hourly rows its p-values are
 vanishingly small for effects of no practical size.
@@ -354,7 +354,7 @@ wrong for a reason only a full year of replay exposed. PM2.5 is seasonal, so a
 challenger trained on six weeks sees one season, wins its exam honestly, and is
 mismatched the moment the year turns. Replays that stopped at the winter peak hid
 this entirely. Extended through the recovery, retraining came out 29.6% worse in
-Kraków and 4.3% worse in Delhi; widening to 180 days took Delhi to +43.8%. See
+Kraków and 7.2% worse in Delhi; widening to 180 days took Delhi to +43.7%. See
 [evaluation.md](evaluation.md#what-a-full-year-exposed).
 
 180 is argued rather than tuned, on the grounds that it spans more than one

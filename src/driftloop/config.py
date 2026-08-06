@@ -318,7 +318,7 @@ PROFILES: dict[str, Profile] = {
         replay=ReplayWindows(
             champion_train_start=pd.Timestamp("2025-07-15"),
             champion_train_end=pd.Timestamp("2025-09-30"),
-            first_run=pd.Timestamp("2025-10-10"),
+            first_run=pd.Timestamp("2025-10-17"),
             last_run=pd.Timestamp("2026-07-10"),
         ),
     ),
@@ -337,7 +337,7 @@ PROFILES: dict[str, Profile] = {
         replay=ReplayWindows(
             champion_train_start=pd.Timestamp("2025-09-01"),
             champion_train_end=pd.Timestamp("2025-10-25"),
-            first_run=pd.Timestamp("2025-11-05"),
+            first_run=pd.Timestamp("2025-11-12"),
             last_run=pd.Timestamp("2026-07-15"),
         ),
     ),
@@ -356,7 +356,7 @@ PROFILES: dict[str, Profile] = {
         replay=ReplayWindows(
             champion_train_start=pd.Timestamp("2025-11-15"),
             champion_train_end=pd.Timestamp("2026-02-01"),
-            first_run=pd.Timestamp("2026-02-10"),
+            first_run=pd.Timestamp("2026-02-17"),
             last_run=pd.Timestamp("2026-07-10"),
         ),
     ),
@@ -373,7 +373,7 @@ PROFILES: dict[str, Profile] = {
         replay=ReplayWindows(
             champion_train_start=pd.Timestamp("2025-12-01"),
             champion_train_end=pd.Timestamp("2026-02-15"),
-            first_run=pd.Timestamp("2026-02-25"),
+            first_run=pd.Timestamp("2026-03-04"),
             last_run=pd.Timestamp("2026-07-10"),
         ),
     ),
@@ -392,7 +392,7 @@ PROFILES: dict[str, Profile] = {
         replay=ReplayWindows(
             champion_train_start=pd.Timestamp("2025-09-15"),
             champion_train_end=pd.Timestamp("2025-12-01"),
-            first_run=pd.Timestamp("2025-12-10"),
+            first_run=pd.Timestamp("2025-12-17"),
             last_run=pd.Timestamp("2026-07-10"),
         ),
     ),

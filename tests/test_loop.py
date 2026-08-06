@@ -78,6 +78,30 @@ def test_a_long_holdout_at_a_weekly_cadence_is_allowed(isolated_mlflow):
     assert len(df) == 4
 
 
+def test_every_replay_starts_clear_of_the_bootstrap_training_data():
+    """The first monitor window must not reach back into the bootstrap champion.
+
+    A monitor window opens ``monitor_days`` before the run date, so a replay
+    starting sooner than that after the champion's training ends scores it on
+    hours it fitted. That understated run 0's error by up to 15% in five of six
+    cities before the windows were corrected, which flatters the champion and
+    suppresses the retrain trigger on the one run nobody re-checks.
+
+    Asserted over the shipped profiles rather than in the loop, because it is a
+    property of how a replay is *configured*, and the loop cannot see the plan.
+    """
+    from driftloop.config import PROFILES
+
+    short = []
+    for profile in PROFILES.values():
+        if profile.replay is None:
+            continue
+        gap = (profile.replay.first_run - profile.replay.champion_train_end).days
+        if gap < profile.loop.monitor_days:
+            short.append(f"{profile.label}: {gap}d gap < {profile.loop.monitor_days}d monitor")
+    assert not short, "replays starting inside the bootstrap training data: " + "; ".join(short)
+
+
 def test_bootstrap_then_cycle_records_a_decision(isolated_mlflow):
     cfg = isolated_mlflow
     src = SyntheticSource()

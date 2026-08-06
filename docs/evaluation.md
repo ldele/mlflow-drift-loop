@@ -14,12 +14,12 @@ season that ruins it, and then out the other side.
 
 | | span | PM2.5 swing | model error, start → worst | retrains / weeks | across replay | week by week |
 |---|---|---|---|---|---|---|
-| **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 20.0 → 99.0 | 9 / 40 | **+43.8%** | **+49.4%**, won 92% of 38 |
-| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.4 → 68.3 | 13 / 22 | **+12.9%** | **+17.3%**, won 100% of 16 |
+| **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 33.4 → 99.0 | 9 / 39 | **+43.7%** | **+49.4%**, won 92% of 38 |
+| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.2 → 68.3 | 13 / 21 | **+16.8%** | **+17.3%**, won 100% of 16 |
 | **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 14 / 48 | +0.2% | +6.5%, won 72% of 47 |
-| **Johannesburg** | Nov 25 → Jul 26 | 23 → 84, Highveld coal smoke | 11.6 → 82.3 | 11 / 20 | 0.0% | **+14.9%**, won 100% of 6 |
-| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.3 → 15.0 | 8 / 31 | 0.0% | +1.2%, won 70% of 27 |
-| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 17.3 → 19.5 | 3 / 37 | −8.9% | −2.8%, won 50% of 36 |
+| **Johannesburg** | Nov 25 → Jul 26 | 23 → 87, Highveld coal smoke | 12.0 → 82.3 | 11 / 19 | 0.0% | **+14.9%**, won 100% of 6 |
+| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.8 → 15.0 | 8 / 30 | +0.1% | +1.2%, won 70% of 27 |
+| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 16.4 → 20.8 | 1 / 36 | −7.9% | **−13.4%**, won 29% of 35 |
 
 The two retraining columns disagree, and the second is the one to trust when they
 do. "Across replay" compares the median error of what was served against the
@@ -40,12 +40,30 @@ retrained and averages in the ones from before anything was promoted.
 The same question has a boundary case at the very first run. The bootstrap
 champion is registered before any monitoring cycle exists, so a first run that
 promotes has no earlier row to read the outgoing version off, and its own tag has
-already been overwritten with the winner. Kraków and Los Angeles both promote on
-their first run. The replaced version is in the registry rather than in the run
-log: it is the lowest registered version, the same model the frozen comparison
-uses. Without that rule, one window per affected city counted as retrained while
-the bootstrap champion was serving it, and one real promotion per city went
-unjudged by the gate calibration below.
+already been overwritten with the winner. The replaced version is in the registry
+rather than in the run log: it is the lowest registered version, the same model
+the frozen comparison uses. Without that rule, a window served by the bootstrap
+champion counts as retrained and a real promotion goes unjudged by the gate
+calibration below.
+
+### Every replay starts clear of its own training data
+
+Each city's `first_run` sits at least `monitor_days` after the bootstrap
+champion's training ends, so the first monitor window contains no hour the
+champion fitted. That was not true until 2026-08-06. Five of six cities started 9
+to 11 days after training against a 14-day window, and run 0 scored the champion
+on 3 to 5 days of its own training data, understating its error by 1.0% in
+Johannesburg to 15.2% in Melbourne. No retrain decision changed, but a champion
+graded on its own homework is the exact failure the rest of this page is built to
+avoid, so the five replays were moved one week later and every number here was
+regenerated.
+
+Los Angeles moved most. It now fires one retrain in 36 weeks rather than three in
+37, because two of the three fired inside the window that has been dropped, and
+its paired result falls from −2.8% to −13.4%. That is the control city getting
+more clearly negative, which is the direction the correction should push a city
+whose retraining never paid. `tests/test_loop.py` asserts the gap for every
+shipped profile, so a new city cannot reintroduce it.
 
 The cities were picked on measurements rather than reputation. Eighteen
 candidates were fetched and ranked by PM2.5 swing before any of them was wired
@@ -63,12 +81,10 @@ again.
 ### What a full year exposed
 
 Every city originally stopped at its dirty-season peak. On that half of the
-story, retraining looked like an unambiguous win: +10.1% in Kraków, +66.7% in
-Delhi.
+story, retraining looked like an unambiguous win in both Kraków and Delhi.
 
 Running them through the return trip, as the air gets clean again, reversed the
-sign. Retraining came out **29.6% worse** in Kraków and **4.3% worse** in
-Delhi, and the served model finished *last* of six predictors in both.
+sign. Retraining came out worse than never retraining at all in both cities.
 
 The cause was the retraining rule rather than the loop. A challenger trained on
 the previous 45 days only ever sees one season, so it is excellent in the season
@@ -80,10 +96,14 @@ Widening `challenger_train_days` from 45 to 180 fixed it:
 
 | | 45-day window | 180-day window |
 |---|---|---|
-| Delhi, retraining worth | −4.3% | **+43.8%** |
-| Delhi, served model rank | 6th of 6 | **1st of 6** |
+| Delhi, retraining worth | −7.2% | **+43.7%** |
+| Delhi, median served error | 77.06 | **40.44** |
 | Kraków, retraining worth | −29.6% | +0.2% |
-| Kraków, served model rank | 6th of 6 | 2nd of 6 |
+| Kraków, median served error | 22.70 | **17.49** |
+
+The paired reading tells the same story more quietly, +4.5% against +49.4% in
+Delhi: even on the weeks a 45-day challenger was serving it barely helped, and
+across the replay it did real damage.
 
 Only a full annual cycle made this visible, which is the argument for running the
 replay past the point that flatters the system.
@@ -92,13 +112,13 @@ replay past the point that flatters the system.
 
 Los Angeles is the control, and the measurements chose it for that. It was picked
 as the summer-smog city; hourly PM2.5 over 2025–26 peaks in November and bottoms
-out in June. Its model barely moves across 37 weeks and only three retrains ever
-fire. Week by week, retraining wins half the weeks it acted and the median week
-comes out 2.8% behind: a coin toss with a fee, and the fair verdict on the city.
-There has to be drift for a drift loop to earn anything.
+out in June. Its model barely moves across 36 weeks and the trigger fires once.
+That single promotion wins 29% of the 35 weeks it then serves, and the median
+week runs 13.4% behind having left the first model alone. There has to be drift
+for a drift loop to earn anything.
 
 Johannesburg is where the promotion gate does the most visible work. Error
-climbs from 11.6 to 82.3 µg/m³, the worst on the page, and eleven retrains
+climbs from 12.0 to 82.3 µg/m³, the worst on the page, and eleven retrains
 produce only three promotions: the other eight challengers failed to clear the 5%
 margin and were thrown away. The loop spends the effort, the gate declines to
 pay, and nothing ships that did not earn it. When something did ship it worked:
@@ -169,13 +189,13 @@ Median RMSE, µg/m³, lower is better:
 
 | | Delhi | Santiago | Kraków | Johannesburg | Melbourne | Los Angeles |
 |---|---|---|---|---|---|---|
-| **served model** | **40.33** | 23.48 | 17.49 | **21.01** | **3.87** | 11.05 |
-| never retrained | 71.71 | 26.96 | 17.52 | 21.01 | 3.87 | **10.14** |
-| one model, all six cities | 45.10 | 25.78 | 19.79 | 22.48 | 6.76 | 10.29 |
-| climatology | 42.81 | 26.33 | 17.86 | 21.89 | 4.19 | 10.72 |
-| training mean | 45.29 | 26.32 | 18.40 | 23.62 | 3.98 | 10.46 |
-| persistence | 49.64 | 20.71 | **16.80** | 27.71 | 5.34 | 13.79 |
-| seasonal naive | 49.60 | **19.72** | 18.56 | 30.41 | 5.11 | 14.31 |
+| **served model** | **40.44** | 24.54 | 17.49 | **21.13** | **3.97** | 10.91 |
+| never retrained | 71.85 | 29.51 | 17.52 | 21.13 | 3.98 | **10.12** |
+| one model, all six cities | 46.14 | 27.61 | 19.79 | 22.50 | 6.79 | 10.13 |
+| climatology | 43.81 | 28.23 | 17.86 | 22.03 | 4.25 | 10.68 |
+| training mean | 46.50 | 28.16 | 18.40 | 23.76 | 4.13 | 10.44 |
+| persistence | 52.23 | 20.85 | **16.80** | 29.11 | 5.43 | 13.80 |
+| seasonal naive | 49.72 | **20.19** | 18.56 | 30.56 | 5.12 | 14.34 |
 
 - The model is the best predictor in Delhi, Johannesburg and Melbourne, and
   second in Kraków. It beats persistence in four of six.
@@ -199,7 +219,7 @@ learned per place.
 The answer is that six models win, and the margin is smaller than the layout
 implies. Pooling loses to the city's own retrained model in five of six cities,
 but beats the city's own *frozen* model in two, and in Delhi it is not close:
-45.10 against 71.71 µg/m³. Training on five other cities is worth more than a
+46.14 against 71.85 µg/m³. Training on five other cities is worth more than a
 year of staleness and less than keeping one city's model current. Where pooling
 hurts most is Melbourne, the cleanest city by a distance, whose weather-to-
 pollution relationship the other five outvote.
@@ -243,10 +263,10 @@ a higher bar than the one it replaced, and the bar never comes back down:
 
 | | baseline, first → last | last retrain | runs of silence after it | highest ratio in those runs |
 |---|---|---|---|---|
-| **Kraków** | 3.7 → 45.8 | run 17 of 47 | **30** | 0.99 |
-| **Los Angeles** | 9.7 → 15.6 | run 7 of 36 | **29** | 1.16 |
-| **Santiago** | 6.7 → 52.7 | run 18 of 21 | 3 | 0.84 |
+| **Los Angeles** | 9.7 → 18.3 | run 1 of 36 | **35** | 1.14 |
+| **Kraków** | 3.7 → 45.8 | run 18 of 48 | **30** | 0.99 |
 | **Delhi** | 18.8 → 57.1 | run 33 of 39 | 6 | 1.07 |
+| **Santiago** | 6.7 → 52.7 | run 18 of 21 | 3 | 0.84 |
 
 Once the bar has ratcheted to the seasonal peak the trigger cannot fire again,
 whatever the model does. Kraków spends 62% of its timeline in that state, serving
@@ -267,11 +287,11 @@ expected.
 **The absolute floor is not implementable.** A floor has to be one number for
 every city, or the thresholds stop being identical and the cities stop being
 comparable, which is the property the whole six-city comparison rests on. There
-is no such number. Los Angeles's deaf stretch tops out at 18.1 µg/m³, so waking
-it needs a floor below 18; at 15 µg/m³ Delhi fires on 100% of its runs and
-Johannesburg on 80%, and at 25 Los Angeles never fires at all. The gap between
-"wakes the quietest city" and "does not retrain the dirtiest city every week" is
-empty. An absolute floor is a per-city tuning knob wearing a disguise.
+is no such number. Los Angeles's deaf stretch tops out at 20.8 µg/m³, so waking
+it needs a floor near 20 or below; at 20 µg/m³ Delhi fires on 100% of its runs
+and Johannesburg on 68%, and at 25 Los Angeles never fires at all. The gap
+between "wakes the quietest city" and "does not retrain the dirtiest city every
+week" is empty. An absolute floor is a per-city tuning knob wearing a disguise.
 
 **The model-independent yardstick can be built, and it changes almost nothing.**
 `LoopConfig.skill_floor` fires a retrain when the champion's skill against the
@@ -287,26 +307,29 @@ Los Angeles's from 29 to 12. Median champion error, µg/m³, lower is better:
 | | trigger off | skill < 0 | skill < −0.25 | skill < −0.5 |
 |---|---|---|---|---|
 | **Kraków** | **17.49** | 18.79 | 18.55 | 17.49 |
-| **Delhi** | **40.33** | 44.52 | 44.92 | 40.33 |
-| **Los Angeles** | 11.05 | **10.27** | 10.93 | 10.96 |
-| **Santiago** | 23.48 | 23.48 | 23.48 | 23.48 |
-| **Johannesburg** | 21.01 | 21.01 | 21.01 | 21.01 |
-| **Melbourne** | 3.87 | 3.87 | 3.87 | 3.87 |
+| **Delhi** | **40.44** | 44.11 | 44.91 | 40.44 |
+| **Los Angeles** | 10.91 | **10.15** | 10.45 | **10.15** |
+| **Santiago** | 24.54 | 24.54 | 24.54 | 24.54 |
+| **Johannesburg** | 21.13 | 21.13 | 21.13 | 21.13 |
+| **Melbourne** | 3.97 | 3.97 | 3.97 | 3.97 |
 
 At the conservative floor it is a no-op in **five of the six**, to the last
 decimal. Kraków is the clearest case of why: it fires six extra retrains there
 and the gate rejects every one, so the loop does more work and ships nothing.
-Only Los Angeles moves at all, by 0.8%.
 
-At the aggressive floor it fires two to three times as often and the result is
-worse in two cities, better in one, and unchanged in three. Retraining Delhi 31
-times instead of 9 costs 10% of its error.
+Los Angeles is the exception, and it is a real one: the floor takes it from 10.91
+to 10.15 µg/m³, and its retraining result from −7.9% to −0.3% across the replay.
+That is the city whose trigger is deafest, silent for 35 of 36 runs, and the
+floor is what wakes it. At the aggressive floor the picture is mixed instead:
+Delhi and Kraków get worse by 9% and 7%, Los Angeles improves by the same 7%, and
+three cities do not move.
 
-So the ratchet is real as a mechanism and close to inert as a harm. In the cities
-where the trigger goes deaf there was little left to gain by firing. The one city
-where firing more did help is Los Angeles, the control, and even there the fair
-reading is that it did less harm rather than more good: at its best setting it
-goes from losing 8.9% to losing 1.2%.
+So the ratchet is real as a mechanism and close to inert as a harm in five
+cities out of six. In the sixth, the cautious floor is free: no city is worse and
+the control city stops losing money. That is a weaker case for shipping it off
+than the first version of this experiment produced, and it is worth being explicit
+that the change came from correcting the first-run windows above rather than from
+new evidence about the floor itself.
 
 **The most consistent explanation is that the trigger was never the bottleneck.**
 Firing more often only pushes more challengers at a gate that certifies for about
@@ -331,10 +354,10 @@ predictors, which cannot be moved by anything the trigger does.
 |---|---|---|---|---|---|---|---|
 | **Kraków** | skill < 0 | ×1.074 | ×1.032 | ×1.074 | 0.965 → 1.037 | 1.041 → 1.118 | 0.950 → 1.021 |
 | | skill < −0.5 | ×1.000 | ×1.000 | ×1.000 | unchanged | unchanged | unchanged |
-| **Delhi** | skill < 0 | ×1.104 | ×1.016 | ×1.068 | 0.977 → 1.079 | 0.812 → 0.897 | 0.890 → 0.983 |
+| **Delhi** | skill < 0 | ×1.091 | ×1.021 | ×1.044 | 0.973 → 1.061 | 0.774 → 0.844 | 0.870 → 0.949 |
 | | skill < −0.5 | ×1.000 | ×1.000 | ×1.000 | unchanged | unchanged | unchanged |
-| **Los Angeles** | skill < 0 | ×0.929 | ×0.955 | ×0.907 | 1.005 → 0.934 | 0.801 → 0.744 | 1.056 → 0.982 |
-| | skill < −0.5 | ×0.992 | ×0.992 | ×0.969 | 1.005 → 0.998 | 0.801 → 0.795 | 1.056 → 1.048 |
+| **Los Angeles** | skill < 0 | ×0.930 | ×0.898 | ×0.861 | 1.010 → 0.939 | 0.791 → 0.735 | 1.045 → 0.972 |
+| | skill < −0.5 | ×0.930 | ×0.938 | ×0.874 | 1.010 → 0.939 | 0.791 → 0.735 | 1.045 → 0.972 |
 
 The first three columns are ratios against that city's own trigger-off arm, so
 above 1 means the floor made it worse. The baseline columns are the served
@@ -342,20 +365,27 @@ model's error over that baseline's, so below 1 means the model wins.
 
 All three statistics agree in direction in all three cities, which rules out an
 artifact of the median. The baseline columns then say something the
-arm-against-arm comparison could not. Switching the floor on flips Kraków's
-served model from beating a constant to losing to one, 0.950 to 1.021, and flips
-both Kraków and Delhi from beating the daily profile to losing to it. Los Angeles
-moves the other way on both.
+arm-against-arm comparison could not: they show the floor moving cities across
+the line that matters. An aggressive floor flips Kraków from beating a constant
+to losing to one, 0.950 to 1.021, and flips both Kraków and Delhi from beating
+the daily profile to losing to it. Los Angeles crosses the other way on both, and
+does so at the cautious floor too, going from 1.045 to 0.972 against a constant
+and 1.010 to 0.939 against the daily profile.
 
 Two smaller readings. Mean RMSE moves less than median in the harmed cities,
 ×1.032 against ×1.074 in Kraków, so the damage sits in the typical week rather
-than in the tail. And the conservative floor is a true no-op only in Kraków and
-Delhi; in Los Angeles it shifts everything by under 1% on RMSE and 3% on MAE,
-which is the same small improvement seen in the main table.
+than in the tail. And the cautious floor is a true no-op in Kraków and Delhi, to
+three decimals on every measure, while in Los Angeles it is worth 7% on RMSE and
+13% on MAE.
 
-The floor therefore ships **off by default**. It is a knob with a measured effect
-of roughly zero, and turning it on by default would move every number on this
-page in exchange for nothing.
+The floor ships **off by default**, and that decision is now closer than it was.
+The case for off is that five of six cities do not move and the sixth is the
+control, where "improving" means losing less. The case for on, at the cautious
+setting, is that nothing is harmed and Los Angeles stops being beaten by a
+constant. What settles it is not in this data: one replay of six cities cannot
+tell you whether a knob that helps one city out of six is finding a real effect
+or fitting that city's noise, and the response to that is to leave the default
+alone and say so.
 
 ## A seven-day exam certifies a model for a month, not half a year
 
@@ -370,12 +400,12 @@ the loop has no reason to compute at the time, and which
 [`retrospect.py`](../src/driftloop/retrospect.py) computes afterwards by
 rebuilding every registered version from its logged coefficients.
 
-29 promotions across six cities:
+28 promotions across six cities:
 
 | promotions that served | n | exam promised | delivered | harmful |
 |---|---|---|---|---|
-| under 20 weeks | 26 | +12.3% | **+9.7%** | 0 |
-| 20 weeks or more | 3 | +13.9% | **−5.9%** | **3 of 3** |
+| under 20 weeks | 25 | +12.4% | **+9.8%** | 0 |
+| 20 weeks or more | 3 | +14.4% | **−6.1%** | **3 of 3** |
 
 The gate is honest and well calibrated over the horizon it tests, and not one
 short-serving promotion left its city worse off. But every model that ended up serving
@@ -406,7 +436,7 @@ weeks:
 
 | exam | served < 20 weeks | promised | delivered | | served ≥ 20 weeks | promised | delivered | harmful |
 |---|---|---|---|---|---|---|---|---|
-| **7 days** | 26 | +12.3% | +9.7% | | 3 | +13.9% | −5.9% | 3 of 3 |
+| **7 days** | 25 | +12.4% | +9.8% | | 3 | +14.4% | −6.1% | 3 of 3 |
 | **10 days** | 23 | +12.9% | +10.8% | | 3 | +10.8% | −2.7% | 3 of 3 |
 | **14 days** | 25 | +10.7% | +8.9% | | 3 | +13.1% | −7.2% | 3 of 3 |
 | **21 days** | 20 | +12.1% | +11.8% | | 3 | +13.9% | −9.7% | 3 of 3 |

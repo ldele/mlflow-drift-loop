@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated 2026-08-05.
+Last updated 2026-08-06.
 
 ## Where the project is
 
@@ -8,6 +8,37 @@ Six cities run the full loop, the static site and Streamlit dashboard both
 publish, and the promoted champion is served over HTTP. `README.md` is the real
 documentation; this file only carries what a reader of the code could not work
 out for themselves.
+
+## What landed on 2026-08-06: the first-run leak fixed, everything re-baselined
+
+Five of six cities scored the bootstrap champion on 3-5 days of its own training
+data on run 0. `first_run` sat 9 to 11 days after `champion_train_end` against a
+14-day monitor window. Each of the five moved one weekly step later, and every
+published number was regenerated from the new replays.
+
+- **What moved.** Kraków is unchanged (its gap was already 14 days). The other
+  five lose one run each. Los Angeles changed most: 3 retrains to 1, paired
+  retraining −2.8% to −13.4%, because two of its three retrains fired inside the
+  dropped window. The gate calibration goes 29 promotions to 28, conclusions
+  identical.
+- **`tests/test_loop.py` asserts the gap for every shipped profile**, so a new
+  city cannot reintroduce it. That is the only guard: the loop cannot see the
+  replay plan, so this has to be checked where the plan is written.
+- **One conclusion actually changed.** The skill floor is no longer a pure
+  no-op. At the cautious setting it still leaves five cities untouched, but it
+  now improves Los Angeles by 7% (10.91 to 10.15 µg/m³, retraining −7.9% to
+  −0.3%) rather than by 0.8%. LA has far more room to improve now that its
+  trigger fires once in 36 runs. Still shipped off, on the grounds that one city
+  out of six is not enough to distinguish a real effect from that city's noise,
+  but the call is closer and `docs/evaluation.md` says so.
+- **Re-baselining is four commands in order**, all of which must run:
+  `run_openmeteo.py --fresh --city all`, `benchmark.py --city all`,
+  `build_site.py`, then both sweeps. The sweeps read the committed backends, so
+  running them before the re-run silently reports the old world.
+- **The published PSI decomposition was wrong and is now measured.** It read
+  "temperature PSI 12.20, of which 10.24 (84%)". Kraków's worst temperature
+  window is 11.53, of which 9.22 (80%) from eight empty buckets. Kraków's replay
+  did not change, so that figure had been stale for some time.
 
 ## What landed on 2026-08-05 (third pass): the exam-length sweep
 

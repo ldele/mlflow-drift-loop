@@ -58,9 +58,11 @@ to retrain the dirtiest one every week, and the gap between them is empty. A
 model-independent yardstick can be, and now is. The trigger also fires when skill
 against the daily profile drops below a floor, which nothing about promoting a
 model can move, and it wakes the alarm as intended: Kraków's longest silence
-falls from 30 weeks to 5. Replayed across all six cities it then changes nothing
-in five of six at a conservative setting, and at an aggressive one makes two of
-them worse for one improvement. So it ships switched off.
+falls from 30 weeks to 5. Replayed across all six cities at a cautious setting it
+then changes nothing in five of them and improves Los Angeles by 7%; pushed
+harder it makes Delhi and Kraków worse by roughly as much. It ships switched off,
+which is a closer call than it sounds and is argued in
+[evaluation.md](docs/evaluation.md).
 
 That pointed at the seven-day exam instead, so the exam was lengthened to 10, 14
 and 21 days and replayed the same way. It does not pay either. Over the horizon
@@ -94,17 +96,18 @@ retrained model was serving.
 
 | | how bad it gets (µg/m³) | weeks | retrains | across the replay | week by week |
 |---|---|---|---|---|---|
-| **Delhi** | 42 → 127, crop burning after the monsoon | 40 | 9 | **+43.8%** | **+49.4%**, won 92% of 38 |
-| **Santiago** | 18 → 94, winter smog trapped in a bowl | 22 | 13 | **+12.9%** | **+17.3%**, won 100% of 16 |
+| **Delhi** | 42 → 127, crop burning after the monsoon | 39 | 9 | **+43.7%** | **+49.4%**, won 92% of 38 |
+| **Santiago** | 18 → 94, winter smog trapped in a bowl | 21 | 13 | **+16.8%** | **+17.3%**, won 100% of 16 |
 | **Kraków** | 8 → 57, coal heating in a valley | 48 | 14 | +0.2% | +6.5%, won 72% of 47 |
-| **Johannesburg** | 23 → 84, winter coal smoke | 20 | 11 | 0.0% | **+14.9%**, won 100% of 6 |
-| **Melbourne** | 5 → 15, winter wood heaters | 31 | 8 | 0.0% | +1.2%, won 70% of 27 |
-| **Los Angeles** | 15 → 29, a mild winter bump | 37 | 3 | −8.9% | −2.8%, won 50% of 36 |
+| **Johannesburg** | 23 → 87, winter coal smoke | 19 | 11 | 0.0% | **+14.9%**, won 100% of 6 |
+| **Melbourne** | 5 → 15, winter wood heaters | 30 | 8 | +0.1% | +1.2%, won 70% of 27 |
+| **Los Angeles** | 15 → 29, a mild winter bump | 36 | 1 | −7.9% | **−13.4%**, won 29% of 35 |
 
 In Delhi, where the air transforms, keeping the model fresh roughly halves its
-error. In Los Angeles it is a coin toss that costs money to play: half the weeks
-it acted came out ahead, and the median week came out 2.8% behind. Los Angeles is
-the control, and it earns its place by failing.
+error. In Los Angeles the loop fires once in thirty-six weeks, that one promotion
+wins 29% of the weeks it then serves, and the median week runs 13.4% behind
+leaving the model alone. Los Angeles is the control, and it earns its place by
+failing.
 
 Johannesburg is where the promotion gate does its most visible work, and where
 the unpaired number misleads hardest. Eleven retrains, three shipped, the other
@@ -118,10 +121,10 @@ season.
 
 **A seven-day exam certifies a model for a month, not for half a year.** Every
 promotion left a prediction behind, the margin the challenger won by, so the gate
-can be checked against what each winner went on to deliver. Across 29 promotions
-it is well calibrated for about five weeks: +12.3% promised, +9.7% delivered,
-none of them harmful. Beyond twenty weeks it reverses sign, promising +13.9% and
-delivering −5.9%, with all three harmful. Tripling the exam does not help, which
+can be checked against what each winner went on to deliver. Across 28 promotions
+it is well calibrated for about five weeks: +12.4% promised, +9.8% delivered,
+none of them harmful. Beyond twenty weeks it reverses sign, promising +14.4% and
+delivering −6.1%, with all three harmful. Tripling the exam does not help, which
 is how you can tell this is drift rather than a small sample. And the models that
 serve half a year are the ones the ratcheted trigger can no longer replace, so
 the two faults compound.
@@ -136,12 +139,12 @@ ignores the other.
 The cities originally stopped at their winter peak. On that half of the story,
 retraining looked like a clear win everywhere. Running them through the return
 trip, as the air gets clean again, reversed the sign: retraining came out 29.6%
-worse in Kraków and 4.3% worse in Delhi.
+worse in Kraków and 7.2% worse in Delhi.
 
 The fault was in the retraining rule, not the machinery. A replacement trained on
 the last 45 days only ever sees one season. It is excellent in the season it was
 born in and wrong as soon as the year turns. Widening that window to 180 days
-took Delhi from −4.3% to +43.8%.
+took Delhi from −7.2% to +43.7%.
 
 This is the most useful finding in the repository. The loop was behaving correctly
 the whole time, faithfully shipping replacements that won their exam and then
