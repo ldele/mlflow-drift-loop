@@ -30,14 +30,52 @@ def test_baseline_rmse_is_measured_on_data_the_model_did_not_fit():
 
 def test_run_simulation_rejects_a_cadence_that_would_leak(isolated_mlflow):
     cfg = isolated_mlflow
-    with pytest.raises(ValueError, match="holdout_days"):
+    with pytest.raises(ValueError, match="monitor_days"):
         run_simulation(
             SyntheticSource(),
             cfg,
             pd.Timestamp("2025-08-01"),
             pd.Timestamp("2025-09-01"),
-            step_days=3,  # < holdout_days=7
+            step_days=3,  # 3 + 7 < 14
         )
+
+
+def test_a_short_holdout_at_a_weekly_cadence_is_rejected(isolated_mlflow):
+    """The case the old guard let through.
+
+    `step_days >= holdout_days` admitted holdout_days=3 at a weekly cadence. A
+    challenger promoted at ``as_of`` trains up to ``as_of - 3``, and the next
+    week's monitor window opens at ``as_of + 7 - 14 = as_of - 7``, so four days
+    of it are hours the champion fitted. The champion then looks healthier than
+    it is and the retrain trigger is suppressed.
+    """
+    from dataclasses import replace
+
+    cfg = replace(isolated_mlflow, holdout_days=3)
+    assert 7 >= cfg.holdout_days, "the old guard would have allowed this"
+    with pytest.raises(ValueError, match="monitor_days"):
+        run_simulation(
+            SyntheticSource(), cfg,
+            pd.Timestamp("2025-08-01"), pd.Timestamp("2025-09-01"), step_days=7,
+        )
+
+
+def test_a_long_holdout_at_a_weekly_cadence_is_allowed(isolated_mlflow):
+    """The case the old guard blocked without cause.
+
+    A longer exam pushes the challenger's training data *further* from the next
+    monitor window, so it is strictly safer than the shipped 7. Sweeping the
+    exam length needs this to be permitted.
+    """
+    from dataclasses import replace
+
+    cfg = replace(isolated_mlflow, holdout_days=14)
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    df = run_simulation(
+        src, cfg, pd.Timestamp("2025-08-01"), pd.Timestamp("2025-08-22"), step_days=7,
+    )
+    assert len(df) == 4
 
 
 def test_bootstrap_then_cycle_records_a_decision(isolated_mlflow):

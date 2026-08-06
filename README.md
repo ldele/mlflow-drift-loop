@@ -60,10 +60,21 @@ against the daily profile drops below a floor, which nothing about promoting a
 model can move, and it wakes the alarm as intended: Kraków's longest silence
 falls from 30 weeks to 5. Replayed across all six cities it then changes nothing
 in five of six at a conservative setting, and at an aggressive one makes two of
-them worse for one improvement. So it ships switched off, and the evidence says
-the trigger was never the bottleneck. The seven-day exam is. That is the more
-useful finding, and it exists only because the fix was measured instead of
-assumed.
+them worse for one improvement. So it ships switched off.
+
+That pointed at the seven-day exam instead, so the exam was lengthened to 10, 14
+and 21 days and replayed the same way. It does not pay either. Over the horizon
+it tests the promise gets more honest, and beyond that horizon nothing moves:
+every long-serving promotion still delivers a negative margin at every length,
+and a longer exam blocks challengers that the cities needing them cannot afford
+to lose.
+
+**Two negative results are the useful finding here.** The reversal is not a
+matter of the trigger being too deaf or the exam too small, because making each
+more sensitive was measured and neither helped. What is missing is a third mechanism:
+nothing re-examines a champion on fresh unseen data while it is serving. Both
+existing checks look at promotion time or at the model's own history. Neither of
+those conclusions would exist if the fixes had been argued instead of run.
 
 ## Six cities that disagree
 
@@ -110,9 +121,10 @@ promotion left a prediction behind, the margin the challenger won by, so the gat
 can be checked against what each winner went on to deliver. Across 29 promotions
 it is well calibrated for about five weeks: +12.3% promised, +9.7% delivered,
 none of them harmful. Beyond twenty weeks it reverses sign, promising +13.9% and
-delivering −5.9%, with all three harmful. And the models that serve half a year
-are the ones the ratcheted trigger can no longer replace, so the two faults
-compound.
+delivering −5.9%, with all three harmful. Tripling the exam does not help, which
+is how you can tell this is drift rather than a small sample. And the models that
+serve half a year are the ones the ratcheted trigger can no longer replace, so
+the two faults compound.
 
 [evaluation.md](docs/evaluation.md) has the city-by-city detail, how the model
 scores against four "do nothing clever" baselines, the gate calibration in full,
@@ -166,6 +178,7 @@ uv venv && uv pip install -e ".[dev]"
 python scripts/run_openmeteo.py --fresh     # all six cities (--city krakow|santiago|delhi|joburg|melbourne|la)
 python scripts/benchmark.py                 # baselines + alpha sweep
 python scripts/sweep_skill_floor.py         # does waking the retrain trigger help? (no)
+python scripts/sweep_holdout.py             # does a longer promotion exam help? (also no)
 python scripts/build_site.py                # -> site/data.json
 
 streamlit run dashboard/app.py              # the full app
@@ -183,7 +196,7 @@ as the main file, Python 3.12.
 ```
 src/driftloop/    config, data sources, drift math, model, loop, retrospect, benchmark, serving
 scripts/          run_openmeteo · benchmark · build_site · run_scheduled · sweep_knobs ·
-                  sweep_skill_floor · serve
+                  sweep_skill_floor · sweep_holdout · serve
 site/             committed shell (index.html + app.js, compare.html + compare.js,
                   shared.css) + generated data.json
 dashboard/        Streamlit app and shared chart theme

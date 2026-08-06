@@ -286,10 +286,24 @@ def run_simulation(
     step_days: int = 7,
 ) -> pd.DataFrame:
     """Replay the scheduled loop over a timeline and return one row per run."""
-    if step_days < cfg.holdout_days:
+    # A challenger promoted at `as_of` trained up to `as_of - holdout_days`. The
+    # next run monitors [as_of + step_days - monitor_days, as_of + step_days), so
+    # the two windows touch at step_days + holdout_days == monitor_days and
+    # overlap below it. Scoring a champion on hours it fitted makes it look
+    # healthier than it is, which suppresses the retrain trigger.
+    #
+    # This replaced `step_days >= holdout_days`, which is the same condition at
+    # the shipped values (7 + 7 == 14) and wrong on both sides of them. It
+    # admitted holdout_days=3 at a weekly cadence, where four days of every
+    # monitor window is the new champion's own training data, and it rejected
+    # holdout_days=14, which is clean. Being right only at the default is how a
+    # guard survives without ever being tested away from it.
+    if step_days + cfg.holdout_days < cfg.monitor_days:
         raise ValueError(
-            f"step_days ({step_days}) must be >= holdout_days ({cfg.holdout_days}); "
-            "otherwise a freshly promoted champion would be judged on its own training data."
+            f"step_days ({step_days}) + holdout_days ({cfg.holdout_days}) must be at least "
+            f"monitor_days ({cfg.monitor_days}); otherwise each monitor window reaches back "
+            f"into the training data of the champion promoted the run before, and the "
+            f"champion is scored on hours it fitted."
         )
     rows = []
     as_of = first_run

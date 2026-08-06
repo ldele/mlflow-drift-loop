@@ -310,11 +310,14 @@ goes from losing 8.9% to losing 1.2%.
 
 **The most consistent explanation is that the trigger was never the bottleneck.**
 Firing more often only pushes more challengers at a gate that certifies for about
-five weeks, which is the finding immediately below. Delhi's promotions go from 8
-to 13 and its error rises with them. Los Angeles is the exception that fits: its
-air barely moves, so successive models are nearly identical and a short
-certificate costs it nothing. That points the next experiment at the length of
-the exam rather than at the sensitivity of the trigger.
+five weeks, which is the finding below. Delhi's promotions go from 8 to 13 and
+its error rises with them. Los Angeles is the exception that fits: its air barely
+moves, so successive models are nearly identical and a short certificate costs it
+nothing.
+
+That pointed the next experiment at the length of the exam, which was also
+measured, and it does not pay either. See
+[Lengthening the exam does not fix it](#lengthening-the-exam-does-not-fix-it).
 
 ### Verified against other measures and fixed baselines
 
@@ -390,6 +393,70 @@ delivered margin is measured from the run *after* the promotion, because the
 monitor window at the promotion itself overlaps the challenger's training data.
 Dropping that window is what makes the comparison clean.
 
+### Lengthening the exam does not fix it
+
+The obvious reading of the table above is that seven days is too small a sample:
+a challenger can win a lucky week, and a longer exam would catch it. That was the
+top open experiment after the trigger work, and it is wrong.
+
+[`sweep_holdout.py`](../scripts/sweep_holdout.py) replays all six cities at exam
+lengths of 7, 10, 14 and 21 days, holding the replay cadence at 7 days so exam
+length is the only variable. Pooled gate calibration, split at the same twenty
+weeks:
+
+| exam | served < 20 weeks | promised | delivered | | served ≥ 20 weeks | promised | delivered | harmful |
+|---|---|---|---|---|---|---|---|---|
+| **7 days** | 26 | +12.3% | +9.7% | | 3 | +13.9% | −5.9% | 3 of 3 |
+| **10 days** | 23 | +12.9% | +10.8% | | 3 | +10.8% | −2.7% | 3 of 3 |
+| **14 days** | 25 | +10.7% | +8.9% | | 3 | +13.1% | −7.2% | 3 of 3 |
+| **21 days** | 20 | +12.1% | +11.8% | | 3 | +13.9% | −9.7% | 3 of 3 |
+
+Tripling the exam does what more data should do over the horizon it tests: the
+promise gets more honest, from a 2.6-point gap at seven days to 0.3 points at
+twenty-one. **Beyond that horizon it changes nothing.** Every long-serving
+promotion still delivers a negative margin at every exam length, and the reversal
+is deeper at 21 days than at 7.
+
+That is the useful part. The reversal is not a sample-size problem, because it
+survives tripling the sample. A model that serves twenty weeks fails because the
+world moved after it was certified, and **no exam taken at promotion time can
+certify against drift that has not happened yet.**
+
+The cost side is unambiguous. A longer exam is a stricter filter, and the
+promotion rate falls with it: in Delhi from 89% of challengers to 39%, in Kraków
+from 50% to 28%, in Melbourne from 50% to 18%. In cities where retraining pays,
+blocking challengers costs error. Median champion error over the runs every arm
+shares:
+
+| | 7 days | 10 days | 14 days | 21 days |
+|---|---|---|---|---|
+| **Kraków** | 17.67 | **16.76** | 17.62 | 17.51 |
+| **Delhi** | 40.91 | 40.76 | 40.91 | 42.64 |
+| **Santiago** | **25.59** | 25.96 | 27.61 | 28.39 |
+| **Los Angeles** | 10.96 | 10.98 | **10.95** | 11.12 |
+| **Johannesburg** | 21.32 | 21.32 | 21.32 | 21.32 |
+| **Melbourne** | **4.08** | 4.10 | 4.09 | 4.09 |
+
+Compared on the runs every arm shares, not on each arm's own span. A longer exam
+has to start later, because it would otherwise reach back into the bootstrap
+champion's training data, and the runs it drops are early clean-season ones with
+low error. Uncontrolled, that alone moved Santiago's apparent penalty from 11% to
+21%.
+
+Ten days is worth 5% in Kraków and nothing anywhere else. Twenty-one days costs
+11% in Santiago and 4% in Delhi, the two cities where retraining pays most, for
+no gain elsewhere. Seven days stays.
+
+**What both experiments together say.** Making the trigger more sensitive does
+not pay. Making the exam longer does not pay. So the long-serving reversal is
+neither a detection-sensitivity problem nor a sample-size one, and what is
+missing is a third mechanism: nothing ever re-examines a serving champion on
+fresh unseen data. The exam happens once, at promotion. The trigger
+compares the champion against its own history and ratchets itself deaf. A
+periodic re-certification, running the holdout exam against a fresh challenger on
+a fixed schedule regardless of what the trigger says, is the change these two
+results point at. It has not been built.
+
 ## Whether the detection works at all
 
 ![The controlled experiment](images/control.png)
@@ -428,8 +495,27 @@ is here: it is the evidence, and the cities are the application.
   cities with it on changes nothing at a cautious setting and makes two of them
   worse at an aggressive one. See
   [Fixing it](#fixing-the-trigger-one-fix-is-impossible-the-other-does-not-pay).
-  What that leaves open is the exam's length rather than the trigger's
-  sensitivity, and that experiment has not been run.
+  Lengthening the exam does not pay either, so what is left open is periodic
+  re-certification of the serving champion, which has not been built.
+- **On run 0, five of six cities score the bootstrap champion partly on its own
+  training data.** `first_run` is set 9 to 11 days after `champion_train_end` in
+  every city except Kraków, and the monitor window is 14 days, so 3 to 5 days of
+  the first window is data the champion fitted. Its error there is understated by
+  1.0% (Johannesburg) to 15.2% (Melbourne). No city's retrain decision changes:
+  the trigger reads the same side of 1.25 either way in all six. It affects one
+  run of the twenty to forty-eight in each replay, and it is a genuine leak of
+  the kind this page otherwise guards against. The fix is to push `first_run` out
+  to at least `champion_train_end + monitor_days`, at a cost of one run per city
+  and a re-baseline of every number on this page, so it is reported rather than
+  silently applied.
+- **The cadence guard was the wrong condition until 2026-08-05.**
+  `run_simulation` required `step_days >= holdout_days`, which is the same rule
+  as the correct one only at the shipped values. It admitted a 3-day exam at a
+  weekly cadence, where four days of every monitor window is the training data of
+  the champion promoted the run before, and it rejected a 14-day exam, which is
+  clean. The real condition is `step_days + holdout_days >= monitor_days`, and it
+  is now enforced with a test on each side. No shipped configuration was
+  affected; the sweep above is what needed the correction.
 - The skill baseline sees recent PM2.5 and the model does not. That is stated
   wherever the number appears, and it is deliberate: it is the alternative you
   could deploy. A like-for-like baseline would have to be built from the

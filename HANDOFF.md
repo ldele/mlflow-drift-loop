@@ -9,6 +9,32 @@ publish, and the promoted champion is served over HTTP. `README.md` is the real
 documentation; this file only carries what a reader of the code could not work
 out for themselves.
 
+## What landed on 2026-08-05 (third pass): the exam-length sweep
+
+`holdout_days` was the top open experiment. It has been run and the answer is
+negative, which composes with the trigger result into a real conclusion.
+
+- **A longer exam does not fix the long-serving reversal.**
+  [`scripts/sweep_holdout.py`](scripts/sweep_holdout.py) replays all six cities at
+  7, 10, 14 and 21 days, cadence held at 7 so exam length is the only variable.
+  Over the horizon it tests the promise gets more honest (a 2.6-point gap at 7
+  days, 0.3 at 21). Beyond it, all three long-serving promotions still deliver a
+  negative margin at every length, and the reversal is deeper at 21 days.
+- **And it costs.** A longer exam is a stricter filter (Delhi promotes 89% of
+  challengers at 7 days, 39% at 21), which hurts the cities where retraining
+  pays: Santiago +11%, Delhi +4%. Seven days stays.
+- **The conclusion.** Neither trigger sensitivity nor exam size is the
+  constraint. Nothing re-examines a *serving* champion on fresh unseen data, and
+  that is the missing mechanism.
+- **Two defects surfaced while designing it.** The cadence guard was the wrong
+  condition (see below), and five of six cities score the bootstrap champion on
+  3-5 days of its own training data on run 0 (understating its error by 1.0% to
+  15.2%, changing no decision). Both are in `docs/evaluation.md` limitations.
+- **Watch the run-count confound if you extend this.** A longer exam has to start
+  later or it reaches into bootstrap training data, and the dropped runs are early
+  clean-season ones. Uncontrolled it doubled Santiago's apparent penalty. The
+  script reports `median_rmse_common` over the runs every arm shares.
+
 ## What landed on 2026-08-05 (second pass): the trigger fix, and its result
 
 The top open item was "build the trigger fix", which had been documented and not
@@ -31,8 +57,8 @@ useful part.
   is empty, so it is a per-city knob in disguise and the cities stop being
   comparable. That is now argued from the measurement rather than asserted.
 - **What it points at instead:** firing more often only feeds more challengers to
-  a gate that certifies for about five weeks. The next experiment is the length
-  of the exam (`holdout_days`), not the sensitivity of the trigger.
+  a gate that certifies for about five weeks. That made the exam's length the next
+  experiment, which has now also been run (below) and also does not pay.
 - `DataSource` now declares `forecast_lead_days`, because the skill baseline's
   causality rule depends on it and the loop should ask the source rather than be
   handed a config that might disagree with the data.
@@ -106,6 +132,11 @@ that flattered the system.
   site-packages. The Dockerfile installs with `-e` for that reason. It is also
   the hook the serving tests use: they monkeypatch it to a `tmp_path` to
   relocate the whole registry.
+- **The cadence guard is `step_days + holdout_days >= monitor_days`**, not
+  `step_days >= holdout_days`. The two agree only at the shipped values (7+7==14),
+  which is why the wrong one survived. It admitted a 3-day exam at a weekly
+  cadence, where the champion is scored on hours it fitted, and rejected a clean
+  14-day one. Pinned on both sides in `tests/test_loop.py`.
 - **`champion_version` means two different things.** On a run that promotes, the
   loop monitors with the *outgoing* champion and then overwrites the tag with the
   winner. So the MLflow tag is the incoming version while `simulation_*.csv`
@@ -151,11 +182,15 @@ that flattered the system.
 - The retrain trigger is shipped with the ratchet intact. Not for want of a fix
   any more: the fix exists, is tested, and measures out at roughly zero. See the
   2026-08-05 second-pass notes above.
-- **Sweep `holdout_days`.** This is now the top open experiment, and the trigger
-  work is what promoted it: if the exam's shelf life is the real constraint, a
-  longer holdout should move the gate calibration and the delivered margins.
-  `sweep_skill_floor.py` is the pattern to copy: a full replay per arm, into a
-  temp backend, scored with `retrospect`.
+- **Build periodic re-certification.** Both sensitivity fixes have been measured
+  and neither pays, so this is what the two negative results point at: re-run the
+  holdout exam on the *serving* champion against a fresh challenger on a fixed
+  schedule, independent of the drift trigger. Nothing currently re-examines an
+  incumbent on unseen data after the day it was promoted.
+- **Fix the first-run bootstrap overlap** if you are willing to re-baseline. Push
+  each city's `first_run` out to at least `champion_train_end + monitor_days`.
+  Costs one run per city and moves every published number slightly; no decision
+  changes, which is why it has not been done unilaterally.
 - `challenger_train_days` is still argued rather than swept.
 - **`docs/images/dashboard.png` is the one screenshot still showing the old
   Streamlit app.** `gate.png` and `compare.png` were regenerated on 2026-08-05

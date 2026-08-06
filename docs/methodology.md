@@ -365,13 +365,35 @@ season. Sweeping it is the cheapest experiment left.
 Champion and challenger both predict the holdout, a week neither has trained on,
 and the challenger is promoted only if its RMSE is more than 5% lower.
 
+Seven days is measured rather than assumed.
+[`sweep_holdout.py`](../scripts/sweep_holdout.py) replays every city at 7, 10, 14
+and 21 days. A longer exam makes the promise more honest over the horizon it
+tests and does nothing beyond it: long-serving promotions still reverse at every
+length. It also filters harder, rejecting challengers that the cities where
+retraining pays cannot afford to lose. See
+[evaluation.md](evaluation.md#lengthening-the-exam-does-not-fix-it).
+
 **No evaluation leak**, and two guards make that structural rather than
-aspirational. The loop raises rather than warns if the holdout would overlap the
-champion's training data, and `run_simulation` refuses a replay cadence shorter
-than the holdout, which would let a freshly promoted champion be judged on its
-own training data a week later. Both are asserted in `tests/test_loop.py`,
+aspirational. Within a run, the loop raises if the holdout would overlap the
+champion's training data. Across runs, `run_simulation` requires
+
+```
+step_days + holdout_days >= monitor_days
+```
+
+because a challenger promoted at `as_of` trained up to `as_of − holdout_days`,
+and the next run's monitor window opens at `as_of + step_days − monitor_days`.
+Below that bound the champion is scored on hours it fitted, which flatters it and
+suppresses the retrain trigger. Both guards are asserted in `tests/test_loop.py`,
 because a leak that surfaces only as suspiciously good results is a defect you
 talk yourself into believing.
+
+That second guard used to read `step_days >= holdout_days`, which is the same
+rule at the shipped values (7 + 7 = 14) and wrong on both sides of them: it
+admitted a 3-day exam at a weekly cadence, where four days of every monitor
+window is the new champion's own training data, and rejected a 14-day exam, which
+is clean. A guard that is right only at its default is one nobody has tested away
+from it.
 
 The baselines are held to the same rule. A forecaster issuing seven days out may
 use readings up to that moment and no later, so persistence repeats a week-old
