@@ -50,6 +50,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from driftloop import stats
 from driftloop.config import DRIFT_FEATURES, FEATURES, TARGET, TIMESTAMP
 from driftloop.data.base import DataSource
 
@@ -259,20 +260,47 @@ def retraining_value(result: Retrospective) -> dict[str, float | int]:
     the same value, and the headline reads 0.0% while every window where a
     retrained model was serving improved on the original.
     """
+    arrays = retraining_series(result)
+    if not arrays:
+        return {}
+    served, frozen = arrays["served"], arrays["frozen"]
+
+    out: dict[str, float | int] = {
+        "across_replay": float((1 - np.median(served) / np.median(frozen)) * 100),
+        "windows": int(served.size),
+    }
+
+    served_acted, frozen_acted = arrays["served_acted"], arrays["frozen_acted"]
+    out["acted_windows"] = int(served_acted.size)
+    if served_acted.size:
+        ratio = served_acted / frozen_acted
+        out["when_it_acted"] = float((1 - np.median(ratio)) * 100)
+        out["win_rate"] = float((served_acted < frozen_acted).mean() * 100)
+    return out
+
+
+def retraining_series(result: Retrospective) -> dict[str, np.ndarray]:
+    """The paired per-window error series the retraining headlines are computed from.
+
+    Split out from ``retraining_value`` so the uncertainty on those headlines is
+    resampled from the same numbers they were computed on. A bootstrap that
+    reconstructs its own input is a bootstrap of a different statistic, and the
+    discrepancy shows up as an interval that does not contain its own point
+    estimate.
+
+    Returns ``served``/``frozen`` over every usable window, and
+    ``served_acted``/``frozen_acted`` over the windows a retrained model was in
+    service for. Empty dict when there is nothing to compare.
+    """
     frozen_version = min(result.version_rmse) if result.version_rmse else None
     if frozen_version is None or not result.champion_rmse:
         return {}
 
-    served = np.asarray(result.champion_rmse, dtype=float)
-    frozen = np.asarray(result.version_rmse[frozen_version], dtype=float)
-    usable = ~(np.isnan(served) | np.isnan(frozen))
+    served_all = np.asarray(result.champion_rmse, dtype=float)
+    frozen_all = np.asarray(result.version_rmse[frozen_version], dtype=float)
+    usable = ~(np.isnan(served_all) | np.isnan(frozen_all))
     if not usable.any():
         return {}
-
-    out: dict[str, float | int] = {
-        "across_replay": float((1 - np.median(served[usable]) / np.median(frozen[usable])) * 100),
-        "windows": int(usable.sum()),
-    }
 
     # Windows where a retrained model was the one serving, so the comparison is
     # about retraining rather than about a model against itself.
@@ -286,11 +314,82 @@ def retraining_value(result: Retrospective) -> dict[str, float | int]:
     # thirteen windows where nothing had been retrained yet.
     serving = np.asarray(result.serving_version or result.champion_version, dtype=int)
     acted = usable & (serving != frozen_version)
-    out["acted_windows"] = int(acted.sum())
-    if acted.any():
-        ratio = served[acted] / frozen[acted]
-        out["when_it_acted"] = float((1 - np.median(ratio)) * 100)
-        out["win_rate"] = float((served[acted] < frozen[acted]).mean() * 100)
+
+    return {
+        "served": served_all[usable],
+        "frozen": frozen_all[usable],
+        "served_acted": served_all[acted],
+        "frozen_acted": frozen_all[acted],
+    }
+
+
+def retraining_uncertainty(
+    result: Retrospective,
+    block: int | None = None,
+    resamples: int = stats.DEFAULT_RESAMPLES,
+    seed: int = stats.DEFAULT_SEED,
+) -> dict[str, stats.Interval]:
+    """Block-bootstrap intervals for the three retraining headlines.
+
+    Consecutive windows overlap by half and the weather underneath them is
+    autocorrelated, so the resampling is over contiguous blocks of weeks rather
+    than over individual weeks. See ``driftloop.stats`` for why, and for what
+    the interval is and is not entitled to claim.
+
+    The paired figures resample ``served`` and ``frozen`` with the *same* block
+    indices, so a week's two error values are never separated.
+    """
+    arrays = retraining_series(result)
+    if not arrays:
+        return {}
+
+    kwargs = {"block": block, "resamples": resamples, "seed": seed}
+    out = {
+        "across_replay": stats.block_bootstrap(
+            (arrays["served"], arrays["frozen"]), stats.pct_improvement_unpaired, **kwargs
+        )
+    }
+    if arrays["served_acted"].size:
+        paired = (arrays["served_acted"], arrays["frozen_acted"])
+        out["when_it_acted"] = stats.block_bootstrap(paired, stats.pct_improvement_paired, **kwargs)
+        out["win_rate"] = stats.block_bootstrap(paired, stats.win_rate, **kwargs)
+    return out
+
+
+def gate_uncertainty(
+    gate: list[dict],
+    long_weeks: int = GATE_LONG_WEEKS,
+    resamples: int = stats.DEFAULT_RESAMPLES,
+    seed: int = stats.DEFAULT_SEED,
+) -> dict[str, dict[str, stats.Interval]]:
+    """Intervals on the gate-calibration means, split short-serving vs long.
+
+    Resampled IID (block length 1) rather than in blocks, and that is a
+    deliberate difference from the retraining figures. These rows are one per
+    *promotion*, not one per week: they are already irregularly spaced, they are
+    pooled across six cities, and consecutive promotions do not overlap the way
+    consecutive monitor windows do. Blocking them would impose a serial
+    structure the rows do not have.
+
+    The ``long`` group is the one the project's central claim rests on, and it
+    is where the interval will hurt most: three promotions across six cities is
+    not many, and the width says so.
+    """
+    out: dict[str, dict[str, stats.Interval]] = {}
+    for label, rows in (
+        ("short", [g for g in gate if g["weeks_served"] < long_weeks]),
+        ("long", [g for g in gate if g["weeks_served"] >= long_weeks]),
+    ):
+        if not rows:
+            out[label] = {}
+            continue
+        exam = np.array([g["exam_margin"] for g in rows], dtype=float) * 100
+        delivered = np.array([g["delivered_margin"] for g in rows], dtype=float) * 100
+        kwargs = {"block": 1, "resamples": resamples, "seed": seed}
+        out[label] = {
+            "exam": stats.block_bootstrap((exam,), stats.mean_stat, **kwargs),
+            "delivered": stats.block_bootstrap((delivered,), stats.mean_stat, **kwargs),
+        }
     return out
 
 

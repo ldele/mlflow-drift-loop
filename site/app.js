@@ -354,11 +354,25 @@ function statTiles(stats, target, retro) {
     // identical and both medians land on the same value. Johannesburg reads
     // 0.0% that way and won every week in which a retrained model was serving.
     const acted = stats.retrain_acted;
+    const lo = stats.retrain_acted_lo, hi = stats.retrain_acted_hi;
+    // Coloured off whether the interval clears zero, not off the sign of the
+    // estimate. Melbourne's +1.2% spans [-0.6, +3.0]: painting that green makes
+    // a number that could be nothing look like a win, which is the exact error
+    // the evaluation page is written against.
+    const real = stats.retrain_acted_real;
+    const colour = real == null ? undefined
+      : !real ? undefined
+      : acted >= 0 ? pal.good : pal.crit;
+    const range = (lo == null || hi == null) ? ""
+      : ` ${pct(lo, 1)} to ${pct(hi, 1)}`;
     tiles.push({
-      v: pct(stats.retrain_gain, 1), color: stats.retrain_gain >= 0 ? pal.good : pal.crit,
-      k: "Retraining, across the whole replay" +
-        (acted == null ? "" : ` · ${pct(acted, 1)} over the ${stats.retrain_acted_windows}`
-          + ` weeks it served a retrained model`),
+      v: acted == null ? pct(stats.retrain_gain, 1) : pct(acted, 1),
+      color: colour,
+      k: acted == null
+        ? "Retraining, across the whole replay"
+        : `Retraining, week by week${range}` +
+          (real === false ? " · not distinguishable from zero" : "") +
+          ` · ${pct(stats.retrain_gain, 1)} across the whole replay`,
     });
   }
   tiles.push({ v: stats.runs, k: "Weeks watched" });

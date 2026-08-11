@@ -122,9 +122,25 @@ function renderTiles() {
       k: "Cities whose model currently beats a rule of thumb",
     },
     medianActed == null ? null : {
-      v: pct(medianActed), color: medianActed >= 0 ? pal.good : pal.crit,
+      // Uncoloured on purpose. This is the median of six estimates, four of
+      // which clear zero and two of which do not, so painting it green would
+      // assert something none of the six individually support.
+      v: pct(medianActed),
       k: "Retraining, week by week, median across cities",
     },
+    // The count that the median above hides. Six cities were chosen for
+    // contrast, so how many of them show any measurable effect at all is the
+    // more honest summary, and it is the one number a reader should leave with.
+    (() => {
+      const judged = CITIES.filter((c) => c.stats.retrain_acted_real != null);
+      if (!judged.length) return null;
+      const real = judged.filter((c) => c.stats.retrain_acted_real);
+      return {
+        v: `${real.length}/${judged.length}`,
+        color: real.length > judged.length / 2 ? pal.good : pal.warn,
+        k: "Cities where the effect of retraining is distinguishable from zero",
+      };
+    })(),
     {
       v: stale.length, color: stale.length ? pal.warn : undefined,
       k: "Cities serving a model over 120 days old",

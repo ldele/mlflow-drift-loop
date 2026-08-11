@@ -29,3 +29,10 @@ site/*_hourly.csv
 # threads are closed, so it does not belong in the history.
 /SESSION.md
 HANDOFF.md
+
+# Cross-project working notes: the practices this project taught, kept as a
+# personal record rather than a published document. It is self-critical about
+# work that is on display in the README, and the canonical copy now travels with
+# whichever project is current. Documents that stay here are the ones a reader
+# of this repository needs.
+docs/PRACTICES.md

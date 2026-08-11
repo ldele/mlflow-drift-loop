@@ -45,8 +45,9 @@ DECAY_WEEKS = 26
 #
 # Ordered as an argument rather than geographically: Kraków states the case and
 # Santiago immediately answers "is this just northern winter?", then the cities
-# walk down the scale of what retraining is worth, from +66.7% (Delhi) through
-# indifference (Johannesburg, Melbourne) to actively harmful (Los Angeles).
+# walk down the scale of what retraining is worth, from +49.4% (Delhi) through
+# Johannesburg's smaller but real gain, to Melbourne where no effect is
+# measurable, to Los Angeles where the interval says the loop does harm.
 DISPLAY_ORDER = [
     "openmeteo",
     "openmeteo_santiago",
@@ -84,24 +85,32 @@ STORY = {
     "goes from {rmse_first} to {rmse_peak} µg/m³ of error as that happens, and is replaced "
     "{retrains} times over {runs} weeks. Measured across the whole replay that replacing is worth "
     "{retrain_gain}, near enough a wash; held week by week over the {acted_weeks} weeks a "
-    "retrained model was serving, it is {retrain_acted}. What it ends up with is {rank_phrase}.",
+    "retrained model was serving, it is {retrain_acted} {retrain_acted_ci}, which is "
+    "{retrain_verdict}. Those {acted_weeks} weeks carry about {effective_n} independent "
+    "observations between them, and that is why the range is so wide. What it ends up with "
+    "is {rank_phrase}.",
     "openmeteo_delhi": "The violent one. The monsoon scrubs Delhi's air clean by September, then "
     "the crop stubble is burned and the winter air stops moving, and the pollution triples. The "
     "model's error runs from {rmse_first} to {rmse_peak} µg/m³ while the weather stops resembling "
-    "anything it was trained on. Keeping it retrained is worth {retrain_gain}, the biggest payoff "
-    "here. Left alone, it ends up worse than guessing the same number every hour.",
+    "anything it was trained on. Keeping it retrained is worth {retrain_gain} across the replay "
+    "and {retrain_acted} {retrain_acted_ci} week by week, the biggest payoff here and the one "
+    "furthest clear of zero. Left alone, it ends up worse than guessing the same number every "
+    "hour.",
     "openmeteo_la": "Retraining buys nothing here, and that is why the city is on the page. Los "
     "Angeles was picked as the summer-smog control and the measurements disagreed twice over: its "
     "pollution peaks in November, and it moves only 1.9× against Delhi's 3×. Across {runs} weeks "
-    "the loop fires {retrains} times. Over the whole replay retraining scores {retrain_gain}, and "
-    "in the {acted_weeks} weeks a retrained model was serving it won {win_rate} of them, which is "
-    "a coin toss. The model comes {rank_phrase}. Something built to catch change needs something "
-    "to change.",
+    "the loop fires {retrains_times}. Over the whole replay retraining scores {retrain_gain}, and "
+    "in the {acted_weeks} weeks a retrained model was serving it won {win_rate} of them, worse "
+    "than a coin toss rather than equal to one. Week by week it costs {retrain_acted} "
+    "{retrain_acted_ci}, a range that stays {retrain_verdict}, so the control does not merely "
+    "fail to benefit. It is measurably harmed. The model comes {rank_phrase}. Something built "
+    "to catch change needs something to change.",
     "openmeteo_santiago": "Kraków's twin, half a year out of step. Santiago sits in a coastal bowl "
     "that traps winter air the same way, except that its winter is June. A model trained on clean "
     "December air decays from {rmse_first} to {rmse_peak} µg/m³ as that winter arrives. It is "
-    "replaced {retrains} times over {runs} weeks, worth {retrain_gain}, on settings identical to "
-    "every other city here.",
+    "replaced {retrains} times over {runs} weeks, worth {retrain_gain} across the replay and "
+    "{retrain_acted} {retrain_acted_ci} week by week, on settings identical to every other "
+    "city here.",
     "openmeteo_joburg": "Where the quality gate does its most visible work, and where the headline "
     "number lies. Highveld winter nights trap coal and wood smoke, and the model's error climbs "
     "from {rmse_first} to {rmse_peak} µg/m³, the worst on this page. It trains {retrains} "
@@ -109,13 +118,15 @@ STORY = {
     "retraining scores {retrain_gain}, which reads as a wash and is not one: nothing was promoted "
     "until week 14 of 20, so most windows compare the first model against itself. In the "
     "{acted_weeks} weeks where a retrained model was serving it beat the original in {win_rate} of "
-    "them, by a median of {retrain_acted}.",
+    "them, by a median of {retrain_acted} {retrain_acted_ci}. Six weeks is the thinnest "
+    "evidence of any city here, and the range says so.",
     "openmeteo_melbourne": "Clean air does not mean a stable model. Sydney is the obvious "
     "Australian choice and its air barely moves; Melbourne swings 3.1× on winter wood smoke while "
     "staying near the WHO guideline all year round, and its model still decays to {perf_peak}× the "
     "error it started with across {runs} weeks. Retraining scores {retrain_gain} over the replay "
-    "and {retrain_acted} in the {acted_weeks} weeks it was serving a retrained model, winning "
-    "{win_rate} of them. Small, positive, and worth far less than in Delhi.",
+    "and {retrain_acted} {retrain_acted_ci} in the {acted_weeks} weeks it was serving a "
+    "retrained model, winning {win_rate} of them. That range is {retrain_verdict}, so the "
+    "honest reading is that retraining here buys nothing measurable at all.",
     "synthetic": "A made-up world with a dial controlling how far the data shifts, so the "
     "detection can be shown to fire when something really has changed, and only then.",
     "scheduled": "The same system running unattended, and not a city at all. This is the Kraków "
@@ -147,14 +158,30 @@ def _pct(value: float) -> str:
     return f"{'+' if value > 0 else '−'}{abs(value):.1f}%"
 
 
+def _interval(ci: dict | None) -> str:
+    """An interval as prose: "[−15, +28]". Empty string where there is none."""
+    if not ci:
+        return ""
+    return f"[{_pct(ci['lo'])}, {_pct(ci['hi'])}]".replace("%", "")
+
+
 def _story_facts(runs: pd.DataFrame, retr: pd.DataFrame, prom: pd.DataFrame,
-                 benchmark: dict | None, retraining: dict | None = None) -> dict[str, str]:
+                 benchmark: dict | None, retraining: dict | None = None,
+                 intervals: dict | None = None) -> dict[str, str]:
     """Every number a story is allowed to quote, derived from that city's run."""
     rmse = runs.get("metrics.champion_rmse")
     perf = runs.get("metrics.perf_drift_ratio")
     facts = {
         "runs": str(len(runs)),
         "retrains": _count(len(retr)),
+        # "the loop fires {retrains} times" reads as "fires 1 times" in the one
+        # city that retrains once, which is Los Angeles, which is the control,
+        # which is the city a sceptical reader looks at hardest.
+        "retrains_times": (
+            "once" if len(retr) == 1
+            else "twice" if len(retr) == 2
+            else f"{_count(len(retr))} times"
+        ),
         "promotions": _count(len(prom)),
         "psi_peak": f"{runs['metrics.data_drift_psi'].max():.2f}",
         "rmse_first": "—" if rmse is None else f"{rmse.iloc[0]:.1f}",
@@ -184,6 +211,19 @@ def _story_facts(runs: pd.DataFrame, retr: pd.DataFrame, prom: pd.DataFrame,
         facts["retrain_acted"] = _pct(retraining["when_it_acted"])
         facts["acted_weeks"] = str(retraining.get("acted_windows", ""))
         facts["win_rate"] = f"{retraining.get('win_rate', 0):.0f}%"
+
+    # A story is allowed to quote an estimate only alongside its interval, and
+    # only to call it a finding when that interval clears zero. Two of these six
+    # stories used to describe a result the data does not support.
+    acted_ci = (intervals or {}).get("when_it_acted") or {}
+    facts["retrain_acted_ci"] = _interval(acted_ci)
+    facts["retrain_gain_ci"] = _interval((intervals or {}).get("across_replay"))
+    if acted_ci:
+        facts["retrain_verdict"] = (
+            "clear of zero" if acted_ci.get("excludes_zero")
+            else "not distinguishable from zero"
+        )
+        facts["effective_n"] = f"{acted_ci.get('n_effective', 0):.0f}"
     return facts
 
 
@@ -323,6 +363,14 @@ def retrospective_block(key: str, runs: pd.DataFrame) -> dict | None:
     return {
         "as_of": as_of,
         "retraining": retrospect.retraining_value(retro),
+        # The interval on each of those, so the published page can say which of
+        # them are findings. Carried in the payload ahead of the front-end work
+        # that renders it: the README and evaluation.md already report intervals,
+        # and a site that shows the same numbers bare contradicts them.
+        "retraining_ci": {
+            key: interval.to_dict()
+            for key, interval in retrospect.retraining_uncertainty(retro).items()
+        },
         "skill": {
             "champion": _floats(pd.Series(retro.champion_skill)),
             "climatology_rmse": _floats(pd.Series(retro.climatology_rmse)),
@@ -443,6 +491,13 @@ def profile_data(key: str) -> dict | None:
     retrain_gain = round(value["across_replay"], 1) if "across_replay" in value else None
     retrain_acted = round(value["when_it_acted"], 1) if "when_it_acted" in value else None
 
+    # The interval on each of those. Without it the page states Melbourne's
+    # +1.2% in the same colour and the same typeface as Delhi's +49.4%, and only
+    # one of the two is distinguishable from nothing.
+    intervals = (retro or {}).get("retraining_ci") or {}
+    acted_ci = intervals.get("when_it_acted") or {}
+    gain_ci = intervals.get("across_replay") or {}
+
     loc = profile.location
     return {
         "key": key,
@@ -451,7 +506,7 @@ def profile_data(key: str) -> dict | None:
         "benchmark": benchmark,
         "target": {"name": "PM2.5", "units": "µg/m³", "who_24h_guideline": 15},
         "recent": recent,
-        "story": _render_story(key, _story_facts(runs, retr, prom, benchmark, value)),
+        "story": _render_story(key, _story_facts(runs, retr, prom, benchmark, value, intervals)),
         "drift_date": drift_date,
         # Present only for profiles tied to a real place. The page plots one map
         # marker per profile that has one, so a location-less profile (the live
@@ -472,7 +527,20 @@ def profile_data(key: str) -> dict | None:
             "champion_age_days": champion_age_days,
             "champion_version": champion_version,
             "retrain_gain": retrain_gain,
+            "retrain_gain_lo": round(gain_ci["lo"], 1) if gain_ci else None,
+            "retrain_gain_hi": round(gain_ci["hi"], 1) if gain_ci else None,
+            "retrain_gain_real": gain_ci.get("excludes_zero"),
             "retrain_acted": retrain_acted,
+            "retrain_acted_lo": round(acted_ci["lo"], 1) if acted_ci else None,
+            "retrain_acted_hi": round(acted_ci["hi"], 1) if acted_ci else None,
+            # Whether the interval clears zero. The page colours and words the
+            # tile off this rather than off the sign of the estimate, because
+            # the sign of a number that could be nothing is not a finding.
+            "retrain_acted_real": acted_ci.get("excludes_zero"),
+            # How many independent observations those weeks are worth. Kraków's
+            # 47 are worth about 5, and that single figure explains the width of
+            # every interval on the page.
+            "retrain_effective_n": acted_ci.get("n_effective"),
             "retrain_acted_windows": value.get("acted_windows"),
             "retrain_win_rate": round(value["win_rate"], 0) if "win_rate" in value else None,
             "latest_skill": (

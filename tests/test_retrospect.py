@@ -325,3 +325,47 @@ def test_empty_inputs_degrade_rather_than_raise(source):
     runs = pd.DataFrame({"as_of": pd.date_range("2025-07-15", periods=2, freq="7D"),
                          "champion_version": [1, 1]})
     assert build(source, runs, {}, 14, 0, LoopConfig().promotion_margin).as_of == []
+
+
+def test_the_intervals_bracket_the_headlines_they_are_attached_to(source):
+    """``retraining_uncertainty`` must resample the *same* statistic it reports.
+
+    The interval and the point estimate reach the reader as one string, so if
+    they are computed from different arrays the reader is told a number and a
+    range that do not belong together -- and nothing else in the system would
+    notice. Sharing ``retraining_series`` is what prevents that; this asserts it
+    stayed shared.
+    """
+    from driftloop.retrospect import retraining_uncertainty, retraining_value
+
+    early = train(source.get_data(pd.Timestamp("2025-01-01"), pd.Timestamp("2025-03-01")))
+    late = train(source.get_data(pd.Timestamp("2025-05-01"), pd.Timestamp("2025-07-01")))
+    models = {1: _as_registered(early, 1), 2: _as_registered(late, 2)}
+
+    runs = pd.DataFrame(
+        {
+            "as_of": pd.date_range("2025-07-15", periods=12, freq="7D"),
+            "champion_version": [1] * 5 + [2] * 7,
+            "tags.promotion_decision": ["none"] * 5 + ["promoted"] + ["none"] * 6,
+        }
+    )
+    result = build(source, runs, models, 14, 0, 0.05)
+    value = retraining_value(result)
+    intervals = retraining_uncertainty(result, resamples=400)
+
+    for key in ("across_replay", "when_it_acted", "win_rate"):
+        assert intervals[key].point == pytest.approx(value[key]), key
+        assert intervals[key].lo <= intervals[key].point <= intervals[key].hi, key
+
+
+def test_the_gate_refuses_to_bound_a_group_of_three(source):
+    """The live case: the long-serving group has three promotions across six cities.
+
+    An interval over three points would be a statement about those three points
+    dressed as a statement about the gate, so the bootstrap declines and says so.
+    """
+    from driftloop.stats import block_bootstrap, mean_stat
+
+    values = np.array([-0.08, -0.04, -0.06])
+    interval = block_bootstrap((values,), mean_stat)
+    assert interval.lo == float("-inf") and interval.hi == float("inf")

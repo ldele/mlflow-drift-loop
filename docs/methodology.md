@@ -341,7 +341,7 @@ It ships at `None` because it was measured rather than assumed:
 at several floors, and a conservative floor leaves the outcome identical in five
 of six while an aggressive one makes two cities worse for one improvement. It
 wakes the trigger as designed, and the waking is not worth having. Numbers in
-[evaluation.md](evaluation.md#fixing-the-trigger-one-fix-is-impossible-the-other-does-not-pay).
+[evaluation.md](evaluation.md#fixing-the-trigger-one-fix-is-impossible-the-other-pays-in-one-city).
 The knob stays in the code so the next person to propose this fix finds it
 already built and already answered.
 
@@ -533,7 +533,77 @@ and the published site carries a distilled `data.json` plus one raw CSV per city
 
 ---
 
+## Putting an interval on it
+
+Every headline this project reports is a statistic over a few dozen weekly
+windows. Until 2026-08-11 all of them were published as bare point estimates,
+which is the one place the project was not applying its own standard to itself.
+[`stats.py`](../src/driftloop/stats.py) is the correction, and
+[`scripts/uncertainty.py`](../scripts/uncertainty.py) regenerates every figure
+in [evaluation.md](evaluation.md) that carries a bracket.
+
+**The observations are not independent, and an ordinary bootstrap is wrong here.**
+Two effects compound. A monitor window is 14 days wide and the replay steps 7
+days, so consecutive windows share half their hours by construction. And
+pollution episodes persist: a bad week is followed by a bad week far more often
+than chance. Measured, the lag-1 autocorrelation of the paired error series runs
+from 0.08 (Johannesburg) to 0.85 (Los Angeles).
+
+An IID bootstrap resamples single weeks and destroys that structure, so the
+resampled series looks like it carries more independent information than it
+does, and the interval comes out too narrow, which is the direction that turns
+noise into a finding. The moving-block bootstrap (Künsch, 1989) resamples contiguous
+*blocks* of weeks instead, so the dependence inside a block survives.
+
+**Paired statistics are resampled with shared block indices.** The week-by-week
+premium compares two models on the same window, so the two error series must be
+resampled together; separating them would compare one model's week 4 against
+another's week 31 and call the difference uncertainty.
+`tests/test_stats.py::test_pairs_are_resampled_together` asserts it by feeding
+in two identical series, whose paired improvement must be zero in every
+resample.
+
+**Block length is the one free parameter, so the sweep is published.** The
+default is `L = round(n ** (1/3))`, the usual rate, floored at 2 and capped at
+`n // 2`. The cap matters because a block as long as the series would
+resample it unchanged and report zero width, which is the worst thing this
+module could do. Because the choice is a judgement,
+`sensitivity_to_block_length` re-runs each interval across a range of `L`, and
+[evaluation.md](evaluation.md#the-block-length-is-a-knob-so-here-is-the-sweep)
+prints the result. It immediately earned itself: Kraków's premium excludes zero
+at `L=1` and includes it from `L=4`, so that conclusion is a function of a
+modelling choice and is now labelled as one.
+
+**Where the bootstrap cannot help, it says so.** Two failure modes are handled
+explicitly rather than papered over. At a boundary, in a city that won every
+window it acted on, every resample also wins every window and the interval
+collapses to a false [100, 100]; win rates therefore use a Wilson interval,
+which handles proportions at 0 and 1 properly. And below four observations the
+bootstrap returns an explicitly infinite interval rather than a narrow invented
+one, which is what forces the gate's three long-serving promotions to be
+reported as three listed numbers instead of a mean with a range.
+
+**No p-values.** The question here is never "is this different from zero" in
+isolation but "how big is it, and could it plausibly be nothing", which an
+interval answers directly. Where a reader wants the null-hypothesis version, an
+interval excluding zero carries it.
+
+The seed and resample count are fixed constants: an interval that moves when you
+rerun it is not something a reader can check.
+
 ## References
+
+**Uncertainty**
+
+- Künsch, H. R. (1989). *The Jackknife and the Bootstrap for General Stationary
+  Observations.* Annals of Statistics, 17(3), 1217–1241. The moving-block
+  bootstrap.
+- Politis, D. N., & Romano, J. P. (1994). *The Stationary Bootstrap.* JASA,
+  89(428), 1303–1313.
+- Efron, B., & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap.*
+  Chapman & Hall. The percentile interval is §13.3.
+- Wilson, E. B. (1927). *Probable Inference, the Law of Succession, and
+  Statistical Inference.* JASA, 22(158), 209–212.
 
 **Ridge regression**
 

@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 from mlflow.tracking import MlflowClient
 
-from driftloop import retrospect, tracking
+from driftloop import retrospect, stats, tracking
 from driftloop.config import CITY_CLI_NAMES as CITIES
 from driftloop.config import PROFILES, Profile
 from driftloop.data import OpenMeteoSource
@@ -176,6 +176,40 @@ def main() -> None:
                     )
                 print(f"  on the {len(common)} runs common to every arm: " + ", ".join(
                     f"{s['holdout']}d {s['median_rmse_common']:.2f}" for s in city_rows), flush=True)
+
+                # Each arm against the shipped 7-day exam, week by week over the
+                # runs they share, with the interval. Comparing one median
+                # against another says nothing about whether a 2% gap between
+                # two arms is a difference at all, and "a longer exam does not
+                # pay" is a claim this script exists to support. A negative
+                # result stated without a range cannot be told apart from an
+                # underpowered one.
+                dates = sorted(common)
+                base = next((s for s, _ in zip(city_rows, city_series) if s["holdout"] == 7), None)
+                base_series = next(
+                    (ser for s, ser in zip(city_rows, city_series) if s["holdout"] == 7), None
+                )
+                for summary, series in zip(city_rows, city_series):
+                    if base is None or base_series is None or not dates:
+                        continue
+                    if summary["holdout"] == 7:
+                        summary.update(vs_7d=0.0, vs_7d_lo=0.0, vs_7d_hi=0.0, vs_7d_real=False)
+                        continue
+                    arm = np.array([series[d] for d in dates], dtype=float)
+                    ref = np.array([base_series[d] for d in dates], dtype=float)
+                    interval = stats.block_bootstrap((arm, ref), stats.pct_improvement_paired)
+                    summary.update(
+                        vs_7d=round(interval.point, 2),
+                        vs_7d_lo=round(interval.lo, 2),
+                        vs_7d_hi=round(interval.hi, 2),
+                        vs_7d_real=interval.excludes_zero,
+                    )
+                    verdict = "clears zero" if interval.excludes_zero else "not distinguishable"
+                    print(
+                        f"    {summary['holdout']:>2}d against 7d: {interval.point:+6.2f}% "
+                        f"[{interval.lo:+6.2f}, {interval.hi:+6.2f}]  {verdict}",
+                        flush=True,
+                    )
                 rows.extend(city_rows)
             OUTPUTS.mkdir(exist_ok=True)
             pd.DataFrame(rows).to_csv(OUTPUTS / "holdout_sweep.csv", index=False)

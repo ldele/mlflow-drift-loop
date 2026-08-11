@@ -67,3 +67,59 @@ def test_both_pages_share_one_stylesheet() -> None:
     # The tokens both pages' JS palettes are written against.
     for token in ("--surface", "--ink", "--muted", "--good", "--warn", "--crit"):
         assert token in css, f"shared.css is missing {token}"
+
+
+def test_the_published_payload_never_shows_an_estimate_without_its_interval() -> None:
+    """A number on the page carries its range, the same rule the docs follow.
+
+    The site used to print Melbourne's +1.2% in the same green as Delhi's
+    +49.4%, and only one of the two is distinguishable from nothing. That is the
+    error `docs/evaluation.md` is written against, so it should not be possible
+    to reintroduce it on the page while the documents say otherwise.
+
+    Skipped when `data.json` has not been built, which is a "run build_site.py"
+    state rather than a failure.
+    """
+    import json
+
+    payload = SITE / "data.json"
+    if not payload.is_file():
+        pytest.skip("site/data.json not built")
+
+    data = json.loads(payload.read_text(encoding="utf-8"))
+    profiles = data["profiles"] if isinstance(data, dict) and "profiles" in data else data
+    items = profiles.items() if isinstance(profiles, dict) else [(p["key"], p) for p in profiles]
+
+    bare = []
+    for key, profile in items:
+        stats = profile.get("stats") or {}
+        if stats.get("retrain_acted") is None:
+            continue
+        for field in ("retrain_acted_lo", "retrain_acted_hi", "retrain_acted_real"):
+            if stats.get(field) is None:
+                bare.append(f"{key}.{field}")
+    assert not bare, f"published estimates with no interval attached: {bare}"
+
+
+def test_at_least_one_city_is_published_as_not_distinguishable_from_zero() -> None:
+    """Kraków and Melbourne do not clear zero, and the page has to say so.
+
+    A guard against the interval fields being present but always true, which
+    would pass the test above while telling the reader nothing. If a rerun ever
+    makes every city a finding, this fails and the claim gets re-checked by a
+    human rather than quietly widened.
+    """
+    import json
+
+    payload = SITE / "data.json"
+    if not payload.is_file():
+        pytest.skip("site/data.json not built")
+
+    data = json.loads(payload.read_text(encoding="utf-8"))
+    profiles = data["profiles"] if isinstance(data, dict) and "profiles" in data else data
+    items = profiles.values() if isinstance(profiles, dict) else profiles
+    judged = [p["stats"] for p in items if (p.get("stats") or {}).get("retrain_acted_real") is not None]
+    assert judged, "no city carries a verdict at all"
+    assert not all(s["retrain_acted_real"] for s in judged), (
+        "every city now reads as a finding; re-check before publishing"
+    )

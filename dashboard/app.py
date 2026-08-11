@@ -354,6 +354,20 @@ age_days, serving_version = champion_age_days(runs)
 # is the one the project's own evaluation says to trust, and it is what the loop
 # is *for*, so it belongs in the tile row rather than four charts down.
 value = retrospect.retraining_value(retro) if retro else {}
+# The interval alongside the estimate, always. Two of the six cities have a
+# week-by-week premium that is not distinguishable from zero, and a tile reading
+# only "+6.5%" tells the reader the opposite of what the data supports.
+intervals = retrospect.retraining_uncertainty(retro) if retro else {}
+
+
+def interval_caption(key: str, suffix: str = "") -> str:
+    """Caption carrying the interval, and saying so when it spans zero."""
+    interval = intervals.get(key)
+    if interval is None:
+        return suffix.lstrip(" ·")
+    verdict = "" if interval.excludes_zero else " · not distinguishable from zero"
+    return f"95% CI [{interval.lo:+.1f}, {interval.hi:+.1f}]{verdict}{suffix}"
+
 
 # Three of these used to be counts of what the machine did, which says nothing
 # about whether any of it worked, and two of them had to be subtracted from each
@@ -403,7 +417,7 @@ if "when_it_acted" in value:
     c5.metric(
         "Retraining was worth",
         f"{value['when_it_acted']:+.1f}%",
-        f"over {value['acted_windows']} weeks it was serving · won {value['win_rate']:.0f}%",
+        interval_caption("when_it_acted", f" · over {value['acted_windows']} weeks serving"),
         delta_color="off",
     )
 else:
@@ -765,8 +779,11 @@ with tab_model:
                 paired.metric(
                     "Week by week",
                     f"{value['when_it_acted']:+.1f}%",
-                    f"over the {value['acted_windows']} weeks a retrained model was serving · "
-                    f"won {value['win_rate']:.0f}% of them",
+                    interval_caption(
+                        "when_it_acted",
+                        f" · over the {value['acted_windows']} weeks a retrained model was "
+                        f"serving · won {value['win_rate']:.0f}% of them",
+                    ),
                     delta_color="off",
                 )
             else:
