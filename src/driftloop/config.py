@@ -72,6 +72,12 @@ class SyntheticConfig:
 class LoopConfig:
     """Windowing and decision thresholds for one scheduled run."""
 
+    # Which model the loop trains. "ridge" ships and produced every published
+    # number. "gbm" exists for scripts/ablate_model.py, which asks whether the
+    # retraining findings are a fact about the world or about a linear model
+    # needing a refit to track seasonality. Nothing else should set it.
+    model_kind: str = "ridge"
+
     # Rolling window used to monitor the champion and to measure data drift.
     monitor_days: int = 14
     # How much recent history a challenger is trained on. 180, not 45: PM2.5 is

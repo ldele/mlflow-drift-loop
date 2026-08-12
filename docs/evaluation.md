@@ -758,6 +758,86 @@ The two-signal design rests on that property, and it is the one property the six
 cities cannot demonstrate. It is published on the page for the same reason it
 is here: it is the evidence, and the cities are the application.
 
+## Is the finding about the world, or about a linear model?
+
+The largest open threat to everything above, and the one this page could not
+answer until 2026-08-12. The champion is a Ridge whose penalty is close to inert
+at the shipped setting, so it is roughly a linear projection. That leaves a
+duller reading of the whole project standing next to the interesting one:
+perhaps a linear model misspecifies seasonal structure, refitting papers over
+the misspecification, and "retraining pays where the world moved" is a fact
+about the model class.
+
+[`ablate_model.py`](../scripts/ablate_model.py) replays a city twice under
+identical settings, changing only the model, and asks whether the retraining
+premium survives a learner flexible enough to absorb the nonlinearity. Delhi,
+where retraining pays most, and Los Angeles, the control where it costs.
+
+Two checks were written down before the run. The Ridge arm has to reproduce the
+shipped numbers, or the harness is not faithful. And the gradient-boosted model
+has to come out the better model, or it has absorbed nothing and the
+comparison is between two misspecified models.
+
+| | model | median RMSE | retrains | promoted | retraining premium |
+|---|---|---|---|---|---|
+| **Delhi** | Ridge | **40.44** | 9 | 8 | **+49.35% [+33.74, +61.81]** |
+| **Delhi** | gradient boosting | 43.35 | 8 | 7 | **+36.28% [+17.41, +47.60]** |
+| **Los Angeles** | Ridge | **10.91** | 1 | 1 | **−13.36% [−36.88, −3.81]** |
+| **Los Angeles** | gradient boosting | 10.97 | 6 | 1 | −3.54% [−9.69, +1.21] |
+
+The first check passes. The Ridge arm reproduces the published figures to two
+decimals in both cities, from a replay run in a throwaway backend.
+
+**The second check fails, and that is the result.** Gradient boosting is worse
+in both cities: by 2.91 µg/m³ in Delhi and by 0.06 in Los Angeles. It absorbed
+nothing, so the experiment as designed cannot run.
+
+### What a failed ablation still establishes
+
+Three things, in descending order of confidence.
+
+A flexible learner given the same eight features cannot beat a Ridge whose
+regularisation is nearly switched off. The most economical reading is that the
+relationship between a week-old weather forecast and an hour's pollution is
+close to linear at this feature set and horizon, which is the same conclusion
+the alpha sweep reached from the other direction: shrinking every slope most of
+the way to zero costs between 0.1% and 12%. **If there is little nonlinearity to
+misspecify, the confound is small.**
+
+The headline survives the change of model class. Delhi's premium is +36.28%
+[+17.41, +47.60] under gradient boosting, still large and still clear of zero.
+Over the 37 weeks both arms retrained, the difference between the two premiums
+is +7.47 points [−3.04, +22.68], which does not clear zero. Retraining is worth
+about as much to a tree as to a straight line in the city where retraining
+matters most.
+
+**The control result does not survive, and the two cities disagree.** Los
+Angeles's premium moves from −13.36% [−36.88, −3.81] to −3.54% [−9.69, +1.21],
+so under gradient boosting the harm stops being measurable. That shift is itself
+measurable: over the 31 weeks both arms retrained, the difference between the
+two premiums is −10.29 points [−24.47, −2.79], clear of zero.
+
+So "retraining pays where the world really moved" holds whichever model class
+you use, and "and costs where it did not" does not. The second half of the headline holds
+for the Ridge that ships and weakens for a tree. Two caveats on that in turn: it
+is one city, and it is the city with three effective observations, the thinnest
+evidence anywhere on this page. It is reported because it points against the
+convenient reading rather than despite it.
+
+### What it does not establish, and the obvious objection
+
+The gradient-boosted model ran at library defaults on about 4,300 hourly rows
+per training window. A tuned one might beat the Ridge, and if it did, the
+designed experiment would become runnable and could still come out the other
+way. Nothing here rules that out. The mitigating point is that the Ridge is also
+running at a default its own sweep disagrees with in every city, so this
+compares two untuned models rather than a tuned one against an untuned one.
+
+**The confound is downgraded, not closed.** It was "the headline may be an
+artefact of the model class, and nothing tests it". It is now "a more flexible
+model class does not change the headline, and cannot fit this problem better
+than a line". Tuning the challenger is the experiment that would close it.
+
 ## Limitations
 
 - **Two of the six city results are not distinguishable from zero.** Kraków's
@@ -766,19 +846,16 @@ is here: it is the evidence, and the cities are the application.
   are not findings. The four that survive are Delhi, Santiago, Johannesburg and
   Los Angeles. The last of those is a negative result, which is the one the
   argument most needs.
-- **The finding may be a property of the model class rather than of the world.**
-  The champion is a Ridge whose penalty is close to inert at the shipped setting
-  (see [methodology](methodology.md#choosing-alpha)), so it is effectively a
-  linear projection. "Retraining pays where the world moved" is therefore
-  entangled with "a linear model misspecifies seasonal structure and needs
-  refitting to track it", and nothing here separates them. A gradient-boosted
-  challenger would absorb some of that nonlinearity, and the premium might
-  shrink substantially. **This experiment has not been run, and it is the most
-  important one outstanding.** The obstacle is not the loop, which is
-  model-agnostic, but `retrospect.py`: it reconstructs every version from
-  coefficient tags as a weighted sum of columns, which is only possible for a
-  linear model. A tree ensemble would have to be scored from its logged
-  artifact instead.
+- **The model-class confound is downgraded rather than closed.** The champion is
+  a Ridge whose penalty is close to inert at the shipped setting (see
+  [methodology](methodology.md#choosing-alpha)), so "retraining pays where the
+  world moved" was entangled with "a linear model needs refitting to track
+  seasonality". A gradient-boosted arm was run on 2026-08-12 and could not beat
+  the Ridge in either city, so it absorbed no nonlinearity and the designed test
+  did not run. The premium survives the change of model class regardless. See
+  [above](#is-the-finding-about-the-world-or-about-a-linear-model). What would
+  close it is a tuned challenger that does beat the Ridge; the one tested ran at
+  library defaults.
 - No multiple-comparisons correction. Six city intervals are read off one
   table at 95% each. Johannesburg's rests on six acted windows and is the
   weakest of the four survivors.

@@ -121,24 +121,20 @@ function renderTiles() {
       color: positive.length > withSkill.length / 2 ? pal.good : pal.crit,
       k: "Cities whose model currently beats a rule of thumb",
     },
-    medianActed == null ? null : {
-      // Uncoloured on purpose. This is the median of six estimates, four of
-      // which clear zero and two of which do not, so painting it green would
-      // assert something none of the six individually support.
-      v: pct(medianActed),
-      k: "Retraining, week by week, median across cities",
-    },
-    // The count that the median above hides. Six cities were chosen for
-    // contrast, so how many of them show any measurable effect at all is the
-    // more honest summary, and it is the one number a reader should leave with.
-    (() => {
+    medianActed == null ? null : (() => {
+      // Uncoloured on purpose. This is the median of six estimates, and two of
+      // the six do not clear zero, so painting it green would assert something
+      // those two do not support.
+      //
+      // The count rides in the label rather than in a tile of its own. It was a
+      // seventh tile briefly, which wrapped the row onto two lines and buried
+      // "cities serving a stale model" underneath by itself.
       const judged = CITIES.filter((c) => c.stats.retrain_acted_real != null);
-      if (!judged.length) return null;
-      const real = judged.filter((c) => c.stats.retrain_acted_real);
+      const real = judged.filter((c) => c.stats.retrain_acted_real).length;
       return {
-        v: `${real.length}/${judged.length}`,
-        color: real.length > judged.length / 2 ? pal.good : pal.warn,
-        k: "Cities where the effect of retraining is distinguishable from zero",
+        v: pct(medianActed),
+        k: "Retraining, week by week, median across cities"
+          + (judged.length ? ` · measurable in ${real} of ${judged.length}` : ""),
       };
     })(),
     {
@@ -181,9 +177,20 @@ function renderSkillGrid() {
       line: { color: pal.muted, width: 1, dash: "dot" }, layer: "below",
     });
     const worth = city.stats.retrain_acted;
+    // The interval belongs next to the number here for the same reason it does
+    // on the index page. Kraków's "+6.5% week by week" spans [-15.3, +27.5] and
+    // read alone it is a small positive result, which is not what the data says.
+    // Named apart from the `lo`/`hi` this function already uses for the y-axis
+    // range. Reusing those names threw a temporal-dead-zone ReferenceError that
+    // killed the whole render, and a page with no charts at all is what a
+    // headless capture then quietly saves.
+    const worthLo = city.stats.retrain_acted_lo, worthHi = city.stats.retrain_acted_hi;
+    const range = (worthLo == null || worthHi == null) ? ""
+      : ` [${pct(worthLo, 1)}, ${pct(worthHi, 1)}]`
+        + (city.stats.retrain_acted_real === false ? ", not distinguishable from zero" : "");
     chartCard(jobs, city.label,
       `${city.stats.runs} weeks · model in service ${city.stats.champion_age_days} days` +
-      (worth == null ? "" : ` · retraining ${pct(worth)} week by week`),
+      (worth == null ? "" : ` · retraining ${pct(worth)} week by week${range}`),
       [{ label: "skill vs. a 30-day daily profile", color: pal.series[i % 6], kind: "line" }],
       [{
         x: city.retro.as_of, y: skill, mode: "lines", type: "scatter",
@@ -224,14 +231,32 @@ function renderValue() {
     {
       type: "bar", x: rows.map((c) => c.label), y: rows.map((c) => c.stats.retrain_acted ?? 0),
       marker: { color: pal.series[0] }, showlegend: false,
-      customdata: rows.map((c) => [c.stats.retrain_acted_windows, c.stats.retrain_win_rate]),
+      // Error bars on the paired reading, because this chart is the one place a
+      // reader compares the six cities to each other by eye. Without them
+      // Melbourne's +1.2% and Delhi's +49.4% are the same kind of object drawn
+      // at different heights, and only one of the two is a finding. Plotly wants
+      // the bar lengths rather than the endpoints, so the interval is expressed
+      // as distances from the estimate.
+      error_y: {
+        type: "data", symmetric: false,
+        array: rows.map((c) => (c.stats.retrain_acted_hi == null ? 0
+          : c.stats.retrain_acted_hi - c.stats.retrain_acted)),
+        arrayminus: rows.map((c) => (c.stats.retrain_acted_lo == null ? 0
+          : c.stats.retrain_acted - c.stats.retrain_acted_lo)),
+        color: pal.ink, thickness: 1.4, width: 5,
+      },
+      customdata: rows.map((c) => [
+        c.stats.retrain_acted_windows, c.stats.retrain_win_rate,
+        c.stats.retrain_acted_lo, c.stats.retrain_acted_hi,
+      ]),
       hovertemplate:
-        "%{x}: %{y:+.1f}%<br>over %{customdata[0]} weeks, won %{customdata[1]}%<extra>week by week</extra>",
+        "%{x}: %{y:+.1f}% [%{customdata[2]:+.1f}, %{customdata[3]:+.1f}]<br>"
+        + "over %{customdata[0]} weeks, won %{customdata[1]}%<extra>week by week</extra>",
     },
   ];
 
   chartCard(jobs, "Retraining, measured two ways",
-    "Where the two bars disagree, trust the blue one. An orange bar near zero next to a tall blue one means the city spent most of its replay before anything had been promoted, so the unpaired comparison is measuring the season rather than the retraining.",
+    "Where the two bars disagree, trust the blue one. An orange bar near zero next to a tall blue one means the city spent most of its replay before anything had been promoted, so the unpaired comparison is measuring the season rather than the retraining. The whiskers are 95% intervals on the blue bar: where one crosses zero, that city shows no measurable effect at all.",
     [
       { label: "across the whole replay", color: pal.series[3], kind: "dot" },
       { label: "week by week, when it acted", color: pal.series[0], kind: "dot" },
@@ -247,22 +272,28 @@ function renderValue() {
     .map((c) => ({ label: c.label, d: (c.stats.retrain_acted ?? 0) - c.stats.retrain_gain }))
     .sort((a, b) => b.d - a.d)[0];
   const acted = (c) => c.stats.retrain_acted ?? 0;
-  const helped = rows.filter((c) => acted(c) > 0).length;
+  // Counted on whether the interval clears zero, not on the sign of the
+  // estimate. Five of six are positive and only three of those are
+  // distinguishable from nothing, so "positive in 5 of 6" was the chart's own
+  // caption overselling what the chart now visibly shows.
+  const gained = rows.filter((c) => c.stats.retrain_acted_real && acted(c) > 0).length;
+  const noEffect = rows.filter((c) => c.stats.retrain_acted_real === false);
   const worst = rows.slice().sort((a, b) => acted(a) - acted(b))[0];
-  const lead = helped === rows.length
-    ? "Retraining helped in every city once the comparison is paired."
-    : `Pairing the comparison rescues most of these cities, and not all of them.`;
+  const names = (cs) => cs.map((c) => c.label).join(" and ");
   document.getElementById("value-note").innerHTML =
-    `<strong>${lead}</strong> ` +
-    `Week by week it comes out positive in ${helped} of ${rows.length}, ` +
-    `against an across-the-replay reading that is zero or worse in ` +
-    `${rows.filter((c) => c.stats.retrain_gain <= 0).length}. ` +
-    `The widest gap is ${gap.label}, at ${gap.d.toFixed(1)} percentage points. ` +
+    `<strong>Pairing the comparison rescues some of these cities, and not all of them.</strong> ` +
+    `Week by week, ${gained} of ${rows.length} show a gain the interval can separate from zero` +
+    (noEffect.length
+      ? `, and ${names(noEffect)} show no measurable effect at all. `
+      : ". ") +
+    `The widest gap between the two readings is ${gap.label}, at ` +
+    `${gap.d.toFixed(1)} percentage points. ` +
     (acted(worst) > 0
-      ? `That does not make retraining free: the weakest of them, ${worst.label}, gains only ` +
-        `${pct(acted(worst))}, and the effort still has to be paid for. `
-      : `And it does not make retraining free: ${worst.label} comes out at ${pct(acted(worst))} ` +
-        `even paired, winning about half the weeks it acts, which is a coin toss with a fee. `) +
+      ? `The weakest of them, ${worst.label}, gains only ${pct(acted(worst))}, and the effort ` +
+        `still has to be paid for. `
+      : `And retraining is not free: ${worst.label} comes out at ${pct(acted(worst))} even ` +
+        `paired, winning ${worst.stats.retrain_win_rate}% of the weeks it acts, which is worse ` +
+        `than a coin toss and still costs the compute. `) +
     `What it does mean is that the headline number was answering a different question ` +
     `than the one it appeared to answer.`;
 

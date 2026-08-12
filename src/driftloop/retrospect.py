@@ -111,24 +111,78 @@ class RegisteredModel:
         }
 
 
-def registered_models(client, model_name: str) -> dict[int, RegisteredModel]:
-    """Rebuild every registered version from the registry's coefficient tags.
+@dataclass(frozen=True)
+class ArtifactModel:
+    """A registered version loaded from its logged artifact rather than its tags.
 
-    Versions whose tags predate coefficient logging are skipped rather than
-    guessed at: a version we cannot reconstruct is one we must not score.
+    The fallback for anything that is not a straight line. A tree has no slopes
+    to write into the registry, so scoring one on a window it never served means
+    unpickling it, which is slower and needs the artifact store to still be
+    reachable. Both are why the linear path exists and stays the default.
+
+    Same surface as ``RegisteredModel`` so ``build`` cannot tell them apart.
     """
-    out: dict[int, RegisteredModel] = {}
+
+    version: int
+    pipeline: object
+    train_start: pd.Timestamp
+    train_end: pd.Timestamp
+    baseline_rmse: float
+
+    def predict(self, df: pd.DataFrame) -> np.ndarray:
+        return np.asarray(self.pipeline.predict(df[FEATURES]), dtype=float)
+
+    def importance(self, reference: pd.DataFrame) -> dict[str, float]:
+        """Not available. A tree has no per-feature slope to scale."""
+        return {}
+
+
+def registered_models(client, model_name: str, load_artifacts: bool = False):
+    """Rebuild every registered version so it can be scored on any window.
+
+    The fast path reads coefficient tags, which is exact, needs no artifact
+    store, and is the reason most of this module is cheap. Versions whose tags
+    predate coefficient logging are skipped rather than guessed at: a version we
+    cannot reconstruct is one we must not score.
+
+    ``load_artifacts`` turns on the slow path for versions with no coefficients,
+    unpickling each one instead. Off by default because it is slower, because it
+    needs paths that a backend built on another machine will not have, and
+    because for the shipped Ridge it can only reproduce what the tags already
+    say. The model ablation is the reason it exists.
+    """
+    out: dict[int, RegisteredModel | ArtifactModel] = {}
+    unscoreable: list[int] = []
     for mv in client.search_model_versions(f"name='{model_name}'"):
         tags = mv.tags or {}
-        if "coef_intercept" not in tags or any(f"coef_{f}" not in tags for f in FEATURES):
-            continue
-        out[int(mv.version)] = RegisteredModel(
-            version=int(mv.version),
-            coefficients={f: float(tags[f"coef_{f}"]) for f in FEATURES},
-            intercept=float(tags["coef_intercept"]),
-            train_start=pd.to_datetime(tags.get("train_start")),
-            train_end=pd.to_datetime(tags.get("train_end")),
-            baseline_rmse=float(tags.get("baseline_rmse", "nan")),
+        version = int(mv.version)
+        common = {
+            "train_start": pd.to_datetime(tags.get("train_start")),
+            "train_end": pd.to_datetime(tags.get("train_end")),
+            "baseline_rmse": float(tags.get("baseline_rmse", "nan")),
+        }
+        if "coef_intercept" in tags and all(f"coef_{f}" in tags for f in FEATURES):
+            out[version] = RegisteredModel(
+                version=version,
+                coefficients={f: float(tags[f"coef_{f}"]) for f in FEATURES},
+                intercept=float(tags["coef_intercept"]),
+                **common,
+            )
+        elif load_artifacts:
+            import mlflow
+
+            out[version] = ArtifactModel(
+                version=version,
+                pipeline=mlflow.sklearn.load_model(f"models:/{model_name}/{version}"),
+                **common,
+            )
+        else:
+            unscoreable.append(version)
+    if unscoreable and not out:
+        raise ValueError(
+            f"no version of {model_name!r} carries coefficient tags "
+            f"({len(unscoreable)} skipped). Pass load_artifacts=True to score a "
+            "non-linear model from its logged artifact."
         )
     return dict(sorted(out.items()))
 
@@ -315,11 +369,19 @@ def retraining_series(result: Retrospective) -> dict[str, np.ndarray]:
     serving = np.asarray(result.serving_version or result.champion_version, dtype=int)
     acted = usable & (serving != frozen_version)
 
+    as_of = np.asarray([str(d) for d in result.as_of])
     return {
         "served": served_all[usable],
         "frozen": frozen_all[usable],
+        "as_of": as_of[usable],
         "served_acted": served_all[acted],
         "frozen_acted": frozen_all[acted],
+        # The run dates behind the acted arrays, so two replays of the same city
+        # under different settings can be compared on the weeks they share
+        # rather than by position. Different settings promote at different
+        # times, so the two acted sets are not the same length and lining them
+        # up by index would silently compare unrelated weeks.
+        "acted_as_of": as_of[acted],
     }
 
 

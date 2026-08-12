@@ -27,7 +27,8 @@ windows; details in [evaluation.md](docs/evaluation.md#what-the-intervals-cost-t
    [+33.7, +61.8] week by week.
 2. **And it costs where it did not.** Los Angeles, the control, −13.4%
    [−36.9, −3.8]. The interval excludes zero, so the control is a result rather
-   than an anecdote.
+   than an anecdote. This half of the headline is the fragile half: swap the
+   Ridge for a tree and the harm stops being measurable (see the caveat below).
 3. **The retrain trigger goes deaf**, because it measures a model against its
    own past and every promotion resets that bar upward. The fix was built and
    measured. At its cautious setting it leaves five cities bit-identical and
@@ -41,11 +42,19 @@ windows; details in [evaluation.md](docs/evaluation.md#what-the-intervals-cost-t
    twenty, though that second group is three promotions, and is reported as
    three promotions.
 
-Two caveats that belong up here rather than in a footnote. **Two of the six
+One caveat that belongs up here rather than in a footnote. **Two of the six
 cities show no measurable effect at all** once intervals are attached: Kraków
-and Melbourne. And **the model is a near-linear Ridge**, so "retraining pays"
-is entangled with "linear models need refitting to track seasonality"; the
-gradient-boosted comparison that would separate those has not been run.
+and Melbourne.
+
+A second caveat has now been tested, and it splits the headline in two. The
+model is a near-linear Ridge, so "retraining pays" was entangled with "linear
+models need refitting to track seasonality". A gradient-boosted arm could not
+beat the Ridge in either city tried, which is itself evidence there is little
+nonlinearity to misspecify. Delhi's premium survives the swap at +36.3%
+[+17.4, +47.6], so finding 1 does not depend on the model class. **Los Angeles's
+does not**: the harm falls to −3.5% [−9.7, +1.2] and that change is itself
+measurable, so finding 2 holds for the model that ships and weakens for a tree.
+[The ablation in full](docs/evaluation.md#is-the-finding-about-the-world-or-about-a-linear-model).
 
 ## The loop
 
@@ -237,6 +246,7 @@ uv venv && uv pip install -e ".[dev]"
 python scripts/run_openmeteo.py --fresh     # all six cities (--city krakow|santiago|delhi|joburg|melbourne|la)
 python scripts/benchmark.py                 # baselines + alpha sweep
 python scripts/uncertainty.py               # every headline, with its confidence interval
+python scripts/ablate_model.py               # is the finding about the world or the model class?
 python scripts/uncertainty.py --sensitivity # ... and how much the block length moves it
 python scripts/sweep_skill_floor.py         # does waking the retrain trigger help? (no)
 python scripts/sweep_holdout.py             # does a longer promotion exam help? (also no)
@@ -257,8 +267,8 @@ as the main file, Python 3.12.
 ```
 src/driftloop/    config, data sources, drift math, model, loop, retrospect, stats,
                   benchmark, serving
-scripts/          run_openmeteo · benchmark · uncertainty · build_site · run_scheduled ·
-                  sweep_knobs · sweep_skill_floor · sweep_holdout · serve
+scripts/          run_openmeteo · benchmark · uncertainty · ablate_model · build_site ·
+                  run_scheduled · sweep_knobs · sweep_skill_floor · sweep_holdout · serve
 site/             committed shell (index.html + app.js, compare.html + compare.js,
                   shared.css) + generated data.json
 dashboard/        Streamlit app and shared chart theme
@@ -274,6 +284,9 @@ tests/            data contract, drift math, no-leak guards, baseline fairness,
 - **[evaluation.md](docs/evaluation.md)** covers whether it works: per-city
   results, the baselines, the controlled experiment, and the limitations.
 
+- **[decisions.md](docs/DECISIONS.md)** covers the calls made on top of the
+  findings, with the evidence and the date. One is open: whether the skill floor
+  should still ship switched off now that the evidence has reversed.
 - **[stats.py](src/driftloop/stats.py)** covers how much to believe it: why the
   weekly windows are not independent observations, why that needs a block
   bootstrap rather than an ordinary one, and the two places the bootstrap has to
@@ -284,12 +297,20 @@ Guessing an hour's pollution from a week-old weather forecast is hard, and the
 numbers show it. What is worth looking at is the machinery around the model,
 which would be unchanged if you dropped in something far better.
 
-That last sentence is a claim, and it is the one thing here still untested. A
-Ridge whose regularisation is nearly inert is close to a linear projection, so
-every result on this page is compatible with a duller explanation: linear models
-misspecify seasonal structure, and refitting is how you paper over it. Swapping
-in a gradient-boosted challenger and replaying Delhi and Los Angeles would
-separate the two, and the obstacle is `retrospect.py` rather than the loop. It
+That last sentence was a claim, and it has now been tested. A Ridge whose
+regularisation is nearly inert is close to a linear projection, so every result
+on this page was compatible with a duller explanation: linear models misspecify
+seasonal structure, and refitting is how you paper over it.
+
+Swapping in a gradient-boosted challenger and replaying Delhi and Los Angeles
+produced a model that fits *worse* in both, which is the most economical
+evidence available that this problem is close to linear and that there is little
+nonlinearity for a fresh fit to be covering. Delhi's retraining premium survives
+the swap at +36.3% [+17.4, +47.6]. Downgraded rather than closed, and
+[argued in full](docs/evaluation.md#is-the-finding-about-the-world-or-about-a-linear-model).
+
+Getting there meant working around a decision made for elegance. `retrospect.py`
 rebuilds each version from its coefficient tags, nine numbers, and only because
-the model is linear. An elegant decision that quietly narrowed what could be
-asked later.
+the model is linear, so the tree had to be scored by unpickling its logged
+artifact instead. Worth knowing before making that trade: it is cheap, it is
+correct, and it quietly narrows what can be asked later.

@@ -14,12 +14,18 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from driftloop.config import FEATURES, TARGET
+
+# The two model kinds. Ridge ships; gbm exists only for the ablation that asks
+# whether this project's findings belong to the world or to a linear model.
+RIDGE = "ridge"
+GBM = "gbm"
 
 
 @dataclass
@@ -33,8 +39,36 @@ class TrainedModel:
     baseline_rmse: float
 
 
-def build_pipeline(alpha: float = 1.0) -> Pipeline:
+def build_pipeline(alpha: float = 1.0, kind: str = RIDGE) -> Pipeline:
+    """The champion, or the gradient-boosted stand-in used to interrogate it.
+
+    ``gbm`` exists for one experiment and is not a candidate for shipping. Every
+    result in this repository is compatible with a duller explanation than the
+    one it offers: that a near-linear model misspecifies seasonal structure, and
+    what looks like "the world moved so retraining pays" is refitting papering
+    over that. Separating the two needs a challenger flexible enough to absorb
+    the nonlinearity, which is what this is for. See ``scripts/ablate_model.py``.
+
+    No scaler on the tree: it splits on thresholds, so monotone rescaling of a
+    feature changes nothing it can learn, and leaving the scaler in would imply
+    otherwise to anyone reading the pipeline.
+    """
+    if kind == GBM:
+        return Pipeline([("gbm", HistGradientBoostingRegressor(random_state=0))])
+    if kind != RIDGE:
+        raise ValueError(f"unknown model kind: {kind!r}")
     return Pipeline([("scale", StandardScaler()), ("ridge", Ridge(alpha=alpha))])
+
+
+def is_linear(pipeline: Pipeline) -> bool:
+    """Whether this pipeline can be serialised as slopes and an intercept.
+
+    The registry stores linear models as nine numbers, and ``retrospect`` scores
+    any version from those tags without unpickling anything. A tree cannot be
+    written down that way, so the caller has to know which it is holding rather
+    than discovering it through an AttributeError three layers down.
+    """
+    return "ridge" in pipeline.named_steps
 
 
 def rmse(model: Pipeline, df: pd.DataFrame) -> float:
@@ -89,7 +123,12 @@ def effective_coefficients(pipeline: Pipeline) -> dict[str, float]:
     return out
 
 
-def train(df: pd.DataFrame, alpha: float = 1.0, val_fraction: float = 0.2) -> TrainedModel:
+def train(
+    df: pd.DataFrame,
+    alpha: float = 1.0,
+    val_fraction: float = 0.2,
+    kind: str = RIDGE,
+) -> TrainedModel:
     """Fit on a training window and record an honest baseline RMSE.
 
     The baseline comes from a chronological tail split (not a random split):
@@ -102,11 +141,11 @@ def train(df: pd.DataFrame, alpha: float = 1.0, val_fraction: float = 0.2) -> Tr
     split = int(len(df) * (1 - val_fraction))
     fit_df, val_df = df.iloc[:split], df.iloc[split:]
 
-    warmup = build_pipeline(alpha).fit(fit_df[FEATURES], fit_df[TARGET])
+    warmup = build_pipeline(alpha, kind).fit(fit_df[FEATURES], fit_df[TARGET])
     baseline = rmse(warmup, val_df)
 
     # Refit on the full window so the deployed model uses all available data.
-    final = build_pipeline(alpha).fit(df[FEATURES], df[TARGET])
+    final = build_pipeline(alpha, kind).fit(df[FEATURES], df[TARGET])
 
     return TrainedModel(
         pipeline=final,

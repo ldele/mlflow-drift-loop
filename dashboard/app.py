@@ -360,11 +360,22 @@ value = retrospect.retraining_value(retro) if retro else {}
 intervals = retrospect.retraining_uncertainty(retro) if retro else {}
 
 
-def interval_caption(key: str, suffix: str = "") -> str:
-    """Caption carrying the interval, and saying so when it spans zero."""
+def interval_caption(key: str, suffix: str = "", compact: bool = False) -> str:
+    """Caption carrying the interval, and saying so when it spans zero.
+
+    ``compact`` drops everything but the bracket. Five metrics share a 1240px
+    row, so a tile caption has about 145px, and Streamlit truncates the rest
+    with an ellipsis. The long form cut off mid-interval and hid the verdict
+    entirely, which is worse than not showing it: a reader sees "95% CI [-15.3,
+    +27…" and has no way to tell the interval spans zero.
+    """
     interval = intervals.get(key)
     if interval is None:
         return suffix.lstrip(" ·")
+    if compact:
+        # No verdict here. The full reading is on the two-column metric below,
+        # which has the room for it.
+        return f"[{interval.lo:+.0f}, {interval.hi:+.0f}]"
     verdict = "" if interval.excludes_zero else " · not distinguishable from zero"
     return f"95% CI [{interval.lo:+.1f}, {interval.hi:+.1f}]{verdict}{suffix}"
 
@@ -417,7 +428,7 @@ if "when_it_acted" in value:
     c5.metric(
         "Retraining was worth",
         f"{value['when_it_acted']:+.1f}%",
-        interval_caption("when_it_acted", f" · over {value['acted_windows']} weeks serving"),
+        interval_caption("when_it_acted", compact=True),
         delta_color="off",
     )
 else:

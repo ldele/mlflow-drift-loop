@@ -203,3 +203,45 @@ def test_differing_tolerates_float_noise_but_not_real_gaps():
     base = np.array([10.0, 20.0, 30.0])
     assert not stats.differing(base, base * (1 + 1e-15)).any()
     assert stats.differing(base, base + 0.01).all()
+
+
+# --------------------------------------------------------------------------- #
+# The model-class ablation needs a non-linear champion, which breaks two        #
+# assumptions the rest of the project is built on: that a version serialises    #
+# into nine numbers, and that the registry is enough to score one.              #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_tree_is_not_mistaken_for_something_with_slopes():
+    from driftloop.model import GBM, RIDGE, build_pipeline, is_linear
+
+    assert is_linear(build_pipeline(kind=RIDGE))
+    assert not is_linear(build_pipeline(kind=GBM))
+
+
+def test_an_unknown_model_kind_fails_loudly():
+    """Silently falling back to Ridge would make an ablation compare it to itself."""
+    from driftloop.model import build_pipeline
+
+    with pytest.raises(ValueError, match="unknown model kind"):
+        build_pipeline(kind="randomforest")
+
+
+def test_a_tree_registers_without_fake_coefficients():
+    """Writing a coefficient for a tree would make an unscoreable version look scoreable.
+
+    ``retrospect.registered_models`` decides whether it can rebuild a version by
+    looking for coefficient tags. A placeholder there would be silently wrong
+    rather than loudly missing.
+    """
+    import pandas as pd
+
+    from driftloop.data import SyntheticSource
+    from driftloop.model import GBM, RIDGE, train
+    from driftloop.tracking import _version_tags
+
+    df = SyntheticSource().get_data(pd.Timestamp("2025-04-01"), pd.Timestamp("2025-06-01"))
+    assert any(k.startswith("coef_") for k in _version_tags(train(df, kind=RIDGE)))
+    tree_tags = _version_tags(train(df, kind=GBM))
+    assert not any(k.startswith("coef_") for k in tree_tags)
+    assert "baseline_rmse" in tree_tags, "the non-coefficient tags still have to be written"

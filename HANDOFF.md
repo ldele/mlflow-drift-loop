@@ -202,6 +202,30 @@ that flattered the system.
 
 ## Open
 
+- **Measure covariate drift in a component space instead of per feature.** Fit a
+  PCA on the champion's training window, project each monitor window into it, and
+  track movement along the leading components. Two things recommend it. PSI is
+  the weakest measurement on the page: it saturates near 11.5, and 80% of
+  Kraków's worst reading is eight empty buckets contributing a fixed 1.15 each,
+  so it is dependable as a yes/no and meaningless as a magnitude. A distance in
+  component space has no such ceiling. And per-feature PSI cannot see features
+  moving *together*, which is most of what a season does. Loadings say precisely
+  that and PSI structurally cannot.
+
+  Drift is an `X`-only question, which is the one thing PCA is good at, and
+  `DRIFT_FEATURES` is already separate from `FEATURES` for the clock reason, so
+  it drops in without touching the feature contract. Fit on the training window
+  and never refit on the monitor window, or the thing being measured moves with
+  the ruler.
+
+  Note what this is *not* for. PCA is unsupervised, so component loadings do not
+  rank features by importance. Precipitation is zero for 70 to 96 percent of
+  hours and would sink to the bottom of any loading table despite being the most
+  direct removal mechanism in the set. For importance, permutation or
+  drop-column against `y`, block-permuted and carrying an interval. Jolliffe
+  (1982), *A note on the use of principal components in regression*, is the
+  reference for why the high-variance directions need not be the predictive
+  ones.
 - `/reload` is called by hand. The loop promotes and nothing tells serving.
 - The lead-time sweep (error against 1-7 day lead) is still not run.
 - **The weekly Action has not been observed running.** The scheduled profile
@@ -223,13 +247,21 @@ that flattered the system.
   Costs one run per city and moves every published number slightly; no decision
   changes, which is why it has not been done unilaterally.
 - `challenger_train_days` is still argued rather than swept.
-- **`docs/images/dashboard.png` is the one screenshot still showing the old
-  Streamlit app.** `gate.png` and `compare.png` were regenerated on 2026-08-05
-  and the rest were unaffected. The headless-Edge recipe below does not work on
-  Streamlit: it serves a skeleton and fills it over a websocket, which
-  `--virtual-time-budget` does not wait for, so every capture comes back as the
-  ~15 KB grey placeholder. It needs a real browser window, or a driver that can
-  wait on a selector.
+- ~~`docs/images/dashboard.png` is the one screenshot still showing the old
+  Streamlit app.~~ **Fixed on 2026-08-12.** `scripts/screenshot.py` is the
+  driver-that-waits-on-a-selector this entry asked for: it drives Edge over the
+  DevTools protocol and polls until the selector matches, so Streamlit's
+  websocket fill is captured rather than raced. `dashboard.png` and
+  `compare.png` were regenerated with it; `gate.png`, `benchmark.png`,
+  `control.png`, `pooled.png`, `method.png` and `serving.png` were unaffected by
+  the interval work and are unchanged.
+
+  Two things the old recipe did that are worth knowing, because both save a
+  plausible file instead of failing. A second `msedge --screenshot` invocation
+  attaches to an Edge already running and writes nothing while exiting zero. And
+  a JavaScript error in the page produces a capture of the parts that rendered
+  before the throw, which is how a broken `compare.js` briefly yielded a
+  chartless compare page that looked merely short.
 - The wireframes in `docs/wireframes/` describe the original page layout, and the
   compare page was never drawn.
 - **The training band on "what changed in the world" is hourly and the line is a

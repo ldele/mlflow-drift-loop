@@ -21,7 +21,7 @@ import pandas as pd
 from mlflow.tracking import MlflowClient
 from sklearn.pipeline import Pipeline
 
-from driftloop.model import TrainedModel, effective_coefficients
+from driftloop.model import TrainedModel, effective_coefficients, is_linear
 
 CHAMPION_ALIAS = "champion"
 CHALLENGER_ALIAS = "challenger"
@@ -81,8 +81,14 @@ def _version_tags(trained: TrainedModel) -> dict[str, str]:
     # The learned coefficients (in original feature units) are the model's
     # fingerprint. Storing them per version turns concept drift into something
     # you can plot: watch them move as the champion is retrained.
-    for name, value in effective_coefficients(trained.pipeline).items():
-        tags[f"coef_{name}"] = f"{value:.6f}"
+    #
+    # Only a linear model has them. A tree is recoverable from its logged
+    # artifact instead, which `retrospect.registered_models` falls back to, and
+    # writing a fake coefficient here would make an unscoreable version look
+    # scoreable.
+    if is_linear(trained.pipeline):
+        for name, value in effective_coefficients(trained.pipeline).items():
+            tags[f"coef_{name}"] = f"{value:.6f}"
     return tags
 
 
