@@ -6,11 +6,11 @@ drift) one at a time, and measures both detectors each time. Expected result:
     feature_shift  -> PSI climbs monotonically, perf_drift_ratio stays flat
     drift_strength -> perf_drift_ratio climbs monotonically, PSI stays flat
 
-That is plan step 3, sharpened: the plan asked to check the data-drift signal
-against "the knob", but a knob that only changes ``f``'s coefficients cannot
-move a feature-distribution statistic. Two knobs, one per signal.
+Two knobs rather than one, because a knob that changes only ``f``'s coefficients
+cannot move a feature-distribution statistic, so a single knob could not tell the
+two detectors apart.
 
-Runs entirely offline -- no MLflow, a few seconds.
+Runs entirely offline, without MLflow, in a few seconds.
 
     python scripts/sweep_knobs.py
 """

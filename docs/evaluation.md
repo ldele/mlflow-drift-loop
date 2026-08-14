@@ -728,11 +728,124 @@ no gain elsewhere. Seven days stays.
 not pay. Making the exam longer does not pay. So the long-serving reversal is
 neither a detection-sensitivity problem nor a sample-size one, and what is
 missing is a third mechanism: nothing ever re-examines a serving champion on
-fresh unseen data. The exam happens once, at promotion. The trigger
-compares the champion against its own history and ratchets itself deaf. A
-periodic re-certification, running the holdout exam against a fresh challenger on
-a fixed schedule regardless of what the trigger says, is the change these two
-results point at. It has not been built.
+fresh unseen data. The exam happens once, at promotion. The trigger compares the
+champion against its own history and ratchets itself deaf. A periodic
+re-certification, running the holdout exam against a fresh challenger on a fixed
+schedule regardless of what the trigger says, is the change these two results
+point at. It has now been built and measured, below.
+
+## Re-certification bounds staleness, and staleness was not the thing that hurt
+
+The third mechanism exists now.
+[`LoopConfig.recertify_days`](../src/driftloop/config.py) re-sits the promotion
+exam when the serving champion's certificate expires, regardless of every drift
+signal. A version is certified by passing an exam and renewed each time it beats
+a challenger, so this is a schedule rather than a surrender: a champion that
+keeps winning keeps its place and sits the next exam a cadence later. A version
+that has never been examined dates from the end of its own training data, so a
+bootstrap champion is already stale on the day it starts serving, which is true
+of it.
+
+[`sweep_recertify.py`](../scripts/sweep_recertify.py) replays all six cities at
+cadences of 14, 28, 35 and 56 days against the shipped loop, one full replay per
+arm. The `off` arm reproduces every shipped number to the decimal.
+
+### First, it does what it says
+
+The quantity no drift signal reports is how long a model has been serving
+without examination. On the shipped settings:
+
+| | longest silence | oldest certificate |
+|---|---|---|
+| **Los Angeles** | 35 of 36 runs | **252 days** |
+| **Kraków** | 30 of 48 runs | 217 days |
+| **Delhi** | 21 of 39 runs | 161 days |
+| **Melbourne** | 15 of 30 runs | 140 days |
+| **Johannesburg** | 3 of 19 runs | 101 days |
+| **Santiago** | 3 of 21 runs | 44 days |
+
+Los Angeles served a model for **252 days after its last examination**, with
+every drift signal quiet throughout. Every cadence arm bounds that figure to the
+cadence, in every city. The guarantee is real and it is one neither existing
+trigger can offer.
+
+### Then, it changes almost nothing
+
+Bounding staleness does not convert into accuracy. Against the shipped loop, week
+by week, over the weeks each arm actually changed which model was serving:
+
+| | 14 days | 28 days | 35 days | 56 days |
+|---|---|---|---|---|
+| **Los Angeles** | **+13.8% [+2.9, +20.1]** | **+6.4% [+2.1, +10.9]** | +11.3% [−0.5, +18.4] | +2.5% [−9.0, +9.4] |
+| **Delhi** | −6.8% [−15.8, +2.3] | (3 weeks) | **−10.8% [−18.9, −7.7]** | unchanged |
+| **Kraków** | −4.0% [−12.4, +1.4] | unchanged | −6.7% [−31.4, +1.1] | unchanged |
+| **Santiago** | +2.9% [−0.6, +6.7] | −0.1% [−0.2, +6.0] | unchanged | unchanged |
+| **Johannesburg** | unchanged | unchanged | unchanged | unchanged |
+| **Melbourne** | unchanged | unchanged | unchanged | unchanged |
+
+"Unchanged" means bit-identical: the arm fired, trained challengers, and the
+serving model was never once different. Johannesburg and Melbourne are unchanged
+at **every** cadence. Melbourne at 14 days trains 19 challengers where the
+shipped loop trains 8, and the gate rejects all eleven extra ones.
+
+Three results stand out, and only three of the twenty-four comparisons clear
+zero.
+
+**It helps Los Angeles.** The city the ratchet leaves deafest, silent for 35 of
+36 runs, and the one where retraining otherwise measurably hurts. Its paired
+retraining figure moves from −13.4% to −3.0% at 14 days. Read this with the
+caution it deserves: Los Angeles has the fewest effective observations of any
+city in the set, and it is the least trustworthy row in the table.
+
+**It harms Delhi.** At 35 days, −10.8% [−18.9, −7.7], clear of zero in the wrong
+direction. Delhi promotes 13 models there against 8 on the shipped loop, and its
+median error rises from 40.4 to 45.8 µg/m³.
+
+**Cost is uniform and benefit is not.** Every arm trains more: Melbourne 8 to 19,
+Johannesburg 11 to 16, Kraków 14 to 34. Only Los Angeles gets anything back.
+
+### Why the extra exams do not help
+
+The arms that change nothing and the arms that change a great deal differ by one
+thing, and it is not the cadence. Kraków at 28 days fires seven extra times and
+the gate rejects all seven, so the replay is bit-identical. Kraków at 35 days
+fires six extra times, the gate lets **one** through, and the city ends 6.7%
+worse. Delhi at 35 days gets five extra promotions and ends 10.8% worse. Los
+Angeles at 28 days gets five extra promotions and ends 6.4% better.
+
+The effect of re-certification is entirely the effect of the extra promotions it
+produces, and whether an extra challenger wins is close to a coin flip decided by
+a seven-day exam. **Re-certification does not fix the gate's calibration; it
+exercises it more often.** Since that calibration reverses sign past five weeks,
+running the exam more often means more chances to make the mistake the exam is
+already known to make. Delhi at 35 days is that mistake happening.
+
+### What the three experiments say together
+
+Three mechanisms have now been built and measured against the shipped loop. A
+second, scale-free retrain trigger. A longer promotion exam. A re-certification
+schedule. All three converge on the same finding, and it is not the one any of
+them was designed to test.
+
+**Every road leads to Los Angeles.** The skill floor at its cautious setting
+improves Los Angeles and leaves five cities bit-identical. Re-certification at 28
+days improves Los Angeles, leaves three cities bit-identical, and moves the other
+two by amounts no interval can distinguish from zero. The longer exam helps
+nobody. In the cities where retraining earns its keep, the drift trigger
+already fires often enough that nothing added to it changes the outcome; the
+faults are real, and they only bite where retraining had nothing to offer anyway.
+
+That reframes the ratchet. It is a genuine defect, it is visible, and its cost is
+concentrated in the one city out of six where the loop should arguably not be
+retraining at all. A reader who came here expecting the structural faults to be
+expensive should leave knowing they are cheap, which is a less dramatic claim and
+a better supported one.
+
+And it moves the open question. Two of these three experiments made the trigger
+fire more; the third made the exam longer. The binding constraint is neither.
+**It is the gate**, which cannot certify beyond about five weeks and is asked to
+anyway, every time any of these mechanisms hands it a challenger. That is where
+the next mechanism belongs.
 
 ## Whether the detection works at all
 

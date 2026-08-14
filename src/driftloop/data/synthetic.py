@@ -1,9 +1,9 @@
 """Synthetic data source with a controllable drift knob.
 
 The whole timeline is generated once from a fixed seed and then sliced, so
-``get_data(a, b)`` returns the same rows no matter what window you ask for.
-That determinism matters: the loop asks for overlapping windows on every run
-and the champion's training data must not silently change underneath it.
+``get_data(a, b)`` returns the same rows for a given window every time. The loop
+requests overlapping windows on every run, and the champion's training data must
+not change underneath it.
 """
 
 from __future__ import annotations
@@ -40,10 +40,9 @@ DELTA_COEFS = {
     "shortwave_radiation": 0.008,
 }
 
-# surface_pressure is generated but given no coefficient: a feature the world
-# supplies and the target genuinely does not depend on. Keeping one of those in
-# the synthetic world is deliberate, because a detector that fires on it would
-# be reporting drift with no consequence for the model.
+# surface_pressure is generated but carries no coefficient: a feature the world
+# supplies and the target does not depend on. Kept so that drift with no
+# consequence for the model is representable.
 
 
 @lru_cache(maxsize=8)

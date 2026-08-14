@@ -1,9 +1,9 @@
-"""Drift-loop dashboard.
+"""Drift-loop dashboard: the operator's view of one city's MLflow backend.
 
-Reads straight from the MLflow backend, so it shows whatever the last
-`python scripts/run_simulation.py` produced. Per-run detail (feature
-distributions, champion predictions) comes from artifacts each run logs, so the
-detail panels don't touch the data generator -- they keep working in Phase 2.
+Reads the backend directly, so it shows whatever the last run left in it.
+Per-run detail (feature distributions, champion predictions) comes from the
+artifacts each run logs rather than from the data source, so the detail panels
+work the same against synthetic and real data.
 
     streamlit run dashboard/app.py
 """
@@ -42,11 +42,9 @@ from driftloop import retrospect  # noqa: E402
 
 st.set_page_config(page_title="Drift loop", page_icon="~", layout="wide")
 
-# What each city's replay is a story *about*. Keyed by profile so a new city
-# without an entry degrades to the generic story rather than borrowing another
-# city's — or, worse, the live schedule's. All six are filled: three of them were
-# missing, and a Melbourne page silently reading "here it's a summer-trained
-# model walking into the winter heating season" is worse than no story at all.
+# What each city's replay is about. Keyed by profile so a city without an entry
+# falls back to the generic line rather than borrowing another city's, which
+# would describe the wrong season on the wrong page.
 CITY_STORY = {
     "openmeteo": " Here it's a summer-trained model walking into the winter heating season, "
     "when basin inversions over a coal-heated valley drive PM2.5 up several-fold, then "
@@ -127,10 +125,12 @@ def load_run_meta(meta_filename: str) -> dict:
 
 
 def _resolve_artifact(db_filename: str, run_id: str, rel: str) -> Path:
-    """Locate a run artifact. Prefer MLflow's resolver; fall back to the local
-    artifact tree when the stored URI is absolute for another machine — e.g. a
-    backend generated on the CI runner and pulled down here (the Scheduled
-    profile). The run_id is the on-disk artifact directory name."""
+    """Locate a run artifact.
+
+    Prefers MLflow's resolver and falls back to the local artifact tree when the
+    stored URI is absolute for another machine, which is the case for a backend
+    generated on the CI runner. The run_id is the on-disk directory name.
+    """
     try:
         return Path(mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path=rel))
     except Exception:
@@ -189,12 +189,11 @@ def load_retrospective(db_filename: str, experiment: str, profile_key: str):
 
 @st.cache_data(ttl=30)
 def load_training_band(db_filename: str, experiment: str, profile_key: str):
-    """The range each feature held while the *first* champion was trained.
+    """The range each feature held while the first champion was trained.
 
-    Drawn behind the feature series, this states the covariate-drift claim
-    physically rather than statistically: the band is what the model was shown,
-    the line is what the world did afterwards, and a line leaving its band is
-    the case for retraining before any statistic is computed.
+    Drawn behind the feature series: the band is what the model was shown, the
+    line is what the world did afterwards, and a line leaving its band is the
+    case for retraining before any statistic is computed.
     """
     from driftloop.data import replayable_source
 
@@ -218,10 +217,10 @@ def load_training_band(db_filename: str, experiment: str, profile_key: str):
 def load_importance(db_filename: str, experiment: str, profile_key: str, version: int, as_of: str):
     """How far the prediction moves per 1-sd move in each feature, in µg/m³.
 
-    The comparable version of the coefficient panels. A slope per hPa and a
-    slope per W/m² answer different questions, so the largest raw coefficient is
-    usually just the feature with the smallest units; scaling each by the
-    feature's own spread over a real window puts them all in µg/m³.
+    The comparable version of the coefficient panels. A slope per hPa and one per
+    W/m² answer different questions, so the largest raw coefficient is usually
+    just the feature with the smallest units; scaling by each feature's own
+    spread over a real window puts them all in µg/m³.
     """
     from driftloop.data import replayable_source
 
@@ -270,7 +269,7 @@ def psi_status(value: float) -> tuple[str, str]:
 
 
 # --------------------------------------------------------------------------- #
-# Profile selector: Phase 1 (synthetic) vs Phase 2 (Open-Meteo)               #
+# Profile selector: one backend per city, plus the synthetic world             #
 # --------------------------------------------------------------------------- #
 profile_key = st.sidebar.radio(
     "Data source",
@@ -278,11 +277,9 @@ profile_key = st.sidebar.radio(
     format_func=lambda k: PROFILES[k].label,
     index=0,
 )
-# What this app is *for*, said once. The published site is the argument, made
-# across all six cities at once and fixed at build time; this is the operator's
-# view of one backend, reading whatever the last run left in it, and it carries
-# the raw material the site distils away — every run as logged, every registered
-# version, the per-run distributions and residuals.
+# What this app is for, said once. The published site is the report across all
+# six cities, fixed at build time; this is one backend live, carrying the raw
+# material the site distils away.
 st.sidebar.caption(
     "The operator's view: one city's MLflow backend, live, as the last run left it. "
     "[The published site](https://ldele.github.io/mlflow-drift-loop/) is the report: "
@@ -299,11 +296,11 @@ drift_date = meta.get("drift_date")
 
 st.title("Air quality drift watch")
 if IS_SYNTHETIC:
-    st.caption("track → detect drift → retrain challenger → promote &nbsp;·&nbsp; Phase 1, synthetic data")
+    st.caption("track → detect drift → retrain challenger → promote &nbsp;·&nbsp; synthetic data")
 else:
     st.caption(
         "track → detect drift → retrain challenger → promote &nbsp;·&nbsp; "
-        f"Phase 2, real weather + air quality · {meta.get('location', 'Open-Meteo')}"
+        f"observed weather and air quality · {meta.get('location', 'Open-Meteo')}"
     )
 
 if runs.empty:
@@ -313,9 +310,8 @@ if runs.empty:
             "Locally: `python scripts/run_scheduled.py --as-of YYYY-MM-DD`."
         )
         st.stop()
-    # Phase 1/2 demo data isn't committed, so on a fresh host (e.g. Streamlit
-    # Cloud) it's absent. Offer to generate it in place — a no-op wherever the
-    # backend already has runs.
+    # The MLflow backends are not committed, so on a fresh host they are absent.
+    # Offer to generate one in place; a no-op where the backend already has runs.
     script = "run_simulation.py" if IS_SYNTHETIC else "run_openmeteo.py"
     est = "~30s" if IS_SYNTHETIC else "~1 min · fetches Open-Meteo"
     # Scope the run to the city being asked for. Without this the button would
@@ -350,13 +346,13 @@ st.caption(
 
 retro = load_retrospective(DB, CFG.experiment_name, profile_key)
 age_days, serving_version = champion_age_days(runs)
-# What retraining was worth, both ways. The paired reading is the headline: it
-# is the one the project's own evaluation says to trust, and it is what the loop
-# is *for*, so it belongs in the tile row rather than four charts down.
+# What retraining was worth, both ways. The paired reading is the headline, as
+# docs/evaluation.md argues, so it goes in the tile row rather than four charts
+# down.
 value = retrospect.retraining_value(retro) if retro else {}
-# The interval alongside the estimate, always. Two of the six cities have a
-# week-by-week premium that is not distinguishable from zero, and a tile reading
-# only "+6.5%" tells the reader the opposite of what the data supports.
+# The interval travels with the estimate everywhere. Two of the six cities have
+# a week-by-week premium that is not distinguishable from zero, and a bare
+# "+6.5%" claims the opposite of what the data supports.
 intervals = retrospect.retraining_uncertainty(retro) if retro else {}
 
 
@@ -364,10 +360,9 @@ def interval_caption(key: str, suffix: str = "", compact: bool = False) -> str:
     """Caption carrying the interval, and saying so when it spans zero.
 
     ``compact`` drops everything but the bracket. Five metrics share a 1240px
-    row, so a tile caption has about 145px, and Streamlit truncates the rest
-    with an ellipsis. The long form cut off mid-interval and hid the verdict
-    entirely, which is worse than not showing it: a reader sees "95% CI [-15.3,
-    +27…" and has no way to tell the interval spans zero.
+    row, leaving a tile caption about 145px before Streamlit truncates with an
+    ellipsis, which would cut the long form off mid-interval and hide the
+    verdict.
     """
     interval = intervals.get(key)
     if interval is None:
@@ -380,9 +375,8 @@ def interval_caption(key: str, suffix: str = "", compact: bool = False) -> str:
     return f"95% CI [{interval.lo:+.1f}, {interval.hi:+.1f}]{verdict}{suffix}"
 
 
-# Three of these used to be counts of what the machine did, which says nothing
-# about whether any of it worked, and two of them had to be subtracted from each
-# other to reach the number that matters. Lead with health and freshness instead.
+# The tile row leads with model health and freshness rather than with counts of
+# what the loop did, which say nothing about whether any of it worked.
 c1, c2, c3, c4, c5 = st.columns(5)
 if retro and retro.champion_skill and not np.isnan(retro.champion_skill[-1]):
     skill = retro.champion_skill[-1]
@@ -414,16 +408,14 @@ c3.metric(
 c4.metric(
     "Latest max PSI",
     f"{latest['metrics.data_drift_psi']:.2f}",
-    # The label is "significant" on essentially every run of every city, so as a
-    # delta it is a constant dressed as a status. The worst feature does
-    # varies and says which ingredient moved.
+    # The PSI label reads "significant" on essentially every run of every city,
+    # so as a delta it is a constant dressed as a status. The worst feature
+    # varies and names which ingredient moved.
     f"worst: {latest['tags.worst_feature']}" if "tags.worst_feature" in latest else None,
     delta_color="off",
 )
-# "Weeks watched" was here, and it is a count of what the machine did rather
-# than a verdict on whether it worked — the same objection that retired three of
-# the other tiles. The count still appears in the caption above and in the Runs
-# tab. This is the number the whole loop exists to move.
+# The number the loop exists to move. The run count it replaced is still in the
+# caption above and in the Runs tab.
 if "when_it_acted" in value:
     c5.metric(
         "Retraining was worth",
@@ -457,7 +449,7 @@ with tab_loop:
     elif profile_key == "scheduled":
         story += (
             " Each point is one **scheduled run** appended over calendar time: the live "
-            "loop accruing its own history, one cron fire at a time (Phase 3)."
+            "loop accruing its own history, one cron fire at a time."
         )
     else:  # one of the cities
         story += CITY_STORY.get(profile_key, "")
@@ -476,10 +468,9 @@ with tab_loop:
     st.plotly_chart(fig, width="stretch")
 
     # The trigger in µg/m³ rather than as a ratio. `error ÷ baseline` hides that
-    # the denominator is reset on every promotion; since retrains fire in the
-    # dirty season, each champion inherits a higher bar than the one it replaced
-    # and the bar never comes back down. Same units on one axis makes the
-    # staircase the obvious feature rather than a footnote.
+    # the denominator resets on every promotion, and since retrains fire in the
+    # dirty season each champion inherits a higher bar that never comes back
+    # down. Plotting both in the same units puts the staircase on the axis.
     fig = theme.base_figure(
         "The retrain trigger: champion error against the bar it must cross", "µg/m³"
     )
@@ -525,8 +516,8 @@ with tab_loop:
                 "How each model ages: every promoted version, from the day it took over",
                 "skill",
             )
-            # Read off the runs rather than assumed: the replay cadence is a
-            # config knob, so hard-coding seven would mislabel a different one.
+            # Read off the runs rather than assumed: the cadence is a config
+            # knob, and hard-coding seven would mislabel any other setting.
             step_days = (retro.as_of[1] - retro.as_of[0]).days if len(retro.as_of) > 1 else 7
             for version, promoted_on in sorted(retro.promoted_at.items()):
                 start = retro.as_of.index(promoted_on) + 1
@@ -617,9 +608,9 @@ with tab_loop:
 # Tab: feature distributions (the "why" behind PSI)                           #
 # --------------------------------------------------------------------------- #
 with tab_dist:
-    # The physical story first, because PSI is a summary of it and not the other
-    # way round. "0.25, significant" is a number nobody can picture; "fourteen
-    # degrees colder than anything the model was shown" is the actual argument.
+    # The physical story first, because PSI is a summary of it rather than the
+    # other way round: "0.25, significant" is not a picturable quantity, and
+    # "fourteen degrees colder than anything the model was shown" is.
     band = load_training_band(DB, CFG.experiment_name, profile_key)
     if retro and retro.feature_means and band:
         stats, train_start, train_end = band
@@ -661,12 +652,11 @@ with tab_dist:
     )
     _, report = load_monitoring(DB, CFG.experiment_name, run_by_as_of[picked])
 
-    # Only what this run's artifact actually carries. A report is written once,
-    # at the time of the run, and the feature list has grown since — the Live
-    # schedule's backend was populated when the model had three features, so
-    # indexing DRIFT_FEATURES into it raised a KeyError and took the whole app
-    # down on that profile. An old run should render what it has and say what it
-    # does not, which is also what will happen to today's runs later.
+    # Only what this run's artifact carries. A report is written once, at the
+    # time of the run, and the feature list has grown since: the live schedule's
+    # backend was populated when the model had three features, so indexing
+    # DRIFT_FEATURES into it raised a KeyError. An old run renders what it has
+    # and names what it lacks.
     shown = [f for f in DRIFT_FEATURES if f in report]
     missing = [f for f in DRIFT_FEATURES if f not in report]
     if missing:
@@ -750,11 +740,14 @@ with tab_model:
     if bench_path.exists():
         bench = json.loads(bench_path.read_text(encoding="utf-8"))
         st.markdown("#### Does it beat the baselines?")
+        baselines = sum(
+            1 for s in bench["scored"] if s["name"] not in ("champion_served", "champion_frozen")
+        )
         st.markdown(
             f"Median error across the {bench['windows']} monitoring windows of "
             f"{bench['monitor_days']} days each, so the served champion, the "
-            "never-retrained champion and four predictors that need no training at all "
-            "are directly comparable. Lower is better."
+            f"never-retrained champion and {baselines} reference predictors are directly "
+            "comparable. Lower is better."
         )
         table = pd.DataFrame(
             [
@@ -769,15 +762,11 @@ with tab_model:
         )
         st.dataframe(table, hide_index=True, width="stretch")
 
-        # What retraining was worth, both ways, because one of them lies.
-        #
-        # This was a single number taken off the two rows above — median served
-        # against median frozen — presented as the verdict. That comparison is
-        # unpaired: in a city that promotes nothing until week 14 of 20, most
-        # windows compare the first model against itself, both medians land on
-        # the same value, and it reads 0.0% while every window a retrained model
-        # actually served improved on the original. Publishing one without the
-        # other is the mistake the evaluation doc is written against.
+        # What retraining was worth, both ways. The across-replay figure alone
+        # misleads: it compares one median against another, so in a city that
+        # promotes nothing until week 14 of 20 most windows compare the first
+        # model against itself, both medians land on the same value, and it
+        # reads 0.0% while every window a retrained model served improved.
         served = next((s for s in bench["scored"] if s["name"] == "champion_served"), None)
         frozen = next((s for s in bench["scored"] if s["name"] == "champion_frozen"), None)
         across = value.get("across_replay")
@@ -855,8 +844,8 @@ with tab_model:
             f"`python scripts/benchmark.py --city all` to score it against the baselines."
         )
 
-    # Answers the question the coefficient panels below cannot, and comes first
-    # for that reason: which of these ingredients actually drives the answer.
+    # Placed before the coefficient panels because it answers what they cannot:
+    # which ingredient actually drives the prediction.
     importance = (
         load_importance(
             DB, CFG.experiment_name, profile_key,

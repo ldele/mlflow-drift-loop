@@ -1,20 +1,17 @@
-"""Real-data source: Open-Meteo weather + air quality (Phase 2).
+"""Real-data source: Open-Meteo weather and air quality.
 
 Same ``get_data(start, end)`` contract as the synthetic source, so the loop,
-drift detection, and dashboard don't change. Two things make this real-world:
+drift detection and dashboard are unchanged by the swap. Two details:
 
-1. **Two endpoints, joined on time.** Weather (temperature, wind, humidity) comes
-   from the ERA5 archive API; PM2.5 comes from the air-quality API. They're
-   fetched separately and inner-joined on the hourly timestamp.
-2. **Fetch-once, slice-many.** The loop asks for many overlapping windows, so the
-   whole configured span is fetched once and cached to disk (parquet). Every
-   ``get_data`` then slices the cached frame -- no repeated API hits, and the
-   data is stable across runs (the same determinism the synthetic source has).
+1. **Two endpoints, joined on time.** The weather features come from the archive
+   API, PM2.5 from the air-quality API, inner-joined on the hourly timestamp.
+2. **Fetch once, slice many.** The loop asks for many overlapping windows, so
+   the configured span is fetched once and cached as parquet; every
+   ``get_data`` slices the cached frame. No repeated API hits, and a replay is
+   reproducible from the committed cache.
 
-Networking note: this machine sits behind a TLS-intercepting proxy, so Python's
-default certifi bundle rejects the handshake. ``truststore`` routes verification
-through the OS trust store (which has the proxy's root), matching what
-``uv --system-certs`` needed at install time.
+TLS: behind an intercepting proxy the default certifi bundle rejects the
+handshake, so ``truststore`` routes verification through the OS trust store.
 """
 
 from __future__ import annotations
@@ -27,10 +24,9 @@ from driftloop.config import COLUMNS, OpenMeteoConfig
 from driftloop.data.base import add_cyclical_features, validate_frame
 
 WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
-# Archived *forecasts*, not archived observations: for a target hour it can
-# return what the model run from N days earlier predicted for that hour. That is
-# what makes a genuine forecasting chain possible from historical data -- the
-# features are what a forecaster would actually have had in hand, errors and all.
+# Archived forecasts, not archived observations: for a target hour this returns
+# what the model run from N days earlier predicted for it, so the features carry
+# the forecast error a real operator would have had to work with.
 FORECAST_ARCHIVE_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
@@ -78,8 +74,7 @@ def _weather_request(cfg: OpenMeteoConfig) -> tuple[str, list[str], dict[str, st
 
     Returns ``(url, hourly_variables, rename_map)``. At a lead of N days the
     variables carry Open-Meteo's ``_previous_dayN`` suffix, which selects the
-    model run issued N days before each target hour -- so a row's features are
-    the forecast a real operator would have had N days out, not hindsight.
+    model run issued N days before each target hour rather than the analysis.
     """
     lead = cfg.forecast_lead_days
     if lead <= 0:
@@ -140,8 +135,8 @@ class OpenMeteoSource:
 
     def _cache_path(self) -> Path:
         cfg = self.config
-        # The lead is part of the identity of the data: the same place over the
-        # same span holds different features at lead 0 and lead 7, so they must
+        # The lead is part of the data's identity: the same place over the same
+        # span holds different features at lead 0 and lead 7, so the two must
         # not share a cache file.
         stem = (
             f"openmeteo_{cfg.latitude}_{cfg.longitude}_"

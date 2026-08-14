@@ -1,11 +1,13 @@
-"""The model itself: deliberately boring.
+"""The predictor: a Ridge on six weather variables and the hour of day.
 
-A Ridge on six weather variables and the hour of day. A simple model decays
-*legibly* when the relationship shifts, which is what the demo is about: a big
-model would absorb some of the drift and blur the story.
+Chosen for legibility rather than accuracy. Its coefficients are readable in
+physical units, which is what lets `retrospect` rebuild any registered version
+from the registry alone and score it on windows it never served. A more
+flexible model would absorb part of the drift into its own fit and leave less
+of it visible.
 
-It was three features and grew to eight, which is why anything counting them
-reads the list from `config.FEATURES` rather than hardcoding a number.
+The feature list is read from `config.FEATURES` everywhere; nothing hardcodes
+the count.
 """
 
 from __future__ import annotations
@@ -22,8 +24,7 @@ from sklearn.preprocessing import StandardScaler
 
 from driftloop.config import FEATURES, TARGET
 
-# The two model kinds. Ridge ships; gbm exists only for the ablation that asks
-# whether this project's findings belong to the world or to a linear model.
+# Ridge ships. gbm exists only for the ablation in scripts/ablate_model.py.
 RIDGE = "ridge"
 GBM = "gbm"
 
@@ -42,16 +43,14 @@ class TrainedModel:
 def build_pipeline(alpha: float = 1.0, kind: str = RIDGE) -> Pipeline:
     """The champion, or the gradient-boosted stand-in used to interrogate it.
 
-    ``gbm`` exists for one experiment and is not a candidate for shipping. Every
-    result in this repository is compatible with a duller explanation than the
-    one it offers: that a near-linear model misspecifies seasonal structure, and
-    what looks like "the world moved so retraining pays" is refitting papering
-    over that. Separating the two needs a challenger flexible enough to absorb
-    the nonlinearity, which is what this is for. See ``scripts/ablate_model.py``.
+    ``gbm`` is not a shipping candidate. It exists to separate two readings of
+    the retraining results: that the world moved, or that a near-linear model
+    misspecifies seasonal structure and refitting papers over it. Telling them
+    apart needs a challenger flexible enough to absorb the nonlinearity. See
+    ``scripts/ablate_model.py``.
 
-    No scaler on the tree: it splits on thresholds, so monotone rescaling of a
-    feature changes nothing it can learn, and leaving the scaler in would imply
-    otherwise to anyone reading the pipeline.
+    No scaler on the tree: it splits on thresholds, so monotone rescaling
+    changes nothing it can learn, and keeping the step would imply otherwise.
     """
     if kind == GBM:
         return Pipeline([("gbm", HistGradientBoostingRegressor(random_state=0))])
@@ -63,10 +62,10 @@ def build_pipeline(alpha: float = 1.0, kind: str = RIDGE) -> Pipeline:
 def is_linear(pipeline: Pipeline) -> bool:
     """Whether this pipeline can be serialised as slopes and an intercept.
 
-    The registry stores linear models as nine numbers, and ``retrospect`` scores
-    any version from those tags without unpickling anything. A tree cannot be
-    written down that way, so the caller has to know which it is holding rather
-    than discovering it through an AttributeError three layers down.
+    The registry stores linear models as nine numbers, which is what lets
+    ``retrospect`` score any version without unpickling it. A tree cannot be
+    written down that way, so callers check rather than discovering it through
+    an AttributeError further down.
     """
     return "ridge" in pipeline.named_steps
 
@@ -79,7 +78,7 @@ def rmse(model: Pipeline, df: pd.DataFrame) -> float:
 
 
 def error_metrics(model: Pipeline, df: pd.DataFrame) -> dict[str, float]:
-    """RMSE plus the two other numbers every regression report shows: MAE and R^2."""
+    """RMSE, MAE, R^2 and the row count for one window."""
     if df.empty:
         return {"rmse": float("nan"), "mae": float("nan"), "r2": float("nan"), "n": 0}
     actual = df[TARGET].to_numpy()
@@ -93,8 +92,7 @@ def error_metrics(model: Pipeline, df: pd.DataFrame) -> dict[str, float]:
 
 
 def predictions_frame(model: Pipeline, df: pd.DataFrame) -> pd.DataFrame:
-    """timestamp | actual | predicted | residual for a window -- the raw material
-    of the predicted-vs-actual and residual panels."""
+    """timestamp | actual | predicted | residual, for the monitoring panels."""
     pred = model.predict(df[FEATURES])
     return pd.DataFrame(
         {
@@ -107,12 +105,12 @@ def predictions_frame(model: Pipeline, df: pd.DataFrame) -> pd.DataFrame:
 
 
 def effective_coefficients(pipeline: Pipeline) -> dict[str, float]:
-    """The linear model's coefficients expressed in the *original* feature units.
+    """The linear model's coefficients in the original feature units.
 
-    The pipeline standardises features before the Ridge, so ``ridge.coef_`` is in
-    z-score units and isn't directly readable. Folding the scaler back in gives
-    the slope per real unit (per degree, per m/s, per %RH) -- which is what makes
-    the concept-drift story legible: watch these move across model versions.
+    The pipeline standardises before the Ridge, so ``ridge.coef_`` is in z-score
+    units. Folding the scaler back in gives the slope per real unit (per degree,
+    per m/s, per %RH), which is both what makes concept drift readable across
+    versions and what the registry stores per version.
     """
     scaler: StandardScaler = pipeline.named_steps["scale"]
     ridge: Ridge = pipeline.named_steps["ridge"]

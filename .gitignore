@@ -23,10 +23,16 @@ outputs/
 site/data.json
 site/*_hourly.csv
 
-# Per-session working notes: what one session did and what it left open, for
-# picking the project back up. HANDOFF.md is the committed counterpart and holds
-# what stays true; this is the part that stops being interesting once the open
-# threads are closed, so it does not belong in the history.
+# Working notes, both private. HANDOFF.md carries the engineering facts that stay
+# true across sessions, the ones a reader of the code could not work out for
+# themselves; SESSION.md carries one session's narrative and the threads it left
+# hanging, and stops being interesting once those close. Neither is a document
+# this repository's readers need, and both are candid about work that is on
+# display in the README, so neither belongs in the history.
+#
+# HANDOFF.md was tracked until 2026-08-13 and this rule did nothing, because git
+# does not apply ignore rules to files it is already tracking. Untracked with
+# `git rm --cached`; its earlier commits are still in the history behind us.
 /SESSION.md
 HANDOFF.md
 

@@ -38,16 +38,14 @@ OUT = REPO_ROOT / "site"
 # loop never computes for itself.
 DECAY_WEEKS = 26
 
-# Which sources the published page shows, in order. Only the real data is
-# showcased: the historical Kraków replay and the same loop running live. The
-# synthetic world stays an offline correctness proof (tests + sweep_knobs) and is
-# deliberately NOT published here.
+# Which sources the published page shows, in order. Real data only; the
+# synthetic world stays an offline correctness proof (tests and sweep_knobs).
 #
-# Ordered as an argument rather than geographically: Kraków states the case and
-# Santiago immediately answers "is this just northern winter?", then the cities
-# walk down the scale of what retraining is worth, from +49.4% (Delhi) through
-# Johannesburg's smaller but real gain, to Melbourne where no effect is
-# measurable, to Los Angeles where the interval says the loop does harm.
+# Ordered as an argument rather than geographically: Kraków states the case,
+# Santiago answers "is this just northern winter?", and the rest walk down the
+# scale of what retraining is worth, from Delhi through Johannesburg's smaller
+# gain to Melbourne where no effect is measurable and Los Angeles where the
+# interval says the loop does harm.
 DISPLAY_ORDER = [
     "openmeteo",
     "openmeteo_santiago",
@@ -57,29 +55,24 @@ DISPLAY_ORDER = [
     "openmeteo_la",
 ]
 
-# The live schedule is not a city and was never comparable to one: it is the same
-# Kraków data with one cycle appended at a time, and it has a handful of cycles
-# against Kraków's 48. Sitting in the city selector it invited a comparison that
-# could only mislead, and every per-city chart it drew was two points. It gets a
-# status block in the section about the machinery instead.
+# The live schedule is not a city and is not comparable to one: it is the same
+# Kraków data with one cycle appended at a time, a handful of cycles against
+# Kraków's 48. It gets a status block in the section on the machinery rather than
+# a place in the city selector, where it would invite that comparison.
 SCHEDULE_KEY = "scheduled"
 
 # Templates, not prose. Every number a city's story quotes is a `{placeholder}`
-# filled from that city's own run and benchmark output at build time.
+# filled from that city's own run and benchmark output at build time, on the same
+# rule the method block follows: introspected rather than retyped. Widening the
+# feature set or changing the forecast lead moves all of these figures at once,
+# and hand-edited paragraphs go stale.
 #
-# This is the same rule the method block already followed ("introspected rather
-# than retyped") applied to the narrative, and it exists because the narrative
-# broke that rule repeatedly: widening the feature set or changing the forecast
-# lead moves every one of these figures at once, and hand-editing seven
-# paragraphs afterwards leaves a stale number behind sooner or later.
-#
-# What stays hardcoded is only what a re-run cannot change: geography, season,
-# and why a city was chosen. If a sentence would be falsified by a re-run, it
-# belongs in a placeholder. See _story_facts for the available names.
+# Only what a re-run cannot change stays hardcoded: geography, season, and why a
+# city was chosen. A sentence a re-run could falsify belongs in a placeholder.
+# See _story_facts for the available names.
 STORY = {
-    # Both readings, because this is the lead city and the page's own argument is
-    # that the across-the-replay number lies. Quoting only it here, where the two
-    # disagree by six points, was the page making the mistake it warns about.
+    # Both readings for the lead city, where they disagree by six points and the
+    # page's own argument is that the across-the-replay number misleads.
     "openmeteo": "The city this started with. Kraków sits in a valley, and when the coal heating "
     "goes on for winter the smog has nowhere to escape to. A model trained on clean summer air "
     "goes from {rmse_first} to {rmse_peak} µg/m³ of error as that happens, and is replaced "
@@ -174,9 +167,8 @@ def _story_facts(runs: pd.DataFrame, retr: pd.DataFrame, prom: pd.DataFrame,
     facts = {
         "runs": str(len(runs)),
         "retrains": _count(len(retr)),
-        # "the loop fires {retrains} times" reads as "fires 1 times" in the one
-        # city that retrains once, which is Los Angeles, which is the control,
-        # which is the city a sceptical reader looks at hardest.
+        # "fires {retrains} times" reads as "fires 1 times" in Los Angeles, the
+        # one city that retrains once and the control a sceptic reads hardest.
         "retrains_times": (
             "once" if len(retr) == 1
             else "twice" if len(retr) == 2
@@ -212,9 +204,8 @@ def _story_facts(runs: pd.DataFrame, retr: pd.DataFrame, prom: pd.DataFrame,
         facts["acted_weeks"] = str(retraining.get("acted_windows", ""))
         facts["win_rate"] = f"{retraining.get('win_rate', 0):.0f}%"
 
-    # A story is allowed to quote an estimate only alongside its interval, and
-    # only to call it a finding when that interval clears zero. Two of these six
-    # stories used to describe a result the data does not support.
+    # A story may quote an estimate only alongside its interval, and may call it
+    # a finding only where that interval clears zero. Two of the six do not.
     acted_ci = (intervals or {}).get("when_it_acted") or {}
     facts["retrain_acted_ci"] = _interval(acted_ci)
     facts["retrain_gain_ci"] = _interval((intervals or {}).get("across_replay"))
@@ -363,10 +354,9 @@ def retrospective_block(key: str, runs: pd.DataFrame) -> dict | None:
     return {
         "as_of": as_of,
         "retraining": retrospect.retraining_value(retro),
-        # The interval on each of those, so the published page can say which of
-        # them are findings. Carried in the payload ahead of the front-end work
-        # that renders it: the README and evaluation.md already report intervals,
-        # and a site that shows the same numbers bare contradicts them.
+        # The interval on each of those, so the page can say which are findings.
+        # The README and evaluation.md report intervals, and a site publishing
+        # the same numbers bare would contradict them.
         "retraining_ci": {
             key: interval.to_dict()
             for key, interval in retrospect.retraining_uncertainty(retro).items()
@@ -468,10 +458,9 @@ def profile_data(key: str) -> dict | None:
     retro = retrospective_block(key, runs)
 
     # How long the model currently answering has been in service. The loop logs
-    # which version served each run but never how long it has been there, and
-    # that is the number a stale champion shows up in first: a trigger that has
-    # gone quiet looks identical to a model that is fine until you notice the
-    # thing has not been replaced in seven months.
+    # which version served each run but never for how long, and that is where a
+    # stale champion shows up first: a trigger that has gone quiet looks like a
+    # healthy model until the age of the thing serving is on the page.
     champion_age_days, champion_version = None, None
     if "tags.champion_version" in runs:
         versions = runs["tags.champion_version"].tolist()
@@ -481,19 +470,18 @@ def profile_data(key: str) -> dict | None:
             since -= 1
         champion_age_days = int((runs["as_of"].iloc[-1] - runs["as_of"].iloc[since]).days)
 
-    # What retraining was worth. Taken from the retrospective rather than from
-    # the benchmark file, because the benchmark compares one median against
-    # another and that comparison is unpaired: where both distributions are
+    # What retraining was worth, from the retrospective rather than the benchmark
+    # file: the benchmark comparison is unpaired, so where both distributions are
     # dominated by the same seasonal swing it mostly measures the season.
-    # Johannesburg reads 0.0% that way while winning every window in which a
-    # retrained model was serving.
+    # Johannesburg reads 0.0% that way while winning every window a retrained
+    # model served.
     value = (retro or {}).get("retraining") or {}
     retrain_gain = round(value["across_replay"], 1) if "across_replay" in value else None
     retrain_acted = round(value["when_it_acted"], 1) if "when_it_acted" in value else None
 
-    # The interval on each of those. Without it the page states Melbourne's
-    # +1.2% in the same colour and the same typeface as Delhi's +49.4%, and only
-    # one of the two is distinguishable from nothing.
+    # The interval on each. Without it the page states Melbourne's +1.2% in the
+    # same colour and typeface as Delhi's +49.4%, and only one of the two is
+    # distinguishable from nothing.
     intervals = (retro or {}).get("retraining_ci") or {}
     acted_ci = intervals.get("when_it_acted") or {}
     gain_ci = intervals.get("across_replay") or {}
@@ -521,8 +509,7 @@ def profile_data(key: str) -> dict | None:
             "runs": int(len(runs)),
             "retrains": int(len(retr)),
             "promotions": int(len(prom)),
-            # Trained, judged, and thrown away. The gate's actual output, which
-            # previously had to be reached by subtracting two tiles.
+            # Trained, judged, and thrown away: the gate's actual output.
             "rejected": int(len(retr) - len(prom)),
             "champion_age_days": champion_age_days,
             "champion_version": champion_version,

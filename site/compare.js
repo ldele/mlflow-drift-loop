@@ -126,9 +126,8 @@ function renderTiles() {
       // the six do not clear zero, so painting it green would assert something
       // those two do not support.
       //
-      // The count rides in the label rather than in a tile of its own. It was a
-      // seventh tile briefly, which wrapped the row onto two lines and buried
-      // "cities serving a stale model" underneath by itself.
+      // The count rides in the label rather than taking a tile of its own: a
+      // seventh tile wraps the row onto two lines.
       const judged = CITIES.filter((c) => c.stats.retrain_acted_real != null);
       const real = judged.filter((c) => c.stats.retrain_acted_real).length;
       return {
@@ -264,10 +263,10 @@ function renderValue() {
     traces, lay, "value-charts", true);
 
   // Every claim here is counted off the data rather than asserted, including the
-  // lead. It used to open "retraining helped in every city once the comparison
-  // is paired", which was true when it was written and stopped being true the
-  // moment an accounting fix moved Los Angeles below zero. A sentence a re-run
-  // can falsify has to be derived from the re-run.
+  // lead sentence. "Retraining helped in every city once the comparison is
+  // paired" was true when written and stopped being true when an accounting fix
+  // moved Los Angeles below zero. A sentence a re-run can falsify is derived
+  // from the re-run.
   const gap = rows
     .map((c) => ({ label: c.label, d: (c.stats.retrain_acted ?? 0) - c.stats.retrain_gain }))
     .sort((a, b) => b.d - a.d)[0];

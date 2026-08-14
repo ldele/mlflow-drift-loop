@@ -5,18 +5,17 @@ version last cleared the promotion gate. This reads that alias and answers
 requests with it, which is the step that turns a registry entry into something
 a consumer can actually call.
 
-Three properties are worth stating, because they are the ones a reviewer asks
-about:
+Three properties hold:
 
 - **The alias is the contract, not a version number.** Nothing here pins a
   version. Promote in the registry and ``POST /reload`` picks the new one up
-  without a redeploy -- that is the seam between the weekly loop and serving.
+  without a redeploy, which is the seam between the weekly loop and serving.
 - **Serving never writes to the tracking store.** It sets the tracking URI and
   reads; it does not call ``setup()``, which would create an experiment as a
-  side effect. A read-only consumer should leave no trace.
+  side effect.
 - **The hour encoding is not reimplemented here.** ``add_cyclical_features`` is
-  the same function the training path uses, so the serving features cannot
-  drift away from the trained ones.
+  the function the training path uses, so serving features cannot drift away
+  from trained ones.
 
 Run it with ``uvicorn driftloop.serving:app``, or ``python scripts/serve.py``.
 """
@@ -45,17 +44,17 @@ from driftloop.data.base import add_cyclical_features
 from driftloop.tracking import CHAMPION_ALIAS, ChampionRef, load_champion, tracking_uri
 
 # Which profile's registry to serve. Every city keeps its own backend file and
-# its own registered model, so serving is per-city too -- one container per
-# city, selected by environment variable.
+# registered model, so serving is per-city: one container per city, selected by
+# environment variable.
 PROFILE_ENV_VAR = "DRIFTLOOP_PROFILE"
 DEFAULT_PROFILE = "openmeteo"
 
 # Bound the batch so one request cannot pull the process over on memory.
 MAX_BATCH = 10_000
 
-# pydantic v2 reserves the `model_` prefix for its own config. These fields are
-# about the ML model, which is the honest name for them, so the namespace guard
-# is switched off rather than the fields renamed.
+# pydantic v2 reserves the `model_` prefix for its own config. These fields name
+# the ML model, so the namespace guard is switched off rather than the fields
+# renamed around it.
 _ALLOW_MODEL_PREFIX = ConfigDict(protected_namespaces=())
 
 
@@ -102,11 +101,10 @@ class PredictRequest(BaseModel):
 class Prediction(BaseModel):
     """One predicted hour.
 
-    Two numbers rather than one, deliberately. The champion is an unconstrained
-    Ridge, so it can and does emit negative concentrations on clean hours; a
-    negative PM2.5 is not a thing that exists, so ``pm25`` is floored at zero
-    for consumers. ``pm25_raw`` is what the model actually said, kept because
-    silently clamping a model's output is how you lose track of its behaviour.
+    Two numbers rather than one. The champion is an unconstrained Ridge and does
+    emit negative concentrations on clean hours, so ``pm25`` is floored at zero
+    for consumers. ``pm25_raw`` is what the model said, kept because a silently
+    clamped output hides that behaviour from monitoring.
     """
 
     timestamp: datetime
@@ -164,9 +162,8 @@ def load_served_champion(profile_key: str) -> ServedChampion | None:
     """Read the ``champion`` alias for one profile, or None if nothing is promoted.
 
     Points MLflow at that profile's backend file and reads. Returning None
-    rather than raising is what lets the service start against an empty
-    registry: a container that crash-loops because no model is promoted yet is
-    harder to operate than one that reports itself unready.
+    rather than raising lets the service start against an empty registry and
+    report itself unready, instead of crash-looping until a model is promoted.
     """
     profile = PROFILES[profile_key]
     mlflow.set_tracking_uri(tracking_uri(profile.db_filename))
@@ -216,8 +213,7 @@ def _feature_frame(observations: list[Observation]) -> pd.DataFrame:
 
     Timestamps are normalised to naive UTC first. The training data is GMT, so
     an aware timestamp from another zone has to be converted before the hour is
-    read off it -- otherwise the diurnal encoding would be hours out of phase
-    with what the model learned.
+    read off it, or the diurnal encoding lands out of phase with the model.
     """
     df = pd.DataFrame([o.model_dump() for o in observations])
     df[TIMESTAMP] = pd.to_datetime(df[TIMESTAMP], utc=True).dt.tz_localize(None)
@@ -236,9 +232,9 @@ def resolve_profile_key(name: str) -> str:
     """Accept either a profile key (``openmeteo``) or a city name (``krakow``).
 
     The run scripts speak city names and the profile registry speaks keys. The
-    container has to name the city twice -- once to build the registry, once to
-    serve it -- so accepting both is what stops those two drifting apart into a
-    service that starts up pointed at an empty backend.
+    container names the city twice, once to build the registry and once to serve
+    it, so accepting both stops the two drifting into a service pointed at an
+    empty backend.
     """
     if name in PROFILES:
         return name
@@ -271,10 +267,10 @@ def create_app(profile_key: str | None = None) -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     def health(request: Request) -> HealthResponse:
-        """Liveness plus readiness. 200 always; `model_loaded` carries the truth.
+        """Liveness plus readiness. Always 200; `model_loaded` carries the state.
 
-        Kept at 200 even with nothing promoted so a probe can distinguish "the
-        process is up but has no model" from "the process is down".
+        200 even with nothing promoted, so a probe can distinguish a process
+        that is up without a model from one that is down.
         """
         served: ServedChampion | None = request.app.state.champion
         return HealthResponse(
@@ -312,10 +308,10 @@ def create_app(profile_key: str | None = None) -> FastAPI:
     def reload(request: Request) -> ReloadResponse:
         """Re-read the alias, picking up a promotion without a restart.
 
-        This is the hook the weekly loop needs: it promotes in the registry,
-        then something calls this. Serving does not poll, so a version stays put
-        until asked -- deliberate, because an unannounced model swap under live
-        traffic is worse than a stale one.
+        The hook the weekly loop needs: it promotes in the registry, then
+        something calls this. Serving does not poll, so a version stays put until
+        asked, on the grounds that an unannounced model swap under live traffic
+        is worse than a stale one.
         """
         previous = request.app.state.champion
         served = load_served_champion(request.app.state.profile_key)

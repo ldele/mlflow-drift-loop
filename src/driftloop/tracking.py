@@ -1,13 +1,12 @@
 """MLflow wiring: experiment setup, model registry, champion lookup.
 
-Note on the backend: the plan said "local file store", but the MLflow **Model
-Registry** is not supported by the file store -- it needs a database backend.
-So we default to a local SQLite file (`mlflow.db`), which is still zero-setup
-and single-file, and gives us the registry and its promotion history.
+The backend is a local SQLite file rather than a file store, because the file
+store does not support the Model Registry and the registry is what carries the
+promotion history.
 
-Note on stages: MLflow 3 deprecated `Staging`/`Production` stage transitions in
-favour of **aliases**. We use the aliases `champion` and `challenger`, which is
-also the vocabulary this project already speaks.
+Promotion moves an alias, not a stage. MLflow 3 deprecated the
+`Staging`/`Production` transitions in favour of aliases, and `champion` /
+`challenger` are the terms the rest of the project already uses.
 """
 
 from __future__ import annotations
@@ -69,6 +68,18 @@ class ChampionRef:
     train_end: pd.Timestamp
     baseline_rmse: float
     run_id: str
+    # When this version last sat a holdout exam and won, or None for a version
+    # that has never sat one. Written by `mark_certified`.
+    last_certified: pd.Timestamp | None = None
+
+    def certified_at(self) -> pd.Timestamp:
+        """The date this version's certificate runs from.
+
+        Falls back to the end of its training data, which is the honest answer
+        for a version that has never been examined: a bootstrap champion's
+        knowledge stops there, and nothing has tested it since.
+        """
+        return self.last_certified if self.last_certified is not None else self.train_end
 
 
 def _version_tags(trained: TrainedModel) -> dict[str, str]:
@@ -78,14 +89,13 @@ def _version_tags(trained: TrainedModel) -> dict[str, str]:
         "baseline_rmse": f"{trained.baseline_rmse:.6f}",
         "n_rows": str(trained.n_rows),
     }
-    # The learned coefficients (in original feature units) are the model's
-    # fingerprint. Storing them per version turns concept drift into something
-    # you can plot: watch them move as the champion is retrained.
+    # Coefficients in original feature units, stored per version: this is what
+    # makes concept drift plottable and what lets `retrospect` score a version
+    # without unpickling it.
     #
-    # Only a linear model has them. A tree is recoverable from its logged
-    # artifact instead, which `retrospect.registered_models` falls back to, and
-    # writing a fake coefficient here would make an unscoreable version look
-    # scoreable.
+    # Only a linear model has them. A tree is recovered from its logged artifact
+    # instead (`retrospect.registered_models`); writing a placeholder here would
+    # make an unscoreable version look scoreable.
     if is_linear(trained.pipeline):
         for name, value in effective_coefficients(trained.pipeline).items():
             tags[f"coef_{name}"] = f"{value:.6f}"
@@ -124,6 +134,19 @@ def promote(model_name: str, version: str) -> None:
     MlflowClient().set_registered_model_alias(model_name, CHAMPION_ALIAS, version)
 
 
+def mark_certified(model_name: str, version: str, as_of: pd.Timestamp) -> None:
+    """Record that a version sat a holdout exam on ``as_of`` and kept its place.
+
+    The counterpart to `promote` for the model that was not replaced. Kept on
+    the version rather than derived from the run log so that reading it costs
+    one registry lookup the loop already makes, and so a champion carries its
+    own certificate wherever the registry goes.
+    """
+    MlflowClient().set_model_version_tag(
+        model_name, version, "last_certified", as_of.isoformat()
+    )
+
+
 def load_champion(model_name: str) -> ChampionRef | None:
     """Load the current champion from the registry, or None if there isn't one."""
     client = MlflowClient()
@@ -135,25 +158,26 @@ def load_champion(model_name: str) -> ChampionRef | None:
     pipeline = mlflow.sklearn.load_model(f"models:/{model_name}@{CHAMPION_ALIAS}")
     return ChampionRef(
         pipeline=pipeline,
-        # str for the same reason log_and_register does it: MLflow hands the
-        # version back as an int here and as a str elsewhere, and a field
-        # declared `str` that sometimes isn't will eventually be compared
-        # against one that is.
+        # str, as in log_and_register: MLflow returns the version as an int
+        # here and as a str elsewhere, and the two get compared downstream.
         version=str(mv.version),
         train_start=pd.Timestamp(mv.tags["train_start"]),
         train_end=pd.Timestamp(mv.tags["train_end"]),
         baseline_rmse=float(mv.tags["baseline_rmse"]),
         run_id=mv.run_id,
+        last_certified=(
+            pd.Timestamp(mv.tags["last_certified"]) if "last_certified" in mv.tags else None
+        ),
     )
 
 
 def reset(db_filename: str = DEFAULT_DB) -> None:
     """Wipe one profile's local backend so a rerun starts clean.
 
-    MLflow only *soft*-deletes experiments and models through its API, which
-    then blocks reusing the same name. For a local single-file backend the
-    honest "fresh" is to remove the backing files -- call this *before*
-    ``setup()``, at process start, while nothing holds the sqlite file open.
+    MLflow only soft-deletes experiments and models through its API, which then
+    blocks reusing the same name, so this removes the backing files instead.
+    Call it before ``setup()``, at process start, while nothing holds the
+    sqlite file open.
     """
     db_path = _db_path(db_filename)
     artifact_dir = _artifact_dir(db_filename)

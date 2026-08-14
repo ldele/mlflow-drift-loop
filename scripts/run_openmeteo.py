@@ -1,18 +1,16 @@
-"""Phase 2 demo: the same drift loop, on real weather + air-quality data.
+"""Replay the drift loop over one city's history, or over all six.
 
-Runs one city per invocation, or all of them by default. Each city bootstraps a
-champion on a clean training season, then replays weekly scheduled runs into the
-season that spoils it -- the windows live on the Profile, because the seasons
-don't line up between cities.
+Each city bootstraps a champion on a clean training season, then replays weekly
+scheduled runs into the season that spoils it. The windows live on the Profile,
+because the seasons do not line up between cities.
 
     python scripts/run_openmeteo.py [--fresh] [--city <name>|all]
 
-The city names come from config.CITY_CLI_NAMES (krakow, santiago, delhi, joburg,
-melbourne, la), so --help always lists the current set.
+City names come from config.CITY_CLI_NAMES, so --help lists the current set.
 
-First run fetches each span from Open-Meteo and caches it to data_cache/; later
-runs reuse the cache. Each city logs to its own MLflow backend so they reset and
-browse independently, and none of them collide with the synthetic Phase 1 runs.
+The first run fetches each span from Open-Meteo and caches it under data_cache/;
+later runs read the cache. Each city logs to its own MLflow backend so they can
+be reset and browsed independently.
 """
 
 from __future__ import annotations
@@ -85,10 +83,9 @@ def run_city(profile: Profile, fresh: bool) -> pd.DataFrame:
     out = OUTPUTS / f"simulation_{profile.key}.csv"
     df.to_csv(out, index=False)
 
-    # What the model actually predicts, in the units it predicts them in. The
-    # loop logs this per run as an MLflow artifact, but build_site.py reads only
-    # metrics and tags so it stays immune to absolute artifact paths -- so write
-    # the final window to a known path it can pick up instead.
+    # The loop already logs this per run as an MLflow artifact, but build_site.py
+    # reads only metrics and tags so that it never depends on absolute artifact
+    # paths. Write the final window to a fixed path it can pick up instead.
     _write_last_window_predictions(profile, source, plan.last_run, loop_cfg.monitor_days)
 
     cols = ["as_of", "data_drift_psi", "perf_drift_ratio", "champion_rmse", "promotion_decision"]

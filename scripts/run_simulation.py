@@ -1,9 +1,9 @@
-"""End-to-end Phase 1 demo: bootstrap a champion, then replay ~5 months of
-weekly scheduled runs across a synthetic autumn regime shift.
+"""Replay the loop over the synthetic world: bootstrap a champion, then run ~5
+months of weekly scheduled runs across an engineered autumn regime shift.
 
     python scripts/run_simulation.py [--fresh]
 
-Writes every run to MLflow (sqlite backend) and a tidy CSV to outputs/.
+Writes every run to the MLflow sqlite backend and a tidy CSV to outputs/.
 """
 
 from __future__ import annotations
@@ -45,8 +45,8 @@ def main() -> None:
     syn_cfg = SyntheticConfig(drift_strength=args.drift_strength, feature_shift=args.feature_shift)
     source = SyntheticSource(syn_cfg)
 
-    # A little context the dashboard reads to annotate the regime shift, so it
-    # doesn't hardcode a date. (The loop itself stays data-source-agnostic.)
+    # Context the dashboard reads to annotate the regime shift, so no date is
+    # hardcoded in the UI and the loop stays data-source-agnostic.
     OUTPUTS.mkdir(exist_ok=True)
     (OUTPUTS / "run_meta.json").write_text(
         json.dumps(

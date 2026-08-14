@@ -12,11 +12,9 @@ unseen weather, so it should reject challengers that win a lucky week, and the
 prediction is that the delivered margin tracks the promised one further out.
 
 The replay cadence is held at 7 days for every arm, so exam length is the only
-thing varying. That is possible only since the cadence guard was corrected:
-`step_days >= holdout_days` used to reject a 14-day exam at a weekly cadence
-while admitting a 3-day one that overlapped the next monitor window. The real
-condition is `step_days + holdout_days >= monitor_days`, which every arm here
-satisfies and which shorter exams than 7 would violate.
+variable. The cadence guard permits that: the condition is
+`step_days + holdout_days >= monitor_days`, which every arm here satisfies and
+which exams shorter than 7 days would violate.
 
     python scripts/sweep_holdout.py [--city <name>|all] [--holdouts 7,10,14,21]
 

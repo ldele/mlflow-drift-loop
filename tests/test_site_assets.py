@@ -72,10 +72,10 @@ def test_both_pages_share_one_stylesheet() -> None:
 def test_the_published_payload_never_shows_an_estimate_without_its_interval() -> None:
     """A number on the page carries its range, the same rule the docs follow.
 
-    The site used to print Melbourne's +1.2% in the same green as Delhi's
-    +49.4%, and only one of the two is distinguishable from nothing. That is the
-    error `docs/evaluation.md` is written against, so it should not be possible
-    to reintroduce it on the page while the documents say otherwise.
+    Printing Melbourne's +1.2% in the same green as Delhi's +49.4% claims two
+    findings where there is one, which is the error `docs/evaluation.md` is
+    written against. This makes it hard to reintroduce on the page while the
+    documents say otherwise.
 
     Skipped when `data.json` has not been built, which is a "run build_site.py"
     state rather than a failure.

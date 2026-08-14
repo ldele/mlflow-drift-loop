@@ -1,17 +1,11 @@
 """Is "retraining pays" a fact about the world, or about a linear model?
 
-Every result in this repository was produced by a Ridge whose regularisation is
-close to inert at the shipped setting, which makes it roughly a linear
-projection. That leaves a duller explanation standing beside the interesting
-one. Perhaps the world moved and a fresh model tracks it. Or perhaps a linear
-model misspecifies seasonal structure, refitting papers over the misspecification,
-and "retraining pays" is a fact about the model class rather than about the air.
-
-Nothing published here separates those, and until it does, the headline finding
-is only as strong as its weakest reading. This script separates them. It replays
-a city twice under identical settings, once with the shipped Ridge and once with
-a gradient-boosted challenger flexible enough to absorb the nonlinearity, and
-asks whether the retraining premium survives.
+Every published result came from a Ridge whose regularisation is close to inert
+at the shipped setting, so two readings survive: the world moved and a fresh
+model tracks it, or a linear model misspecifies seasonal structure and refitting
+papers over that. This script separates them by replaying a city twice under
+identical settings, once with the shipped Ridge and once with a gradient-boosted
+challenger flexible enough to absorb the nonlinearity.
 
     python scripts/ablate_model.py                    # Delhi and Los Angeles
     python scripts/ablate_model.py --city delhi
@@ -20,10 +14,10 @@ Delhi and Los Angeles by default: the city where retraining pays most and the
 control where it measurably costs. If the premium is a linear artefact, Delhi's
 should shrink toward Los Angeles's.
 
-Two checks have to pass before the answer means anything, and both are printed.
-The gradient-boosted model has to come out the better model, or it has not
-absorbed anything and the comparison is between two misspecified models. And the
-Ridge arm has to reproduce the shipped numbers, or the harness is not faithful.
+Two validity checks are printed with the result. The gradient-boosted model has
+to come out the better model, or it absorbed nothing and the comparison is
+between two misspecified models. And the Ridge arm has to reproduce the shipped
+numbers, or the harness is not faithful.
 
 Writes outputs/model_ablation.csv and outputs/model_ablation_series.json.
 """

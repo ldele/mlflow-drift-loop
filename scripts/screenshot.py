@@ -11,21 +11,18 @@
     python scripts/screenshot.py http://localhost:8501/ docs/images/dashboard.png \
         --wait-for '[data-testid="stMetric"]' --size 1240x1800
 
-`msedge --headless --screenshot` was the recipe here for a long time and it has
-two failure modes, both of which save a plausible-looking file rather than
-erroring.
+This drives Edge over the DevTools protocol and polls until a selector matches,
+rather than shelling out to `msedge --headless --screenshot`, which has two
+failure modes that both save a plausible-looking file instead of erroring.
 
-It fires on the load event. That is fine for a page whose charts are drawn from
-a JSON file fetched during load, and useless for Streamlit, which serves a
-skeleton and paints into it over a websocket afterwards. The capture comes back
-with a sidebar and an empty page.
+It fires on the load event, which suits a page whose charts are drawn from JSON
+fetched during load and not Streamlit, which serves a skeleton and paints into
+it over a websocket afterwards; the capture comes back empty.
 
-And a second invocation attaches to an Edge already running instead of starting
-a headless one, in which case it writes nothing at all and still exits zero.
+And a second invocation attaches to an Edge already running rather than starting
+a headless one, writing nothing while exiting zero.
 
-So this drives the browser over the DevTools protocol and polls until a selector
-matches, which is the "driver that can wait on a selector" the handoff notes ask
-for. A capture that never sees its selector fails loudly.
+A capture here that never sees its selector fails loudly.
 """
 
 from __future__ import annotations

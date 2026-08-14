@@ -399,15 +399,13 @@ function psiStatus(pal, psi) {
 
 /* Move the globe to a new centre in one step.
  *
- * This was an eased animation, and it was measurably the wrong idea. Rotating an
- * orthographic globe means re-projecting the land, ocean, country, coastline and
- * graticule paths, which costs 25-120ms per frame here whether it is driven
- * through `Plotly.relayout` or by rotating the projection and re-rendering the
- * subplot directly. That is a ceiling of roughly eleven frames a second, so no
- * amount of frame-pacing made it smooth: an eased tween sampled that coarsely
- * reads as a stutter, and all the machinery to schedule it (easing, a spin
- * counter to void superseded frames, promise chaining to avoid a backlog,
- * reduced-motion handling) was work spent making the judder regular.
+ * One step rather than an eased animation, which was measured and rejected.
+ * Rotating an orthographic globe re-projects the land, ocean, country, coastline
+ * and graticule paths at 25-120ms per frame, whether driven through
+ * `Plotly.relayout` or by rotating the projection and re-rendering the subplot
+ * directly. That ceiling of roughly eleven frames a second is below what any
+ * frame-pacing can rescue: an eased tween sampled that coarsely reads as a
+ * stutter, and the scheduling machinery it needs only makes the judder regular.
  *
  * Dragging feels smooth by comparison because the pointer is the clock. The
  * frame rate is the same; the user is supplying it, so latency reads as weight
@@ -606,11 +604,11 @@ function render() {
 
   // 1. Skill against a baseline you could deploy instead.
   //
-  // The page used to headline raw RMSE and R². RMSE has no scale, so a filthy
-  // city and a clean one cannot be compared and neither can two seasons of the
-  // same city. R² normalises by the window's own variance, which in a calm
-  // fortnight is tiny, so it reports catastrophe for a modest absolute error.
-  // A skill score against a fixed alternative avoids both.
+  // Not raw RMSE or R². RMSE has no scale, so a filthy city and a clean one
+  // cannot be compared, and neither can two seasons of one city. R² normalises
+  // by the window's own variance, tiny in a calm fortnight, so it reports
+  // catastrophe for a modest absolute error. A skill score against a fixed
+  // alternative avoids both.
   if (R?.skill) {
     const days = R.skill.climatology_days;
     lay = plotBase(pal, "skill");
@@ -1322,12 +1320,11 @@ function renderMethod(m) {
 
 /* The unattended loop, as a count of cycles and the dates they cover.
  *
- * It used to sit in the city selector, where it drew the same charts as a city
- * on two data points and invited a comparison with a 48-week replay. It is a
- * mode, not a place. Reported here as facts about what the tracking store
- * holds, with no claim about what put them there: a cycle run by hand and a
- * cycle run by the weekly Action leave identical records, so asserting the cron
- * is working would be asserting something this page cannot see. */
+ * Kept out of the city selector, where two data points would invite a
+ * comparison with a 48-week replay: this is a mode, not a place. Reported as
+ * facts about what the tracking store holds, with no claim about what put them
+ * there, because a cycle run by hand and one run by the weekly Action leave
+ * identical records and this page cannot tell them apart. */
 function renderSchedule(s) {
   const card = document.getElementById("schedule-card");
   card.hidden = !s;

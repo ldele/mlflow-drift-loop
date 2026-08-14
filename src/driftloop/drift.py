@@ -5,11 +5,11 @@
 | Data drift (PSI) | the world changed | no             |
 | Performance drift| the model failing | champion only  |
 
-Keeping them independent is the point: data drift is the early warning, and it
-can be computed with no labels and no model at all. Performance drift is the
-action signal that triggers a retrain. Detecting drift by "champion vs
-challenger RMSE" would be circular -- you would need a challenger before you
-were allowed to decide you needed one.
+The two are kept independent. Data drift is the early warning and needs neither
+labels nor a model; performance drift is the action signal that triggers a
+retrain. Detecting drift by comparing champion against challenger would be
+circular, since a challenger would have to exist before the loop could decide it
+needed one.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from scipy import stats
 
 from driftloop.config import FEATURES
 
-# Conventional PSI reading. Kept here so the thresholds have one home.
+# Conventional PSI bands, kept here so the thresholds have one home.
 PSI_STABLE = 0.10
 PSI_SIGNIFICANT = 0.25
 
@@ -112,9 +112,8 @@ def distribution_report(
 ) -> dict:
     """Per-feature histograms (shared bins) of reference vs current, plus PSI/KS.
 
-    JSON-serialisable, so it can be logged as an MLflow artifact each run and read
-    back by the dashboard -- the standard "log a drift report per run" pattern,
-    and it keeps the dashboard decoupled from the data source (works in Phase 2).
+    JSON-serialisable, so each run logs one as an MLflow artifact and the
+    dashboard reads it back without touching the data source.
     """
     features = features or FEATURES
     report: dict[str, dict] = {}

@@ -1,19 +1,18 @@
 """Smoke tests that actually run the Streamlit app.
 
-The chart crashes these guard against were all runtime lookups -- a palette
-index, a colour-map key, an artifact key -- so nothing short of executing the
-script would have caught them. Streamlit runs the whole file top to bottom,
-including every ``with tab:`` block, so one clean run exercises all of them.
+The chart crashes these guard against are runtime lookups: a palette index, a
+colour-map key, an artifact key. Nothing short of executing the script catches
+them, and Streamlit runs the whole file top to bottom, including every
+``with tab:`` block, so one clean run exercises all of them.
 
-Running only the default profile was not enough. The Live schedule's backend was
-populated when the model had three features, and its per-run drift reports are
-written once and never rewritten, so indexing today's six-feature list into one
-raised a ``KeyError`` and took the whole app down -- on a profile in the sidebar,
-with every other test green. Each profile that has a backend is now run.
+Every profile with a backend is run, not just the default. The live schedule's
+backend was populated when the model had three features, and its drift reports
+are written once and never rewritten, so indexing today's six-feature list into
+one raised a ``KeyError`` while every other test stayed green.
 
-Skipped where the backend has not been generated. They are gitignored, and CI
-runs only `uv sync` + ruff + pytest without building them, so requiring one here
-would fail CI for a missing artifact rather than a real defect.
+Skipped where the backend has not been generated. Backends are gitignored and CI
+does not build them, so requiring one here would fail on a missing artifact
+rather than on a defect.
 """
 
 from pathlib import Path

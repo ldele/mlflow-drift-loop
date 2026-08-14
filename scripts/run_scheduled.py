@@ -1,15 +1,14 @@
-"""Phase 3: one incremental scheduled cycle against a persistent backend.
+"""One incremental scheduled cycle against a persistent backend.
 
-This is what the GitHub Action calls on a cron. Unlike the Phase 1/2 scripts
-(which replay a whole timeline in a single process), each invocation does exactly
-one thing and then exits:
+What the weekly GitHub Action calls. Where the replay scripts walk a whole
+timeline in one process, each invocation here does one thing and exits:
 
-  * no champion registered yet  -> bootstrap one on the trailing window (first deploy),
-  * champion exists             -> run a single monitoring cycle at ``as_of`` and append it.
+  * no champion registered yet  -> bootstrap one on the trailing window,
+  * champion exists             -> run a single monitoring cycle at ``as_of``.
 
-State lives in a persistent MLflow backend (``mlflow_scheduled.db``) that survives
-between runs -- locally that's just the file; in CI the workflow commits it back
-so the next scheduled run continues where this one left off. Nothing is ever reset.
+State lives in a persistent MLflow backend (``mlflow_scheduled.db``): locally
+that is just the file, and in CI the workflow commits it back so the next run
+continues where this one left off. Nothing is ever reset.
 
     python scripts/run_scheduled.py [--as-of YYYY-MM-DD] [--lag-days N]
 
@@ -52,8 +51,8 @@ def _resolve_as_of(args: argparse.Namespace) -> pd.Timestamp:
 
 
 def _emit_ci(*, promotion: bool, headline: str) -> None:
-    """Under GitHub Actions, expose a ``promotion`` step-output (for the notice
-    step to key on) and drop a line in the run's summary. A no-op locally."""
+    """Expose a ``promotion`` step-output and a summary line under GitHub
+    Actions, for the notice step to key on. A no-op locally."""
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a", encoding="utf-8") as fh:
@@ -74,7 +73,7 @@ def main() -> None:
 
     as_of = _resolve_as_of(args)
     cfg = PROFILE.loop
-    # NB: setup only -- never reset(). The whole point of Phase 3 is persistence.
+    # setup only, never reset(): this backend accrues history across runs.
     tracking.setup(cfg.experiment_name, PROFILE.db_filename)
 
     om_cfg = OpenMeteoConfig(

@@ -9,9 +9,15 @@ Window layout for one run at time ``as_of`` (half-open windows)::
 - **monitor** drives both drift signals (data drift vs. the champion's training
   distribution, and the champion's current RMSE vs. its baseline).
 - **holdout** is the judge. It is excluded from the challenger's training data
-  and post-dates the champion's, so *neither model has seen it*. That is the
-  leak the original prototype had: it trained the challenger on part of the
-  window it was then scored on.
+  and post-dates the champion's, so neither model has seen it. ``run_cycle``
+  raises rather than promote on a holdout that overlaps either.
+
+Three rules can call for a challenger, and any of them is enough. Two ask
+whether the champion is failing: its error against its own training baseline
+(``perf_drift_threshold``) and its skill against a daily profile
+(``skill_floor``). The third asks nothing about the model's error at all, only
+how long since it last passed an exam (``recertify_days``), because the first
+two can both stay quiet indefinitely while a model goes stale.
 """
 
 from __future__ import annotations
@@ -30,7 +36,14 @@ from driftloop.data.base import DataSource
 from driftloop.drift import DataDriftResult, compute_data_drift, compute_perf_drift, distribution_report
 from driftloop.model import error_metrics, predictions_frame, rmse, train
 from driftloop.retrospect import climatology_skill
-from driftloop.tracking import CHALLENGER_ALIAS, CHAMPION_ALIAS, load_champion, log_and_register, promote
+from driftloop.tracking import (
+    CHALLENGER_ALIAS,
+    CHAMPION_ALIAS,
+    load_champion,
+    log_and_register,
+    mark_certified,
+    promote,
+)
 
 HOUR = pd.Timedelta(1, unit="h")
 
@@ -54,10 +67,16 @@ class CycleResult:
     retrain_triggered: bool
     promotion_decision: str  # "none" | "promoted" | "rejected"
     # Skill against a 30-day daily profile, and whether it crossed the floor.
-    # NaN and False when the floor is disabled, so a backend that predates it
-    # reads the same as one that has it switched off.
+    # NaN and False when the floor is disabled, so a backend predating it reads
+    # the same as one with it switched off.
     champion_skill: float = float("nan")
     skill_drift_detected: bool = False
+    # How long since the serving champion last passed an exam, and whether that
+    # is past `recertify_days`. The age is recorded whether or not the trigger
+    # is switched on, because it is the quantity the ratchet hides: a champion
+    # can be 200 days past its last exam with every drift signal quiet.
+    certified_age_days: float = float("nan")
+    recertify_due: bool = False
     challenger_rmse: float | None = None
     champion_rmse_holdout: float | None = None
     performance_gap: float | None = None
@@ -75,7 +94,7 @@ def bootstrap_champion(
     train_end: pd.Timestamp,
     cfg: LoopConfig,
 ) -> str:
-    """Train the very first champion and register it. Step 2 of the plan."""
+    """Train the first champion and register it under the ``champion`` alias."""
     df = source.get_data(train_start, train_end)
     trained = train(df, kind=cfg.model_kind)
 
@@ -115,25 +134,31 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
 
     # --- Signal 2b: the same question against a yardstick that holds still ---
     #
-    # `perf` divides by the champion's own training error, so a promotion resets
-    # it and the bar ratchets upward until nothing can cross it. This asks
-    # instead whether the champion still beats a 30-day hour-of-day profile of
-    # recent pollution -- a baseline that knows nothing about which model is in
-    # service, and so cannot be moved by promoting one.
-    #
-    # It is an *additional* way to fire, never a way to suppress: a model can be
-    # bad against its own history, or bad against the cheap alternative, and
-    # either is grounds for training a challenger. The gate still decides whether
-    # one ships.
+    # `perf` divides by the champion's own training error, so every promotion
+    # resets the denominator and the bar ratchets upward. This asks instead
+    # whether the champion still beats a 30-day hour-of-day profile of recent
+    # pollution, which nothing about promoting a model can move. Strictly an
+    # additional way to fire; the gate still decides what ships.
     champion_skill = float("nan")
     skill_detected = False
     if cfg.skill_floor is not None:
         champion_skill = climatology_skill(
             source, monitor, monitor_start, source.forecast_lead_days, champion_rmse
         )
-        # NaN means the baseline had no data to average, which is no opinion
-        # rather than a failing model.
+        # NaN means the baseline had no data to average: no opinion, not a
+        # failing model.
         skill_detected = not pd.isna(champion_skill) and champion_skill < cfg.skill_floor
+
+    # --- Signal 3: the certificate expired ---
+    #
+    # Not a drift signal at all, which is the point. Signals 1 and 2 both wait
+    # to be told the model is failing, and both can be wrong about that
+    # indefinitely: the ratio ratchets shut and PSI saturates. This asks only
+    # how long it has been since the champion was last examined on data it had
+    # never seen, which is a fact about the calendar that nothing the loop does
+    # can suppress.
+    certified_age_days = float((as_of - champion.certified_at()) / pd.Timedelta(1, unit="D"))
+    recertify_due = cfg.recertify_days is not None and certified_age_days >= cfg.recertify_days
 
     result = CycleResult(
         as_of=as_of,
@@ -148,11 +173,13 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
         perf_drift_ratio=perf.ratio,
         data_drift_detected=data_drift.detected(cfg.psi_threshold),
         perf_drift_detected=perf.detected,
-        retrain_triggered=perf.detected or skill_detected,
+        retrain_triggered=perf.detected or skill_detected or recertify_due,
         promotion_decision="none",
         per_feature_psi=dict(data_drift.per_feature_psi),
         champion_skill=champion_skill,
         skill_drift_detected=skill_detected,
+        certified_age_days=certified_age_days,
+        recertify_due=recertify_due,
     )
 
     challenger = None
@@ -187,11 +214,10 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
 
 
 def _log_monitoring_artifacts(champion_pipeline, monitor: pd.DataFrame, reference: pd.DataFrame) -> None:
-    """Log the per-run drift report + champion predictions as artifacts.
+    """Log the per-run drift report and champion predictions as artifacts.
 
-    This is the standard "each run leaves a report behind" pattern. It also keeps
-    the dashboard decoupled from the data source: it reads these files, not the
-    generator, so nothing about the panels changes when Phase 2 swaps in real data.
+    The dashboard reads these files rather than the data source, so a panel does
+    not have to know where the rows came from.
     """
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -203,6 +229,20 @@ def _log_monitoring_artifacts(champion_pipeline, monitor: pd.DataFrame, referenc
         (tmp_path / "feature_distributions.json").write_text(json.dumps(report), encoding="utf-8")
 
         mlflow.log_artifacts(str(tmp_path), artifact_path="monitoring")
+
+
+def _retrain_reason(result: CycleResult) -> str:
+    """Every trigger that fired this run, joined with ``+``, or ``none``."""
+    reasons = [
+        name
+        for name, fired in (
+            ("ratio", result.perf_drift_detected),
+            ("skill", result.skill_drift_detected),
+            ("recert", result.recertify_due),
+        )
+        if fired
+    ]
+    return "+".join(reasons) if reasons else "none"
 
 
 def _log_cycle(
@@ -222,17 +262,16 @@ def _log_cycle(
                 "data_drift_detected": str(result.data_drift_detected),
                 "perf_drift_detected": str(result.perf_drift_detected),
                 "skill_drift_detected": str(result.skill_drift_detected),
-                # Which rule woke the loop up. "ratio" is the champion against
-                # its own training error, "skill" is it against the daily
-                # profile, "both" when they agree. Recorded because the whole
-                # point of adding the second one is being able to see how often
-                # the first had gone quiet while the model was failing.
-                "retrain_reason": (
-                    "both" if result.perf_drift_detected and result.skill_drift_detected
-                    else "ratio" if result.perf_drift_detected
-                    else "skill" if result.skill_drift_detected
-                    else "none"
-                ),
+                "recertify_due": str(result.recertify_due),
+                # Every rule that fired, joined, so they can be counted
+                # separately: each trigger was added to catch weeks where the
+                # ones before it went quiet, and that is only checkable if a
+                # week names all of its reasons rather than the first one.
+                # "ratio" is the champion against its own training error,
+                # "skill" against the daily profile, "recert" an expired
+                # certificate. Count with `in`, not equality: a week can read
+                # "ratio+recert".
+                "retrain_reason": _retrain_reason(result),
                 "retrain_triggered": str(result.retrain_triggered),
                 "promotion_decision": result.promotion_decision,
                 "data_drift_label": result.data_drift_label,
@@ -252,10 +291,13 @@ def _log_cycle(
             # 1.0 / 0.0 so the events show up as a step function in the UI.
             "retrain_triggered": float(result.retrain_triggered),
             "promotion_event": float(result.promotion_decision == "promoted"),
+            # Logged whether or not the trigger is on, because it is the measure
+            # the ratchet hides: with every drift signal quiet, this is the only
+            # number that still moves.
+            "certified_age_days": result.certified_age_days,
         }
-        # Only when the floor is on. Logging NaN would put a metric on the run
-        # that reads as a measurement rather than as "not computed", and the
-        # dashboards would then have to distinguish the two.
+        # Only when the floor is on. A logged NaN reads as a measurement rather
+        # than as "not computed", and both UIs would have to tell them apart.
         if not pd.isna(result.champion_skill):
             metrics["champion_skill"] = result.champion_skill
         for feature, value in data_drift.per_feature_psi.items():
@@ -276,6 +318,18 @@ def _log_cycle(
             if result.promotion_decision == "promoted":
                 promote(cfg.registered_model_name, version)
                 mlflow.set_tag("champion_version", version)
+            elif cfg.recertify_days is not None:
+                # The incumbent sat an exam on unseen data and kept its place,
+                # so its certificate is renewed from today. Only recorded when
+                # the trigger is on: a backend that never uses it should carry
+                # no tag suggesting otherwise.
+                #
+                # A promoted challenger is not marked. It has no `last_certified`
+                # tag, so its certificate runs from the end of its own training
+                # data, which is `holdout_days` before today. That is the more
+                # conservative reading and the more honest one: what expires is
+                # the currency of what the model knows.
+                mark_certified(cfg.registered_model_name, result.champion_version, result.as_of)
 
 
 def run_simulation(
@@ -289,15 +343,14 @@ def run_simulation(
     # A challenger promoted at `as_of` trained up to `as_of - holdout_days`. The
     # next run monitors [as_of + step_days - monitor_days, as_of + step_days), so
     # the two windows touch at step_days + holdout_days == monitor_days and
-    # overlap below it. Scoring a champion on hours it fitted makes it look
-    # healthier than it is, which suppresses the retrain trigger.
+    # overlap below it, which scores a champion on hours it fitted and suppresses
+    # the retrain trigger.
     #
-    # This replaced `step_days >= holdout_days`, which is the same condition at
-    # the shipped values (7 + 7 == 14) and wrong on both sides of them. It
-    # admitted holdout_days=3 at a weekly cadence, where four days of every
-    # monitor window is the new champion's own training data, and it rejected
-    # holdout_days=14, which is clean. Being right only at the default is how a
-    # guard survives without ever being tested away from it.
+    # Not `step_days >= holdout_days`, which agrees only at the shipped values
+    # (7 + 7 == 14): that form admitted holdout_days=3 at a weekly cadence, where
+    # four days of every monitor window is the new champion's training data, and
+    # rejected a clean holdout_days=14. Both directions are pinned in
+    # tests/test_loop.py.
     if step_days + cfg.holdout_days < cfg.monitor_days:
         raise ValueError(
             f"step_days ({step_days}) + holdout_days ({cfg.holdout_days}) must be at least "

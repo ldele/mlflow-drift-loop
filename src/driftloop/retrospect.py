@@ -27,20 +27,18 @@ asserts against the loop's own logged RMSE.
 baseline, zero means it matched it, negative means it lost.
 
 The baseline is an hour-of-day mean over the ``CLIMATOLOGY_DAYS`` before the
-window, and it is deliberately *not* derived from the champion's training
-window. A baseline built from the champion's own training data inherits the
-champion's staleness -- a winter-trained climatology also predicts high in July
--- so it cannot measure the thing we are trying to measure. The baseline has to
-be independent of the model it is judging.
+window, and is not derived from the champion's training window. One built from
+the champion's own training data would inherit its staleness: a winter-trained
+climatology also predicts high in July, so it could not measure staleness at
+all. The baseline has to be independent of the model it judges.
 
-It is held to the same causality rule as everything else here: the reference
-period ends ``forecast_lead_days`` before the window starts, so every hour it
-averages was observable when the forecast for the window's first hour was
-issued. It does get to see recent PM2.5, which the model never does, and that
-is stated wherever the number is shown rather than buried -- it is the same
-information-set distinction the benchmark card already draws. The justification
-is that it is the alternative you could actually deploy: if a month-old daily
-profile beats the model, the model is not paying for itself.
+The same causality rule applies as everywhere else here. The reference period
+ends ``forecast_lead_days`` before the window starts, so every hour it averages
+was observable when the forecast for the window's first hour was issued. It does
+see recent PM2.5, which the model never does; that asymmetry is stated wherever
+the number is published. The justification is that it is the alternative that
+could actually be deployed: if a month-old daily profile beats the model, the
+model is not paying for itself.
 """
 
 from __future__ import annotations
@@ -61,10 +59,9 @@ CLIMATOLOGY_DAYS = 30
 
 # Where a promotion stops counting as short-serving. The seven-day exam holds
 # its calibration for roughly five weeks and reverses sign past this, so the
-# split is drawn where the evidence puts it rather than at a round number that
-# happens to look tidy. It lives here because both UIs draw the same split, and
-# a constant duplicated across Python and JavaScript is one of them silently
-# telling a different story after an edit.
+# split follows the evidence rather than a round number. Defined here and
+# published through data.json, because both UIs draw it and a threshold kept by
+# hand in two languages ends up telling two stories.
 GATE_LONG_WEEKS = 20
 
 
@@ -99,11 +96,10 @@ class RegisteredModel:
     def importance(self, reference: pd.DataFrame) -> dict[str, float]:
         """|slope| x the feature's spread: µg/m³ of prediction per 1-sd move.
 
-        Raw slopes are per original unit and so are not comparable to each other
-        -- a slope per hPa and a slope per W/m² are different questions. Scaling
-        each by the feature's own standard deviation over a reference window puts
-        them in one unit (µg/m³) and answers the comparable question: how much
-        does this feature actually move the prediction?
+        Raw slopes are per original unit and not comparable to each other, since
+        a slope per hPa and one per W/m² answer different questions. Scaling each
+        by the feature's own standard deviation over a reference window puts them
+        in µg/m³ and makes them comparable.
         """
         return {
             feature: abs(coef) * float(np.std(reference[feature].to_numpy(dtype=float)))
@@ -116,9 +112,8 @@ class ArtifactModel:
     """A registered version loaded from its logged artifact rather than its tags.
 
     The fallback for anything that is not a straight line. A tree has no slopes
-    to write into the registry, so scoring one on a window it never served means
-    unpickling it, which is slower and needs the artifact store to still be
-    reachable. Both are why the linear path exists and stays the default.
+    to write into the registry, so scoring one means unpickling it: slower, and
+    it needs the artifact store to still be reachable.
 
     Same surface as ``RegisteredModel`` so ``build`` cannot tell them apart.
     """
@@ -140,16 +135,14 @@ class ArtifactModel:
 def registered_models(client, model_name: str, load_artifacts: bool = False):
     """Rebuild every registered version so it can be scored on any window.
 
-    The fast path reads coefficient tags, which is exact, needs no artifact
-    store, and is the reason most of this module is cheap. Versions whose tags
-    predate coefficient logging are skipped rather than guessed at: a version we
-    cannot reconstruct is one we must not score.
+    The fast path reads coefficient tags: exact, and no artifact store needed.
+    Versions whose tags predate coefficient logging are skipped rather than
+    guessed at.
 
     ``load_artifacts`` turns on the slow path for versions with no coefficients,
-    unpickling each one instead. Off by default because it is slower, because it
-    needs paths that a backend built on another machine will not have, and
-    because for the shipped Ridge it can only reproduce what the tags already
-    say. The model ablation is the reason it exists.
+    unpickling each instead. Off by default: it is slower, it needs artifact
+    paths a backend built elsewhere will not have, and for the shipped Ridge it
+    only reproduces what the tags already say. The ablation is why it exists.
     """
     out: dict[int, RegisteredModel | ArtifactModel] = {}
     unscoreable: list[int] = []
@@ -222,12 +215,11 @@ def climatology_skill(
     """``1 - model_rmse / climatology_rmse`` on one window.
 
     Lives here rather than in ``loop`` so the live retrain trigger and the
-    after-the-fact analysis answer to the *same* baseline, computed by the same
-    function under the same causality rule. Two implementations of "what would a
-    daily profile have said" is precisely the kind of near-duplicate that drifts
-    apart and then makes the trigger and the chart disagree about the same model.
+    after-the-fact analysis answer to the same baseline under the same causality
+    rule. Two implementations would drift apart and leave the trigger and the
+    chart disagreeing about one model.
 
-    NaN where the baseline is unavailable, which the caller must treat as "no
+    NaN where the baseline is unavailable, which callers must treat as "no
     opinion" rather than as a failing model.
     """
     actual = window[TARGET].to_numpy(dtype=float)
@@ -240,11 +232,11 @@ def climatology_skill(
 def training_window_stats(source: DataSource, model: RegisteredModel) -> dict[str, dict[str, float]]:
     """Each feature's central range over the window a model was trained on.
 
-    Drawn behind the feature series as a band, this is the covariate-drift claim
-    stated physically: the band is what the model was shown, the line is what the
-    world did afterwards, and a line leaving its band is the reason a retrain is
-    justified. The 10th-90th percentile rather than the full range, because one
-    freak hour should not widen the band to cover everything.
+    Drawn behind the feature series as a band: the band is what the model was
+    shown, the line is what the world did afterwards, and a line leaving its band
+    is the physical form of the covariate-drift claim. The 10th-90th percentile
+    rather than the full range, so one freak hour cannot widen it to cover
+    everything.
     """
     window = source.get_data(model.train_start, model.train_end + pd.Timedelta(1, unit="h"))
     stats: dict[str, dict[str, float]] = {}
@@ -267,23 +259,20 @@ class Retrospective:
     as_of: list[pd.Timestamp] = field(default_factory=list)
     climatology_rmse: list[float] = field(default_factory=list)
     champion_version: list[int] = field(default_factory=list)
-    # Which version actually *served* each window, which is not always the one
-    # tagged on the run. A run that promotes monitors with the outgoing champion
-    # and then writes the winner's version onto the tag, so on promotion runs the
-    # two differ by one. `champion_version` keeps the tag, because a decay curve
-    # should begin where a model was promoted; this is for asking what was in
-    # service at the time.
+    # Which version served each window, which is not always the one tagged on
+    # the run: a run that promotes monitors with the outgoing champion and then
+    # writes the winner onto the tag. `champion_version` keeps the tag, which is
+    # correct for "when did this model start"; this answers "what was serving".
     serving_version: list[int] = field(default_factory=list)
     champion_rmse: list[float] = field(default_factory=list)
     champion_skill: list[float] = field(default_factory=list)
-    # Per-window mean of each weather feature, and of the target. This is the
-    # covariate story told in the units the features are actually measured in --
-    # °C, m/s, hPa -- rather than as a PSI, which compresses "it got 20 °C
-    # colder" into a number whose scale nobody can read.
+    # Per-window mean of each weather feature, and of the target: the covariate
+    # story in the units the features are measured in (°C, m/s, hPa) rather than
+    # as a PSI, whose scale is not readable.
     feature_means: dict[str, list[float]] = field(default_factory=dict)
     target_mean: list[float] = field(default_factory=list)
-    # version -> its RMSE on *every* window, including ones it never served.
-    # That is what turns "the champion line" into one decay curve per model.
+    # version -> its RMSE on every window, including ones it never served, which
+    # is what turns the single champion line into one decay curve per model.
     version_rmse: dict[int, list[float]] = field(default_factory=dict)
     version_skill: dict[int, list[float]] = field(default_factory=dict)
     promoted_at: dict[int, pd.Timestamp] = field(default_factory=dict)
@@ -306,13 +295,12 @@ def retraining_value(result: Retrospective) -> dict[str, float | int]:
     actually serving. It answers the different question of whether retraining
     helped when it happened.
 
-    The first can be badly misleading on its own, which is why both are
-    published. Comparing one median against another is unpaired, so where both
-    distributions are dominated by the same seasonal swing the comparison mostly
-    measures the season. Johannesburg does not promote anything until run 14 of
-    20, so 70% of its windows have the two models identical, both medians land on
-    the same value, and the headline reads 0.0% while every window where a
-    retrained model was serving improved on the original.
+    Both are published because the first misleads on its own. Comparing one
+    median against another is unpaired, so where both distributions are dominated
+    by the same seasonal swing the comparison mostly measures the season.
+    Johannesburg promotes nothing until run 14 of 20, so 70% of its windows have
+    the two models identical, both medians land on the same value, and the
+    headline reads 0.0% while every window a retrained model served improved.
     """
     arrays = retraining_series(result)
     if not arrays:
@@ -338,9 +326,8 @@ def retraining_series(result: Retrospective) -> dict[str, np.ndarray]:
 
     Split out from ``retraining_value`` so the uncertainty on those headlines is
     resampled from the same numbers they were computed on. A bootstrap that
-    reconstructs its own input is a bootstrap of a different statistic, and the
-    discrepancy shows up as an interval that does not contain its own point
-    estimate.
+    reconstructs its own input resamples a different statistic, and the
+    discrepancy surfaces as an interval that excludes its own point estimate.
 
     Returns ``served``/``frozen`` over every usable window, and
     ``served_acted``/``frozen_acted`` over the windows a retrained model was in
@@ -356,16 +343,15 @@ def retraining_series(result: Retrospective) -> dict[str, np.ndarray]:
     if not usable.any():
         return {}
 
-    # Windows where a retrained model was the one serving, so the comparison is
-    # about retraining rather than about a model against itself.
+    # Windows where a retrained model was serving, so the comparison is about
+    # retraining rather than a model against itself.
     #
     # Keyed on the version in service, not on whether the two error values
     # differ. The served figure is the loop's logged error and the frozen one is
-    # reconstructed from coefficient tags, so for the very same model they agree
-    # only to the six decimals the tags carry. An equality test on floats from
-    # two sources therefore counted every window as retrained, which pulled
-    # Johannesburg's paired result from +20% down to zero by averaging in
-    # thirteen windows where nothing had been retrained yet.
+    # reconstructed from coefficient tags, so for the same model they agree only
+    # to the six decimals the tags carry. An equality test therefore counted
+    # every window as retrained, pulling Johannesburg's paired result from +20%
+    # to zero on thirteen windows where nothing had been retrained yet.
     serving = np.asarray(result.serving_version or result.champion_version, dtype=int)
     acted = usable & (serving != frozen_version)
 
@@ -376,11 +362,11 @@ def retraining_series(result: Retrospective) -> dict[str, np.ndarray]:
         "as_of": as_of[usable],
         "served_acted": served_all[acted],
         "frozen_acted": frozen_all[acted],
-        # The run dates behind the acted arrays, so two replays of the same city
-        # under different settings can be compared on the weeks they share
-        # rather than by position. Different settings promote at different
-        # times, so the two acted sets are not the same length and lining them
-        # up by index would silently compare unrelated weeks.
+        # The run dates behind the acted arrays, so two replays of one city under
+        # different settings are compared on the weeks they share rather than by
+        # position. Different settings promote at different times, so the two
+        # acted sets differ in length and index alignment would pair up
+        # unrelated weeks.
         "acted_as_of": as_of[acted],
     }
 
@@ -426,16 +412,14 @@ def gate_uncertainty(
 ) -> dict[str, dict[str, stats.Interval]]:
     """Intervals on the gate-calibration means, split short-serving vs long.
 
-    Resampled IID (block length 1) rather than in blocks, and that is a
-    deliberate difference from the retraining figures. These rows are one per
-    *promotion*, not one per week: they are already irregularly spaced, they are
-    pooled across six cities, and consecutive promotions do not overlap the way
-    consecutive monitor windows do. Blocking them would impose a serial
+    Resampled IID (block length 1) rather than in blocks, unlike the retraining
+    figures. These rows are one per promotion, not one per week: irregularly
+    spaced, pooled across six cities, and consecutive promotions do not overlap
+    the way consecutive monitor windows do. Blocking would impose a serial
     structure the rows do not have.
 
-    The ``long`` group is the one the project's central claim rests on, and it
-    is where the interval will hurt most: three promotions across six cities is
-    not many, and the width says so.
+    The ``long`` group carries the project's central claim on three promotions
+    across six cities, and the interval width says so.
     """
     out: dict[str, dict[str, stats.Interval]] = {}
     for label, rows in (
@@ -458,15 +442,15 @@ def gate_uncertainty(
 def gate_summary(gate: list[dict], long_weeks: int = GATE_LONG_WEEKS) -> dict[str, dict[str, float]]:
     """The gate's calibration, split by how long the winner went on to serve.
 
-    Two groups rather than a correlation, because the interesting claim is not
-    "the exam is noisy" but "the exam has a shelf life": it is honest over the
-    horizon it tests and reverses sign beyond it. A single r would average those
-    two regimes into one unremarkable number.
+    Two groups rather than a correlation. The claim is not that the exam is
+    noisy but that it has a shelf life: honest over the horizon it tests, and
+    sign-reversed beyond it. A single correlation would average the two regimes
+    into one unremarkable number.
 
-    ``harmful`` counts promotions that delivered a negative margin -- the winner
-    was worse over its service life than the model it displaced. That is the
-    only failure mode the gate exists to prevent, so it is counted rather than
-    left to be eyeballed off a scatter.
+    ``harmful`` counts promotions that delivered a negative margin, where the
+    winner was worse over its service life than the model it displaced. That is
+    the failure mode the gate exists to prevent, so it is counted rather than
+    read off a scatter.
     """
     out: dict[str, dict[str, float]] = {}
     for label, rows in (
@@ -505,10 +489,10 @@ def build(
     """Score every reconstructable version on every monitoring window.
 
     ``runs`` is the loop's own monitor-cycle log, one row per scheduled run, with
-    ``as_of`` and ``champion_version`` columns, plus the holdout metrics the gate
-    calibration reads. Everything else is derived, so this cannot disagree with
-    what the loop did -- it only adds what the loop had no reason to compute at
-    the time.
+    ``as_of`` and ``champion_version`` columns plus the holdout metrics the gate
+    calibration reads. Everything else is derived from it, so this cannot
+    disagree with what the loop did; it only adds what the loop had no reason to
+    compute at the time.
     """
     result = Retrospective()
     if runs.empty or not models:
@@ -546,35 +530,20 @@ def build(
     champion_versions = [int(v) for v in runs["champion_version"]]
     result.champion_version = champion_versions
 
-    # The champion series is the loop's own logged error, not this module's
-    # reconstruction of it.
-    #
-    # They disagree on promotion runs, and the logged one is right. A run that
-    # promotes monitors with the *old* champion and then overwrites its
-    # `champion_version` tag with the winner, so reading the tag credits the new
-    # model with a window it never served -- and that window overlaps the
-    # challenger's own training data, so the credit is flattering. Delhi came out
-    # at +44.8% for retraining that way against the benchmark's +43.8%, a whole
-    # point of free improvement from an accounting slip.
-    #
-    # The per-version curves keep using the tag, which is correct for them: a
-    # decay curve should start where a model was promoted.
     # Whether each run promoted. The loop tags every monitor run with its
-    # decision; where that tag is missing, fall back to the only other evidence
-    # the frame holds -- the champion tag changing between two runs, which a
-    # promotion does and nothing else does. That fallback cannot see a first run
-    # that promoted, because there is no earlier tag to differ from, so it
-    # degrades to the pre-tag behaviour rather than to something wrong.
+    # decision; where the tag is missing, fall back to the champion tag changing
+    # between two runs, which only a promotion does. That fallback cannot see a
+    # first run that promoted, since there is no earlier tag to differ from, so
+    # it degrades to the pre-tag behaviour rather than to something wrong.
     if "tags.promotion_decision" in runs:
         promoted = [str(v) == "promoted" for v in runs["tags.promotion_decision"]]
     else:
         promoted = [i > 0 and v != champion_versions[i - 1] for i, v in enumerate(champion_versions)]
-    # What was serving before the *first* run is not in the run log at all: the
-    # bootstrap champion is registered by `bootstrap_champion` before any monitor
-    # cycle exists. So on a first run that promotes -- which Kraków and Los
-    # Angeles both do -- there is no earlier row to read the outgoing version
-    # off, and taking the tag credits the incoming model with a window served by
-    # the bootstrap. The registry has the answer: the bootstrap is the lowest
+    # What was serving before the first run is not in the run log: the bootstrap
+    # champion is registered before any monitor cycle exists. So on a first run
+    # that promotes, which Kraków and Los Angeles both do, there is no earlier
+    # row to read the outgoing version off, and the tag credits the incoming
+    # model with a window the bootstrap served. The bootstrap is the lowest
     # registered version, which is the same model `retraining_value` freezes.
     bootstrap_version = min(models)
     result.serving_version = [
@@ -582,6 +551,15 @@ def build(
         for i, v in enumerate(champion_versions)
     ]
 
+    # The champion series comes from the loop's own logged error rather than
+    # this module's reconstruction. The two disagree on promotion runs, and the
+    # logged one is right: the run monitored with the old champion before
+    # overwriting the tag, so reading the tag credits the new model with a window
+    # it never served, on data it trained on. Delhi scored +44.8% for retraining
+    # that way against the benchmark's +43.8%.
+    #
+    # The per-version curves keep using the tag, which is correct for them: a
+    # decay curve should start where a model was promoted.
     logged = runs["metrics.champion_rmse"] if "metrics.champion_rmse" in runs else None
     for i, version in enumerate(champion_versions):
         fallback = result.version_rmse.get(version, [float("nan")] * len(windows))[i]
@@ -615,25 +593,23 @@ def _gate_calibration(
 ) -> list[dict]:
     """What the seven-day exam promised against what the winner went on to do.
 
-    The gate promotes on a single holdout window. That margin is in-sample *for
-    the decision*: it is the number the decision was made on. The out-of-sample
-    check is what the new champion actually delivered over its service life,
-    measured against the champion it replaced scored on those same windows --
-    which is exactly the counterfactual the loop never had a reason to compute.
+    The gate promotes on a single holdout window, so that margin is in-sample
+    for the decision. The out-of-sample check is what the new champion delivered
+    over its service life against the champion it replaced, scored on those same
+    windows: the counterfactual the loop had no reason to compute.
 
-    A gate that works shows the two rising together. A gate overfitting a short
+    A working gate shows the two rising together. A gate overfitting a short
     exam shows exam margins scattered against delivered ones.
     """
     out: list[dict] = []
     for version, (first, last) in sorted(spans.items()):
         # A span begins where the champion tag changed, which happens only on a
-        # promotion -- except at index 0, where the tag simply starts. Asking the
-        # run whether it promoted covers both, and it is what lets a first run
-        # that *did* promote be judged: the version it replaced is not in an
-        # earlier row (there is none) but in the registry, as the bootstrap.
-        # Without this, Kraków and Los Angeles each silently lost a promotion,
-        # and `champion_versions[first - 1]` at first == 0 would have indexed the
-        # end of the list.
+        # promotion, except at index 0 where the tag simply starts. Asking the
+        # run whether it promoted covers both cases and is what lets a first run
+        # that did promote be judged, against the bootstrap rather than against
+        # a row that does not exist. Without it Kraków and Los Angeles each lost
+        # a promotion, and `champion_versions[first - 1]` at first == 0 would
+        # have indexed the end of the list.
         if not promoted[first]:
             continue
         replaced = champion_versions[first - 1] if first > 0 else bootstrap_version
@@ -646,15 +622,15 @@ def _gate_calibration(
         if champion_holdout is None or pd.isna(champion_holdout) or pd.isna(challenger_holdout):
             continue
 
-        # From the run *after* the promotion. The monitor window at the promotion
+        # From the run after the promotion. The monitor window at the promotion
         # itself is [as_of-14d, as_of), whose first half is inside the window the
-        # challenger trained on -- scoring it there would be marking its own
-        # homework. One step later the window is [as_of-7d, as_of+7d), which the
-        # challenger never trained on, so the comparison is clean.
+        # challenger trained on. One step later the window is [as_of-7d,
+        # as_of+7d), which the challenger never trained on.
+        #
         # At least one window even for a champion replaced the following week:
-        # scoring it one step past its retirement is a counterfactual, not a
-        # leak, and dropping those promotions would quietly bias the calibration
-        # toward the long-serving models that are the interesting failures.
+        # scoring it one step past its retirement is a counterfactual rather than
+        # a leak, and dropping those promotions would bias the calibration toward
+        # the long-serving models that are the interesting failures.
         served = slice(first + 1, max(last + 1, first + 2))
         new_rmse = [v for v in result.version_rmse[version][served] if not np.isnan(v)]
         old_rmse = [v for v in result.version_rmse[replaced][served] if not np.isnan(v)]
@@ -672,7 +648,7 @@ def _gate_calibration(
                 if champion_holdout
                 else float("nan"),
                 # What it delivered: the same edge over the windows it served,
-                # against the model it displaced, scored on those windows too.
+                # against the displaced model scored on those windows too.
                 "delivered_margin": float(1.0 - new_median / old_median) if old_median else float("nan"),
                 "weeks_served": last - first + 1,
                 "required_margin": promotion_margin,

@@ -2,26 +2,25 @@
 
 Two questions the loop never answers about itself:
 
-1. **Does it beat anything?** A champion RMSE means nothing on its own. Here it
-   is scored against four predictors that need no training at all.
-2. **Why alpha=1.0?** It was a default. This tunes it with a forward-chaining
-   split and reports the whole curve, so the choice is visible.
+1. **Does it beat anything?** A champion RMSE means nothing on its own, so it is
+   scored here against predictors that need no training at all.
+2. **Why alpha=1.0?** It is the library default. This tunes it with a
+   forward-chaining split and reports the whole curve, so the cost is visible.
 
-Everything is scored **per monitoring window** -- the same 14-day slices the
-loop reports on -- so three things sit in one column of numbers:
+Everything is scored per monitoring window, the same 14-day slices the loop
+reports on, so three things sit in one column of numbers:
 
-* the champion the loop actually served at that point, having retrained,
+* the champion the loop served at that point, having retrained,
 * the same champion frozen at its first version, never retrained,
 * and the baselines.
 
-That is what makes the comparison mean something. Scoring a frozen champion
-across the whole replay span would measure the counterfactual, not the product.
+Scoring a frozen champion across the whole replay span instead would measure
+the counterfactual rather than the product.
 
-One caveat is stated rather than buried: persistence and seasonal-naive use
-*past PM2.5*, which the Ridge never sees -- it predicts from weather alone. So
-they are not like-for-like on features. They are the right question anyway: is a
-weather model better than repeating the last reading? Where it is not, publish
-that.
+One caveat, stated wherever the table is published: persistence and
+seasonal-naive use past PM2.5, which the Ridge never sees, so they are not
+like-for-like on features. They are still the right comparison, because the
+question is whether a weather model beats repeating the last reading.
 """
 
 from __future__ import annotations
@@ -76,11 +75,10 @@ def autoregressive_lags(lead_days: int) -> tuple[int, int]:
     """Positional lags for the two baselines that are allowed to see past PM2.5.
 
     A forecaster issuing at T for T+lead may use observations up to T and no
-    later. So persistence repeats the reading from *issue time* rather than the
-    one an hour before the target -- the difference between a fair baseline and
-    one handed the answer. Seasonal naive steps back a further day, because at a
-    whole-day lead it would otherwise land on exactly the persistence row and
-    stop being a separate predictor.
+    later, so persistence repeats the reading from issue time rather than the
+    one an hour before the target. Seasonal naive steps back a further day; at a
+    whole-day lead it would otherwise land on the persistence row and stop being
+    a separate predictor.
     """
     if lead_days <= 0:
         return 1, 24
@@ -103,16 +101,15 @@ def detail_map(lead_days: int) -> dict[str, str]:
 def fit_pooled(training: dict[str, pd.DataFrame], alpha: float = 1.0) -> tuple[Pipeline, list[str]]:
     """One model over every city at once, with a per-city intercept.
 
-    Worth having as a baseline because it tests the premise of the whole layout.
-    Six cities each get their own model here; if one model over all of them did
-    just as well, that choice would be wrong.
+    This tests the premise of the layout: each city gets its own model, and if
+    one model over all six did as well, that choice would be wrong.
 
-    The per-city intercept is not a detail. Mean PM2.5 runs from 7 µg/m³ in
-    Melbourne to 84 in Delhi, a spread of 11×, and a single shared intercept
-    cannot straddle it: the same model without the city columns scores 43% worse
-    on average. With them, the weather slopes are shared and only the level is
-    learned per place, which is the interesting question -- does weather push
-    pollution around the same way everywhere?
+    The per-city intercept is load-bearing. Mean PM2.5 runs from 7 µg/m³ in
+    Melbourne to 84 in Delhi, an 11x spread that a single shared intercept
+    cannot straddle; without the city columns the same model scores 43% worse on
+    average. With them the weather slopes are shared and only the level is
+    learned per place, which asks whether weather moves pollution the same way
+    everywhere.
     """
     cities = sorted(training)
     frame = pd.concat(
@@ -179,13 +176,13 @@ def score_windows(
 ) -> list[Scored]:
     """Median RMSE per predictor across the monitoring windows.
 
-    ``served_rmse`` is the loop's own per-window champion RMSE, read from the run
-    it already logged rather than recomputed -- reimplementing the promotion
-    policy here would risk benchmarking a loop that isn't the one that shipped.
+    ``served_rmse`` is the loop's own per-window champion RMSE, read from what it
+    logged rather than recomputed. Reimplementing the promotion policy here would
+    risk benchmarking a loop other than the one that shipped.
     """
-    # Derived from what was computed rather than hardcoded, so a
-    # predictor that could not be built (the pooled model needs every city's
-    # cache) is absent instead of scoring as NaN.
+    # Derived from what was computed rather than hardcoded, so a predictor that
+    # could not be built (the pooled model needs every city's cache) is absent
+    # instead of scoring as NaN.
     names = [
         name
         for name in ("champion_frozen", "pooled_cities", "persistence",
@@ -244,8 +241,8 @@ def tune_alpha(
     """Forward-chaining CV over the training window.
 
     ``TimeSeriesSplit`` never lets a fold train on rows that come after the ones
-    it scores, which a plain K-fold would. On autocorrelated hourly data a random
-    fold leaks badly enough that every alpha looks fine.
+    it scores, which a plain K-fold does. On autocorrelated hourly data that
+    leaks badly enough that every alpha looks fine.
     """
     if len(train) < n_splits + 1:
         return AlphaSweep(best=shipped, shipped=shipped)

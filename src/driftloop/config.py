@@ -54,8 +54,8 @@ class SyntheticConfig:
       cooler, damper air after the drift date). This is covariate drift -> it
       moves the *data drift* (PSI) signal.
 
-    Setting one to 0 and sweeping the other is how we prove the two detectors
-    are actually independent (see ``scripts/sweep_knobs.py``).
+    Holding one at 0 and sweeping the other is what demonstrates the two
+    detectors are independent (see ``scripts/sweep_knobs.py``).
     """
 
     origin: pd.Timestamp = pd.Timestamp("2025-01-01")
@@ -73,49 +73,61 @@ class LoopConfig:
     """Windowing and decision thresholds for one scheduled run."""
 
     # Which model the loop trains. "ridge" ships and produced every published
-    # number. "gbm" exists for scripts/ablate_model.py, which asks whether the
-    # retraining findings are a fact about the world or about a linear model
-    # needing a refit to track seasonality. Nothing else should set it.
+    # number; "gbm" is set only by scripts/ablate_model.py.
     model_kind: str = "ridge"
 
     # Rolling window used to monitor the champion and to measure data drift.
     monitor_days: int = 14
     # How much recent history a challenger is trained on. 180, not 45: PM2.5 is
-    # a seasonal process, and a challenger trained on six weeks only ever sees
-    # one season. It then serves into the next one and is worse than the model
-    # it replaced -- which is exactly what a full annual replay exposed, and
-    # what a replay stopping at the winter peak had been hiding.
+    # seasonal, and a challenger trained on six weeks sees one season, then
+    # serves into the next and loses to the model it replaced. A replay stopping
+    # at the winter peak hid that; a full annual replay exposed it.
     challenger_train_days: int = 180
     # Most-recent slice, held out from the challenger so both models are judged
     # on data neither of them trained on.
     holdout_days: int = 7
 
-    # Retrain trigger: champion RMSE on the monitor window vs. its RMSE at
-    # training time. 1.25 == "the model got 25% worse".
+    # Retrain trigger: champion RMSE on the monitor window against its RMSE at
+    # training time. 1.25 means the model got 25% worse.
     #
-    # This one ratchets, and it is the documented failure the project is built
-    # around. The denominator is the champion's *own* baseline, so every
-    # promotion resets it, and promotions happen at the seasonal peak -- so each
-    # new champion inherits a higher bar than the model it replaced and the bar
-    # never comes back down. Kraków spends its last 30 of 48 runs unable to fire
-    # at any error whatsoever. Kept, because it is still the cheap first check;
-    # the floor below is what stops it going permanently deaf.
+    # This trigger ratchets, which is the failure the project is built around.
+    # The denominator is the champion's own baseline, so every promotion resets
+    # it, and promotions happen at the seasonal peak, so each new champion
+    # inherits a higher bar that never comes back down. Kraków spends its last
+    # 30 of 48 runs unable to fire at any error. Kept as the cheap first check.
     perf_drift_threshold: float = 1.25
-    # The second trigger, and the one that does not move when a model is
-    # promoted: skill against a 30-day hour-of-day profile of recent pollution.
-    # -0.5 reads as "the champion is now 50% worse than doing nothing clever",
-    # which is a statement about the model rather than about its own history.
+    # The second trigger, which a promotion cannot move: skill against a 30-day
+    # hour-of-day profile of recent pollution. -0.5 reads as the champion being
+    # 50% worse than the cheap alternative.
     #
-    # Scale-free on purpose. The other candidate fix was an absolute RMSE floor,
-    # and it cannot be built: to wake Los Angeles, whose deaf stretch tops out at
-    # 18 µg/m³, the floor has to sit below 18 -- where Delhi fires on 100% of its
-    # runs and Johannesburg on 80%. There is no value in between, so an
-    # "absolute" floor is a per-city tuning knob wearing a disguise, and the
-    # cities stop being comparable. A ratio against a yardstick that holds still
-    # is the same idea without that defect.
+    # Scale-free on purpose. An absolute RMSE floor was the other candidate and
+    # cannot be built: waking Los Angeles, whose deaf stretch tops out at
+    # 18 µg/m³, needs a floor below 18, where Delhi fires on 100% of runs and
+    # Johannesburg on 80%. Nothing sits in between, so an absolute floor is a
+    # per-city knob and the cities stop being comparable.
     #
-    # None disables it, which is the pre-2026-08 behaviour.
+    # None disables it. See docs/DECISIONS.md D1 for why it ships off.
     skill_floor: float | None = None
+    # The third trigger, and the only one that does not wait to be told the
+    # model is failing: re-sit the promotion exam when the serving champion's
+    # certificate has expired, whatever every drift signal says.
+    #
+    # Both other triggers ask "has something gone wrong", which a ratcheted
+    # ratio and a saturating PSI can both answer "no" forever. This asks "when
+    # was this model last examined on data it had never seen", which no amount
+    # of promoting models can change the answer to. A champion is certified by
+    # passing an exam: on promotion, and again every time it beats a challenger.
+    # A version that has never been examined dates from the end of its own
+    # training data, so a bootstrap champion is already `holdout_days` stale on
+    # the day it starts serving, which is true of it.
+    #
+    # 35 days is the measured shelf life of the exam rather than a round number:
+    # gate_summary puts the seven-day holdout's calibration at roughly five
+    # weeks, so this re-examines a model as its certificate lapses.
+    #
+    # None disables it, which is the behaviour every published number was
+    # produced under.
+    recertify_days: int | None = None
     # PSI above this counts as a significant feature-distribution shift.
     # (Industry convention: <0.10 stable, 0.10-0.25 moderate, >0.25 significant.)
     psi_threshold: float = 0.25
@@ -185,12 +197,11 @@ DELHI = OpenMeteoConfig(
     horizon=pd.Timestamp("2026-07-15"),
 )
 
-# The counterexample, and it is one on the measurements rather than by design.
-# LA is popularly a summer-smog city, but hourly PM2.5 over 2025-26 peaks in
-# November-December (~29 ug/m3) and bottoms out in June (~15) -- mildly *winter*
-# -bad, and only a ~1.9x swing against Delhi's 3x and Krakow's 5x. Its span
-# covers a whole annual cycle so the loop is watched through the world drifting
-# up and back down again, and mostly declining to act.
+# The counterexample, on the measurements rather than by design. LA reads as a
+# summer-smog city, but hourly PM2.5 over 2025-26 peaks in November-December
+# (~29 ug/m3) and bottoms out in June (~15): mildly winter-bad, and a ~1.9x
+# swing against Delhi's 3x and Krakow's 5x. Its span covers a full annual cycle,
+# so the loop is watched through the world drifting up and back down again.
 LOS_ANGELES = OpenMeteoConfig(
     name="Los Angeles",
     country="US",
@@ -202,16 +213,16 @@ LOS_ANGELES = OpenMeteoConfig(
 
 # --- Southern hemisphere -----------------------------------------------------
 #
-# The three above all peak in *northern* winter, which leaves open the question
-# of whether the loop's thresholds quietly encode a calendar. These three peak in
-# June-August, when Krakow and Delhi are at their cleanest, and are run on
-# identical settings. Each was chosen on the measurements, not on reputation:
-# eighteen candidate cities were fetched and ranked by their PM2.5 swing first.
+# The three above all peak in northern winter, which leaves open whether the
+# loop's thresholds encode a calendar. These three peak in June-August, when
+# Krakow and Delhi are at their cleanest, and run on identical settings. Each
+# was chosen on the measurements: eighteen candidate cities were fetched and
+# ranked by their PM2.5 swing first.
 
-# Krakow's twin, six months out of phase: a coastal basin that traps winter
-# inversions. The widest swing of every city measured -- ~18 ug/m3 in December
-# to ~94 in June, a 5.1x walk -- which makes it the strongest evidence that the
-# detection is reading the world and not the date.
+# Krakow's twin, six months out of phase: a basin that traps winter inversions.
+# The widest swing of every city measured, ~18 ug/m3 in December to ~94 in June
+# (5.1x), and so the strongest evidence that detection reads the world rather
+# than the date.
 SANTIAGO = OpenMeteoConfig(
     name="Santiago",
     country="CL",
@@ -232,11 +243,10 @@ JOHANNESBURG = OpenMeteoConfig(
     horizon=pd.Timestamp("2026-07-15"),
 )
 
-# Winter wood-heater smoke, and the Los Angeles lesson repeating: Sydney is the
-# reputationally obvious Australian city and its PM2.5 is flat (1.5x). Melbourne
-# swings 3.1x. The catch is that it does so between ~5 and ~15 ug/m3, so the
-# drift is real in ratio while the air stays close to the WHO guideline
-# throughout -- a clean city whose model still goes stale.
+# Winter wood-heater smoke. Sydney is the obvious Australian candidate and its
+# PM2.5 is flat (1.5x); Melbourne swings 3.1x, but between ~5 and ~15 ug/m3, so
+# the drift is real in ratio while the air stays near the WHO guideline
+# throughout: a clean city whose model still goes stale.
 MELBOURNE = OpenMeteoConfig(
     name="Melbourne",
     country="AU",
@@ -251,9 +261,13 @@ MELBOURNE = OpenMeteoConfig(
 class ReplayWindows:
     """Which slice bootstraps the champion, and the weekly replay that follows it.
 
-    Per city, because the seasons don't line up: Krakow and Delhi train on clean
-    summer air and walk into winter, while Los Angeles has no season worth the
-    name and is replayed across a full year instead.
+    Per city, because the seasons do not line up: Krakow and Delhi train on
+    clean summer air and walk into winter, while Los Angeles has no comparable
+    season and is replayed across a full year instead.
+
+    ``first_run`` must sit at least ``monitor_days`` after
+    ``champion_train_end``, or run 0 scores the bootstrap champion on its own
+    training data. Asserted for every shipped profile in tests/test_loop.py.
     """
 
     champion_train_start: pd.Timestamp
@@ -274,11 +288,10 @@ class Profile:
     loop: LoopConfig
     db_filename: str
     meta_filename: str
-    # Where this profile's data physically comes from, if anywhere. Drives the
-    # published map: a profile with a location gets a marker, one without doesn't.
-    # `scheduled` is deliberately None -- it reads the same Kraków source as
-    # `openmeteo`, so giving it a location would stack two markers on one point.
-    # It is a *mode* (the loop running live), not a separate place.
+    # Where this profile's data comes from, if anywhere. Drives the published
+    # map: a profile with a location gets a marker. `scheduled` is None because
+    # it reads the same Kraków source as `openmeteo` and would stack two markers
+    # on one point; it is a mode, not a place.
     location: OpenMeteoConfig | None = None
     # How to replay this city's history. Set for the historical city profiles;
     # None for the synthetic world and for the live loop, which advances one
@@ -411,7 +424,6 @@ PROFILES: dict[str, Profile] = {
     ),
     # The live loop. Filled one cycle at a time by the scheduled job
     # (scripts/run_scheduled.py), against a backend that persists between runs.
-    # (see CITY_CLI_NAMES below for the short names the run script accepts)
     "scheduled": Profile(
         key="scheduled",
         label="Live schedule",

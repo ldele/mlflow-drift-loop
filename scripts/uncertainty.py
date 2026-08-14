@@ -1,9 +1,9 @@
 """Put a confidence interval on every number the project reports.
 
-The six-city table, the win rates and the gate calibration were all published as
-bare point estimates. On 19 to 48 autocorrelated weekly windows, several of them
-were never distinguishable from zero, and the table gave a reader no way to tell
-which. This script is the answer to that.
+The six-city table, the win rates and the gate calibration rest on 19 to 48
+autocorrelated weekly windows. Several are not distinguishable from zero, which
+a bare point estimate cannot show. This attaches a block-bootstrap interval to
+each; see ``driftloop.stats`` for the method.
 
     python scripts/uncertainty.py                # every city, plus the pooled gate
     python scripts/uncertainty.py --city delhi   # one city
@@ -11,8 +11,8 @@ which. This script is the answer to that.
 
 Writes ``outputs/uncertainty.json`` and prints the markdown tables that
 ``docs/evaluation.md`` and the README quote. Regenerate after any change that
-moves the numbers, and paste the tables rather than editing them by hand: a
-figure typed into prose is one nobody re-derives when the code moves under it.
+moves the numbers, and paste the tables rather than retyping them: a figure typed
+into prose is one nobody re-derives when the code moves under it.
 """
 
 from __future__ import annotations
@@ -24,9 +24,8 @@ from pathlib import Path
 
 from mlflow.tracking import MlflowClient
 
-# City labels carry accents and the tables carry "≥". The Windows console
-# defaults to cp1252, which cannot encode either, so the script would die after
-# printing four correct tables.
+# City labels carry accents and the tables carry "≥", neither of which cp1252
+# can encode. Without this the script dies partway through printing.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 

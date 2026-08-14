@@ -25,9 +25,9 @@ AXIS = "#c3c2b7"
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
 
 # A feature's colour, fixed by its position in the drift-feature list rather
-# than hardcoded. This was a three-entry dict once, and it stayed that way when
-# the model widened to six drift features, which crashed every chart that looked
-# a newer feature up. Deriving it means the map cannot fall behind the config.
+# than hardcoded, so the map cannot fall behind the config. A hardcoded dict
+# went stale when the model widened from three drift features to six, and every
+# chart that looked a newer feature up raised a KeyError.
 if len(SERIES) < len(DRIFT_FEATURES):  # pragma: no cover - guards a config edit
     raise RuntimeError(
         f"palette has {len(SERIES)} slots for {len(DRIFT_FEATURES)} drift features; "
@@ -149,16 +149,11 @@ def coef_small_multiples(
     """One small panel per feature: its coefficient across versions (x = train_end).
 
     Small multiples rather than one chart with a line per feature, because the
-    coefficients are in *original* feature units and so are not comparable to
-    each other. In Kraków precipitation moves across ~27 units while shortwave
-    radiation moves across ~0.05 -- a factor of 500 -- so on one shared y-axis
-    every small-unit feature is pinned flat against zero and the chart says
-    nothing about four of the six.
-
-    Giving each feature its own axis keeps the slope readable in the unit that
-    makes it interpretable (PM2.5 per °C, per m/s, per hPa), and the thing this
-    chart exists to show -- a slope crossing zero, meaning the real-world
-    relationship inverted -- reads per panel instead of against a common scale.
+    coefficients are in original feature units and not comparable to each other.
+    In Kraków precipitation moves across ~27 units and shortwave radiation across
+    ~0.05, a factor of 500, so a shared y-axis pins four of the six flat against
+    zero. Per-feature axes keep each slope readable in its own unit, and a slope
+    crossing zero, which is the event this chart exists to show, reads per panel.
 
     A 2px surface ring on the markers keeps overlapping points legible.
     """
@@ -220,10 +215,9 @@ def factor_small_multiples(
     """One panel per weather feature: its window mean over time, against the
     range it held while the first champion was trained.
 
-    This is the covariate-drift claim before it is compressed into a statistic.
-    PSI says "0.25, significant", which is a number nobody can picture; this says
-    "it got fourteen degrees colder than anything the model was shown", which is
-    the actual argument for retraining.
+    The covariate-drift claim before it is compressed into a statistic. PSI
+    reports "0.25, significant"; this reports fourteen degrees colder than
+    anything the model was shown, which is the argument for retraining.
 
     Small multiples for the same reason as the coefficients: °C, hPa and W/m² on
     one axis leaves five of the six features pinned flat against the sixth.

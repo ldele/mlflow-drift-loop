@@ -1,10 +1,9 @@
 """How much to believe the numbers this project reports.
 
 Every headline in the README is a statistic computed on a few dozen weekly
-windows. Until this module existed, all of them were published as a single
-number with no range attached, so a reader met ``+43.7%`` and ``+0.2%`` in one
-table, in one typeface, with no way to tell that the first is a result and the
-second is noise. Neither could the author.
+windows. Published as bare point estimates, ``+43.7%`` and ``+0.2%`` sit in one
+table in one typeface with nothing to separate a result from noise. This module
+attaches a range to each.
 
 ## Why the ordinary method is wrong here
 
@@ -33,16 +32,15 @@ the dependence inside a run survives. Its name is the moving-block bootstrap
 Default ``L = max(2, round(n ** (1/3)))``, the usual rate (Künsch 1989; Politis
 & Romano 1994). A 48-week replay gets 4; a 19-week one gets 3.
 
-Two caveats, stated because a block bootstrap reported without them is barely
-better than no range at all.
+Two caveats.
 
 The rate is asymptotic and n here runs from 19 to 48, so these intervals are
-approximations. Much closer to right than a bare point estimate, and not exact.
+approximations rather than exact.
 
-Block length is a knob, and knobs get turned toward the answer somebody wanted.
-``sensitivity_to_block_length`` reruns the interval across a range of L so the
-spread is visible. Where a conclusion holds at one block length and not another,
-the conclusion is the block length.
+Block length is the one free parameter, which makes it the one place a
+convenient answer could be chosen. ``sensitivity_to_block_length`` reruns the
+interval across a range of L so the spread is visible. Where a conclusion holds
+at one block length and not another, the conclusion is the block length.
 
 ## What this module does not do
 
@@ -70,8 +68,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# Fixed so every reported interval is reproducible. A bootstrap interval that
-# moves when you rerun it is a number nobody can check.
+# Fixed so every reported interval is reproducible; an interval that moves
+# between runs cannot be checked against the published table.
 DEFAULT_SEED = 20260811
 DEFAULT_RESAMPLES = 10_000
 DEFAULT_ALPHA = 0.05
@@ -81,10 +79,10 @@ DEFAULT_ALPHA = 0.05
 class Interval:
     """An estimate and the range the resampling could not rule out.
 
-    ``n`` counts the observations. ``n_effective`` counts how many *independent*
+    ``n`` counts the observations. ``n_effective`` counts how many independent
     observations they are worth once the correlation between neighbours is taken
-    out. Both are published, because a reader who sees ``n=47`` alongside
-    ``n_eff=5`` understands the width of the interval without being told.
+    out. Both are published: ``n=47`` beside ``n_eff=5`` explains the width of
+    the interval on its own.
     """
 
     point: float
@@ -99,10 +97,9 @@ class Interval:
     def excludes_zero(self) -> bool:
         """Whether the interval lies entirely on one side of zero.
 
-        The closest thing here to "statistically significant", and not called
-        that on purpose. It is one interval at one alpha, and six of them are
-        read off a single table, which is a multiple-comparisons problem this
-        project does not correct for. Treat it as a reading aid.
+        Not called "significant" on purpose: it is one interval at one alpha,
+        and six are read off a single table, which is a multiple-comparisons
+        problem this project does not correct for. A reading aid.
         """
         return (self.lo > 0 and self.hi > 0) or (self.lo < 0 and self.hi < 0)
 
@@ -118,10 +115,9 @@ class Interval:
             "lo": self.lo,
             "hi": self.hi,
             "n": self.n,
-            # Two decimals rather than one, because consumers round this again
-            # for display. At one decimal an effective n of 5.45 is stored as
-            # 5.5, which then displays as 6 while the same figure computed from
-            # the raw value displays as 5. One quantity, two published numbers.
+            # Two decimals, because consumers round again for display: at one
+            # decimal an effective n of 5.45 is stored as 5.5 and displays as 6,
+            # while the same figure from the raw value displays as 5.
             "n_effective": round(self.n_effective, 2),
             "block_length": self.block_length,
             "resamples": self.resamples,
@@ -166,9 +162,8 @@ def effective_sample_size(values: np.ndarray) -> float:
 def default_block_length(n: int) -> int:
     """``n ** (1/3)``, floored at 2 and capped so blocks cannot exceed n // 2.
 
-    The cap matters on short replays. A block as long as the series redraws that
-    same series every time and reports an interval of zero width, which is the
-    worst output this module could produce: total confidence, no evidence.
+    The cap matters on short replays: a block as long as the series redraws that
+    same series every time and reports an interval of zero width.
     """
     if n < 4:
         return max(1, n)
@@ -195,12 +190,12 @@ def block_bootstrap(
 ) -> Interval:
     """Percentile interval for a statistic of one or more aligned series.
 
-    ``columns`` are redrawn together, using the same block indices, so paired
+    ``columns`` are redrawn together using the same block indices, so paired
     observations stay paired. Any statistic comparing two models on one window
-    needs this. Break the pairing and you compare one model's week 4 against
-    another's week 31, then report the difference as uncertainty.
+    needs this; broken pairing compares one model's week 4 against another's
+    week 31 and reports the difference as uncertainty.
 
-    Rows where any column is NaN are dropped before resampling, jointly, so the
+    Rows where any column is NaN are dropped jointly before resampling, so the
     columns stay aligned.
     """
     arrays = [np.asarray(c, dtype=float) for c in columns]
@@ -247,11 +242,8 @@ def sensitivity_to_block_length(
 ) -> dict[int, Interval]:
     """The same interval at several block lengths.
 
-    Block length is the one free parameter here, which makes it the one place a
-    convenient answer could be quietly chosen. Publishing the sweep costs a
-    table and settles the question. ``blocks=1`` redraws single weeks, so the
-    reader can see how much narrower ignoring the correlation would have made
-    the interval.
+    ``blocks=1`` redraws single weeks, which shows how much narrower ignoring
+    the correlation would have made the interval.
     """
     n = int(np.asarray(columns[0]).size)
     return {
@@ -264,16 +256,14 @@ def sensitivity_to_block_length(
 def wilson_interval(successes: int, trials: int, alpha: float = DEFAULT_ALPHA) -> tuple[float, float]:
     """Range for a proportion, as a percentage. The method is Wilson's.
 
-    Used for win rates, where redrawing blocks breaks down. A city that won
-    every window it acted on wins every window in every redraw too, so the
-    interval collapses to [100, 100]. That is not certainty, it is the method
-    failing at a boundary.
+    Used for win rates, where redrawing blocks breaks down: a city that won
+    every window it acted on wins every window in every redraw, so the interval
+    collapses to [100, 100], which is the method failing at a boundary rather
+    than certainty.
 
-    Wilson handles 0% and 100% properly, where the textbook normal
-    approximation does not. Its own weakness is assuming independent trials,
-    which weekly wins are not, so it stays a little narrow. Both weaknesses
-    point the same way, and a 100% win rate here should be read as "at least
-    this good".
+    Wilson handles 0% and 100% properly where the normal approximation does not.
+    It assumes independent trials, which weekly wins are not, so it stays a
+    little narrow. Read a 100% win rate as "at least this good".
     """
     if trials == 0:
         return (float("nan"), float("nan"))
@@ -288,11 +278,10 @@ def wilson_interval(successes: int, trials: int, alpha: float = DEFAULT_ALPHA) -
 
 
 # --------------------------------------------------------------------------- #
-# The statistics this project reports, written as functions the resampler can   #
-# be handed. They live here rather than inline at each call site so that the    #
-# redrawn statistic and the reported estimate are the same code. Where they are #
-# two implementations, they drift apart, and the interval stops bracketing the  #
-# number it is printed beside.                                                  #
+# The statistics this project reports, as functions the resampler can be given. #
+# They live here rather than inline at each call site so the redrawn statistic  #
+# and the reported estimate are the same code: two implementations drift apart, #
+# and the interval stops bracketing the number printed beside it.               #
 # --------------------------------------------------------------------------- #
 
 
@@ -328,24 +317,22 @@ def differing(a: np.ndarray, b: np.ndarray, rtol: float = 1e-9) -> np.ndarray:
     """Mask of the positions where two paired series are not the same number.
 
     The median of paired ratios is the right statistic when the pairs are
-    different measurements, and the wrong one the moment most pairs are
-    identical. Comparing two replay arms is the second case: a changed
-    trigger leaves the serving model untouched in most weeks, so most ratios are
-    1.0, the median lands on 1.0, and the comparison reports "+0.00%, no
-    difference" no matter how badly the arm behaves in the minority of weeks
-    where it does something.
+    different measurements and the wrong one once most pairs are identical.
+    Comparing two replay arms is the second case: a changed trigger leaves the
+    serving model untouched in most weeks, so most ratios are 1.0, the median
+    lands on 1.0, and the comparison reports no difference however badly the arm
+    behaves in the weeks it does act.
 
-    Kraków is the live example. Against the trigger left alone, the floor arm's
-    median ratio is +0.00% while its median error over the replay is 7% worse,
-    because the weeks it changes are outnumbered by the weeks it does not.
-    Reporting only the first would hide the harm; reporting only the second
-    would attribute a whole-replay median gap to a handful of weeks.
+    Kraków is the example. Against the trigger left alone, the floor arm's
+    median ratio is +0.00% while its median error over the replay is 7% worse.
+    Reporting only the first hides the harm; reporting only the second
+    attributes a whole-replay gap to a handful of weeks. Both are published, and
+    this supplies the mask for the second.
 
-    So both are reported, and this supplies the mask for the second. It is the
-    same conditioning ``retraining_value`` already applies when it scores only
-    the windows a retrained model was serving, and it carries the same caveat:
-    the subset is chosen by what the arm did, so it answers "when it acted, did
-    it help" and not "should it be switched on".
+    Same conditioning ``retraining_value`` applies when it scores only the
+    windows a retrained model served, and the same caveat: the subset is chosen
+    by what the arm did, so it answers "when it acted, did it help" rather than
+    "should it be switched on".
     """
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)

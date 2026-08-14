@@ -6,17 +6,15 @@ from driftloop.data.synthetic import SyntheticSource
 def replayable_source(profile) -> DataSource | None:
     """The source a profile's history can be re-read from, if any.
 
-    Anything that scores old models on old windows -- the retrospective the site
-    and the dashboard both show -- needs to fetch those windows again, which only
-    works where the data is a fixed, cached span, which means the profiles
-    tied to a place.
+    Scoring old models on old windows, which is what the retrospective on both
+    UIs does, means re-reading those windows. That only works for a fixed cached
+    span, so it is limited to the profiles tied to a place.
 
-    The live schedule is excluded by design even though it reads Kraków too:
-    it fetches a window rolling with the current date rather than the committed
-    cache, so re-reading a window from months ago would mean going to the network
-    for data the repository does not hold. Callers degrade rather than fail --
-    one rule, so the site and the dashboard cannot disagree about which profiles
-    get a retrospective.
+    The live schedule is excluded even though it reads Kraków too: it fetches a
+    window rolling with the current date rather than the committed cache, so
+    re-reading a window from months ago would go to the network for data the
+    repository does not hold. Callers degrade rather than fail, and both UIs
+    apply this one rule so they cannot disagree about which profiles qualify.
     """
     if getattr(profile, "location", None) is None:
         return None
