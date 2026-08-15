@@ -48,14 +48,28 @@ FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 
 def base_figure(title: str | None, y_title: str, height: int = 340) -> go.Figure:
+    """A titled chart with a horizontal legend above the plot area.
+
+    The two compete for the top margin and Plotly will not arbitrate. The title
+    is measured against the container and the legend against the plot area, so
+    a margin sized for one of them lets the other land on top of it, which is
+    what a six-feature legend wrapping to two rows used to do to the title.
+
+    Pinned rather than left to autolayout: the title sits at the top of the
+    container, the legend hangs below it, and the top margin is deep enough for
+    both plus a wrapped second row.
+    """
     fig = go.Figure()
     fig.update_layout(
-        title=dict(text=title, font=dict(size=15, color=INK)) if title else None,
+        title=dict(
+            text=title, font=dict(size=15, color=INK), x=0, xanchor="left",
+            y=1.0, yanchor="top", pad=dict(t=10, l=4),
+        ) if title else None,
         paper_bgcolor=SURFACE,
         plot_bgcolor=SURFACE,
         font=dict(family=FONT, size=12, color=INK_SECONDARY),
-        margin=dict(l=56, r=24, t=56 if title else 24, b=40),
-        height=height,
+        margin=dict(l=56, r=24, t=104 if title else 24, b=40),
+        height=height + (48 if title else 0),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(color=INK_SECONDARY)),
     )

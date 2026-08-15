@@ -85,8 +85,10 @@ are marked on the same unseen week. Details in
 **The expensive signal is measurably the wrong shape.** It compares the model
 against *its own* error at training time, and every promotion resets that
 comparison. Retrains fire in the dirty season, so each new model inherits a
-higher bar than the one it replaced and the bar never comes back down. Kraków's
-rises from 3.7 to 45.8 µg/m³, after which nothing can cross it: the last 30 of
+higher bar than the one it replaced and the bar ratchets upward. It can step
+down, and does once in Kraków and three times in Delhi, but only slightly and
+only early. Kraków's rises from 3.7 to 45.8 µg/m³, after which nothing can
+cross it: the last 30 of
 its 48 weeks are a 210-day-old model reported as healthier than it has ever
 been, while its skill against a plain 30-day daily profile is the worst it has
 ever been. Finding that is what the site is built to do.

@@ -469,13 +469,27 @@ def gate_summary(gate: list[dict], long_weeks: int = GATE_LONG_WEEKS) -> dict[st
     return out
 
 
-def _service_spans(as_of: list[pd.Timestamp], versions: list[int]) -> dict[int, tuple[int, int]]:
-    """First and last window index each version was the serving champion for."""
-    spans: dict[int, tuple[int, int]] = {}
-    for i, v in enumerate(versions):
-        first, _ = spans.get(v, (i, i))
-        spans[v] = (first, i)
-    return spans
+def _service_spans(versions: list[int]) -> list[tuple[int, int, int]]:
+    """Every contiguous stretch a version was the serving champion, in order.
+
+    ``(version, first_index, last_index)`` per stretch, so a version that serves
+    twice appears twice. That is not hypothetical: a rollback restores an earlier
+    version, and keying spans by version instead would record it as having served
+    the interval in between, which belongs to the model that replaced it.
+
+    The consequences of getting this wrong are quiet. ``weeks_served`` would
+    count someone else's weeks, the gate calibration would score a promotion over
+    windows it did not serve, and the split between short- and long-serving
+    promotions would move models across it.
+    """
+    stretches: list[tuple[int, int, int]] = []
+    for i, version in enumerate(versions):
+        if stretches and stretches[-1][0] == version and stretches[-1][2] == i - 1:
+            first = stretches[-1][1]
+            stretches[-1] = (version, first, i)
+        else:
+            stretches.append((version, i, i))
+    return stretches
 
 
 def build(
@@ -572,9 +586,11 @@ def build(
             else 1.0 - value / climatology
         )
 
-    spans = _service_spans(result.as_of, champion_versions)
-    for version, (first, _) in spans.items():
-        result.promoted_at[version] = result.as_of[first]
+    spans = _service_spans(champion_versions)
+    # Where each version's decay curve begins: the first window it served, even
+    # if it later lost its place and came back.
+    for version, first, _ in spans:
+        result.promoted_at.setdefault(version, result.as_of[first])
 
     result.gate = _gate_calibration(
         result, runs, spans, champion_versions, promoted, bootstrap_version, promotion_margin
@@ -585,7 +601,7 @@ def build(
 def _gate_calibration(
     result: Retrospective,
     runs: pd.DataFrame,
-    spans: dict[int, tuple[int, int]],
+    spans: list[tuple[int, int, int]],
     champion_versions: list[int],
     promoted: list[bool],
     bootstrap_version: int,
@@ -600,16 +616,20 @@ def _gate_calibration(
 
     A working gate shows the two rising together. A gate overfitting a short
     exam shows exam margins scattered against delivered ones.
+
+    One row per *stretch of service*, not per version. A promotion that is later
+    rolled back is judged over the weeks it actually served, and the restored
+    version's own stretch is not a promotion and is skipped.
     """
     out: list[dict] = []
-    for version, (first, last) in sorted(spans.items()):
-        # A span begins where the champion tag changed, which happens only on a
-        # promotion, except at index 0 where the tag simply starts. Asking the
-        # run whether it promoted covers both cases and is what lets a first run
-        # that did promote be judged, against the bootstrap rather than against
-        # a row that does not exist. Without it Kraków and Los Angeles each lost
-        # a promotion, and `champion_versions[first - 1]` at first == 0 would
-        # have indexed the end of the list.
+    for version, first, last in spans:
+        # A stretch begins where the champion tag changed, which happens on a
+        # promotion, on a rollback, and at index 0 where the tag simply starts.
+        # Asking the run whether it promoted separates the three, and is what
+        # lets a first run that did promote be judged, against the bootstrap
+        # rather than against a row that does not exist. Without it Kraków and
+        # Los Angeles each lost a promotion, and `champion_versions[first - 1]`
+        # at first == 0 would have indexed the end of the list.
         if not promoted[first]:
             continue
         replaced = champion_versions[first - 1] if first > 0 else bootstrap_version

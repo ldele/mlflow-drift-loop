@@ -403,7 +403,13 @@ can be right.
 Not after the first few promotions. `perf_drift_ratio` divides the champion's
 current error by *its own* error at training time, and every promotion resets
 the denominator. Retrains fire in the dirty season, so each new champion inherits
-a higher bar than the one it replaced, and the bar never comes back down:
+a higher bar than the one it replaced, and the bar ratchets upward.
+
+It is a ratchet rather than a monotone climb, and the difference is worth stating
+because the charts are drawn at a scale that hides it. A challenger trained on a
+calmer stretch carries a lower baseline, and the bar does step down: once in
+Kraków, by 0.2 µg/m³, and three times in Delhi. Every fall is small, early, and
+swamped by the rises that follow. What matters is where the walk ends up:
 
 | | baseline, first → last | last retrain | runs of silence after it | highest ratio in those runs |
 |---|---|---|---|---|
@@ -846,6 +852,194 @@ fire more; the third made the exam longer. The binding constraint is neither.
 **It is the gate**, which cannot certify beyond about five weeks and is asked to
 anyway, every time any of these mechanisms hands it a challenger. That is where
 the next mechanism belongs.
+
+## The gate decides on a point estimate, and making it decide on an interval is worse
+
+### The gate is measurably deciding on noise
+
+The project attaches an interval to every number it publishes and never attached
+one to the decision it makes. The gate compares two RMSEs on a single seven-day
+window of autocorrelated hourly data and promotes on the bare difference.
+
+Scoring both models on each promotion's holdout window and resampling that
+margin in 24-hour blocks, over the 28 shipped promotions:
+
+- **11 of 28 have an exam interval reaching below the 5% margin they were
+  required to clear. 6 of 28 reach below zero.**
+- Mean promised +12.6%, mean delivered +8.1%.
+- Los Angeles's single promotion, which produces its entire −13.4% retraining
+  result, scored **+21.9% on an interval of [−6.9, +32.3]** and delivered
+  **−6.7%**.
+
+And the width of that interval sorts the cities by whether retraining works at
+all. Median exam-interval width:
+
+| retraining pays | width | retraining does not | width |
+|---|---|---|---|
+| Johannesburg | 4.9 pts | Kraków | 8.8 pts |
+| Delhi | 5.7 pts | Melbourne | 15.1 pts |
+| Santiago | 6.7 pts | **Los Angeles** | **39.2 pts** |
+
+This is not the model overfitting. Eight parameters on about 4,300 rows with L2,
+and the alpha sweep is nearly flat. It is the *selection step* overfitting the
+exam window. Where the seasonal swing is large the difference between two models
+over a week is signal; where the air is flat it is noise, and selecting the
+larger of two noisy numbers hands back a winner whose advantage was partly luck.
+
+**That qualifies the project's headline.** "Retraining pays where the world moved
+and costs where it did not" is in part a statement about the gate's precision,
+because the world moving is what gives the exam enough signal to select on.
+
+### Requiring the interval to clear the bar does not help. It hurts
+
+`LoopConfig.promotion_confidence` makes a challenger clear `promotion_margin` at
+the lower bound as well as at the point estimate. Strictly an additional hurdle,
+so it can only remove promotions.
+[`sweep_promotion_confidence.py`](../scripts/sweep_promotion_confidence.py)
+replays all six cities at one-sided confidences of 0.80, 0.90 and 0.95.
+
+It blocks what it is meant to block: Kraków goes from 7 promotions to 5,
+Melbourne from 4 to 1, Santiago from 7 to 6. The outcome is worse.
+
+| against the shipped gate, over the weeks it changed the serving model | 0.80 | 0.90 | 0.95 |
+|---|---|---|---|
+| **Kraków** | **−3.1%** | **−3.1%** | **−2.8%** |
+| **Delhi** | unchanged | **−3.9%** | **−3.9%** |
+| **Santiago** | unchanged | −1.0% | −1.0% |
+| **Melbourne** | unchanged | −7.8% | −1.1% |
+| **Los Angeles** | unchanged | +3.5% | +3.2% |
+| **Johannesburg** | unchanged | unchanged | unchanged |
+
+Bold clears zero. **Of 18 arms, five have an interval clear of zero and all five
+are harmful. Not one arm shows a gain that this data can establish.**
+
+### Why a stricter gate makes the winner's curse worse
+
+The diagnostic is the gap between what the gate promised and what it delivered,
+which is the winner's curse in one number. If the problem were per-decision
+precision, tightening the bar should shrink that gap. It widens it, in four of
+six cities:
+
+| promise minus delivery | off | 0.80 | 0.90 | 0.95 |
+|---|---|---|---|---|
+| **Kraków** | 4.4 | 5.3 | 5.3 | **5.7** |
+| **Delhi** | 3.1 | 3.1 | 5.0 | **5.0** |
+| **Los Angeles** | 28.6 | 28.6 | 24.8 | **39.8** |
+| **Melbourne** | 3.4 | 3.4 | 5.4 | **3.8** |
+| Santiago | 4.6 | 4.6 | 2.7 | 2.7 |
+| Johannesburg | 0.6 | 0.6 | 0.6 | 0.6 |
+
+**Because blocking a promotion defers it rather than preventing it.** The loop
+retries: the champion stays, the trigger keeps firing, and a later challenger is
+judged instead. Los Angeles ends with exactly one promotion at every confidence
+tested, having gone from 1 retrain to 6 as the blocked champion sits there
+growing staler and setting the ratio off again.
+
+So a higher bar per attempt does not mean fewer bad promotions. It means **more
+attempts**, and the challenger that eventually clears a higher bar has done so by
+a more extreme fluctuation than the one that cleared the old bar. Conditioning on
+a rarer piece of luck is a worse selection, not a better one, and the widening
+shrinkage is that effect showing up directly.
+
+The gate's real problem is therefore not the precision of one decision. It is
+**optional stopping**: the loop keeps sitting the exam until something passes, and
+no per-attempt threshold can repair a procedure that retries. Correcting it needs
+the number of attempts in the decision, or a rule that stops making them.
+
+### A prediction that was wrong, and why
+
+Before running this, the effect was estimated by taking the 28 shipped
+promotions, marking the 11 whose interval failed, and reasoning that removing
+them would take Los Angeles from −13.4% toward zero. It does not: Los Angeles
+lands at −10.3% and −12.9%.
+
+The estimate was made against a *fixed* history, and blocking a promotion changes
+which models exist for every week that follows. That is the same reason every
+sweep here runs a full replay per arm rather than counting hypothetical firings
+against the existing champions, which these documents have said since the
+skill-floor work. Making the error while predicting the result of the experiment
+designed to avoid it is worth recording.
+
+## Making the promotion reversible, and why that does not rescue it either
+
+The four mechanisms above all try to make one decision better: fire the trigger
+sooner, sit the exam more often, judge it harder. All fail to the same cause, and
+the confidence gate fails *because* of it: the loop retries until a challenger
+passes, so raising the bar buys more attempts and a luckier winner.
+
+`LoopConfig.probation_days` stops trying to improve the decision and makes it
+reversible instead. A promotion is provisional; after the configured window, the
+new champion is scored against the model it displaced on a fortnight that
+postdates them both, and loses the `champion` alias if it is worse.
+
+The reason to expect something different is that this is a check rather than a
+selection. Nothing is maximised. One model is compared with one alternative,
+once, at a time fixed before the result is known, so there is no best-of-many to
+inherit a winner's curse from.
+[`sweep_probation.py`](../scripts/sweep_probation.py) replays all six cities at
+windows of 14, 21 and 28 days.
+
+### It is the first mechanism that does no harm
+
+| against the shipped loop, over the weeks it changed the serving model | 14 days | 21 days | 28 days |
+|---|---|---|---|
+| **Kraków** | unchanged | **+1.5% [+0.8, +2.0]** | +0.8% |
+| **Delhi** | +1.1% (2 weeks) | unchanged | unchanged |
+| **Los Angeles** | +4.0% | unchanged | unchanged |
+| **Santiago** | unchanged | +0.6% (1 week) | unchanged |
+| **Melbourne** | −0.1% | unchanged | −0.3% |
+| **Johannesburg** | unchanged | unchanged | unchanged |
+
+Of 18 arms, **one has an interval clear of zero and it is positive**, against
+five harmful arms for the confidence gate. Nothing here is harmful.
+
+It is also not a result. One arm in eighteen clearing a 95% interval is what
+eighteen tests produce by chance, and this project does not correct for multiple
+comparisons. Kraków's +1.5% rests on a single rollback affecting seven weeks.
+Read as "does no damage", not as "pays".
+
+### The diagnostic is worth more than the outcome
+
+The check returns a verdict on every promotion it judges, and those verdicts say
+something the rest of this document had not established: **promotions are mostly
+fine.** The mean verdict is positive in **17 of 18 arms**, and only 8 of 49
+judged promotions were rolled back.
+
+That is consistent with the gate calibration rather than a contradiction of it.
+The exam holds its calibration for about five weeks and reverses sign beyond
+twenty. A probation window at 14 to 28 days sits *inside* the horizon the exam
+is good for, so it finds a decision that was, at that point, correct.
+
+Which leaves the mechanism caught between two requirements. To isolate the
+promotion decision, the window has to be short enough that the world has not
+moved again since, and at that length there is almost nothing wrong to find. To
+catch the failure the gate calibration actually shows, the window has to reach
+past twenty weeks, and by then a negative verdict cannot distinguish "this
+promotion was noise" from "the world moved after it". **The failure mode is not
+attributable to any single decision the loop makes.** It is the accumulation of
+time, and no verdict on one decision can reach it.
+
+### A fortnight cannot resolve the difference it is asked about
+
+Los Angeles makes the limit concrete. Its single promotion is the one this
+document has returned to throughout: promoted on an exam margin of
++21.9% [−6.9, +32.3], and delivered −6.7% over the 36 weeks it served.
+
+| judged at | verdict | outcome |
+|---|---|---|
+| 14 days | −ve, **rolled back** | paired retraining −13.4% → −9.2% |
+| 21 days | +1.3%, kept | unchanged |
+| 28 days | +4.5%, kept | unchanged |
+
+The same promotion, three windows, opposite decisions. This is not selection
+bias, which the design removes: it is that a fortnight of hourly data cannot
+resolve a difference this small between two models, in the same way and for the
+same reason the seven-day exam could not. Rolling back on that verdict is a coin
+flip that happens to land correctly here.
+
+So the honest summary is that probation is safe, cheap, and unproven, and that
+the reason it is unproven is the same measurement limit that produced the
+problem it was built to fix.
 
 ## Whether the detection works at all
 

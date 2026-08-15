@@ -4,7 +4,7 @@ import mlflow
 import pandas as pd
 import pytest
 
-from driftloop.config import LoopConfig
+from driftloop.config import FEATURES, TARGET, LoopConfig
 from driftloop.data import SyntheticSource
 from driftloop.loop import bootstrap_champion, run_cycle, run_simulation
 from driftloop.model import train
@@ -375,3 +375,250 @@ def test_a_run_names_every_rule_that_fired(isolated_mlflow):
     assert reason(
         perf_drift_detected=True, skill_drift_detected=True, recertify_due=True
     ) == "ratio+skill+recert"
+
+
+# --------------------------------------------------------------------------- #
+# The promotion gate's own uncertainty                                          #
+# --------------------------------------------------------------------------- #
+
+
+def _fresh_backend(tmp_path, name: str, **overrides) -> LoopConfig:
+    """A LoopConfig on its own empty backend.
+
+    Gate arms cannot share one. The first cycle promotes, so a second cycle in
+    the same registry faces a fresher champion and is answering a different
+    question, which is the trap `test_the_skill_floor_only_ever_adds_reasons`
+    documents.
+    """
+    from dataclasses import replace
+
+    root = tmp_path / name
+    root.mkdir()
+    mlflow.set_tracking_uri(f"sqlite:///{(root / 'test.db').as_posix()}")
+    cfg = replace(
+        LoopConfig(experiment_name=name, registered_model_name=f"model-{name}"), **overrides
+    )
+    mlflow.create_experiment(name, artifact_location=(root / "artifacts").as_uri())
+    mlflow.set_experiment(name)
+    return cfg
+
+
+def _one_cycle(tmp_path, name: str, **overrides):
+    cfg = _fresh_backend(tmp_path, name, **overrides)
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    return run_cycle(src, pd.Timestamp("2025-10-15"), cfg)
+
+
+def test_the_confidence_gate_is_off_unless_asked_for(isolated_mlflow):
+    """The default must reproduce the point-estimate gate exactly."""
+    cfg = isolated_mlflow
+    assert cfg.promotion_confidence is None
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    result = run_cycle(src, pd.Timestamp("2025-10-15"), cfg)
+    assert result.promotion_decision == "promoted"
+    assert pd.isna(result.exam_margin_lo), "no interval is computed when the gate is off"
+
+
+def test_the_confidence_gate_blocks_a_promotion_the_point_estimate_allowed(tmp_path):
+    """The whole point: a margin the window cannot establish stops being enough.
+
+    The synthetic world's regime shift is violent, so a challenger there wins by
+    44% and no plausible interval reaches down to the shipped 5%. Raising the
+    required margin to 43.5% puts the threshold between the point estimate
+    (+44.1%) and its lower bound (+43.3%), which is the situation the gate
+    exists for, reproduced deterministically rather than hunted for.
+    """
+    point = _one_cycle(tmp_path, "point-only", promotion_margin=0.435)
+    confident = _one_cycle(
+        tmp_path, "with-confidence", promotion_margin=0.435, promotion_confidence=0.95
+    )
+
+    assert point.promotion_decision == "promoted"
+    assert confident.promotion_decision == "rejected"
+    assert confident.exam_margin_lo < 0.435 < (
+        1 - confident.challenger_rmse / confident.champion_rmse_holdout
+    )
+
+
+def test_the_confidence_gate_only_ever_blocks(tmp_path):
+    """It is an additional hurdle, never an alternative one.
+
+    At the shipped margin the challenger clears both tests, so switching the
+    gate on changes nothing. A gate that could promote something the point
+    estimate rejected would be a different rule rather than a stricter one.
+    """
+    point = _one_cycle(tmp_path, "shipped-point")
+    confident = _one_cycle(tmp_path, "shipped-confident", promotion_confidence=0.95)
+
+    assert point.promotion_decision == confident.promotion_decision == "promoted"
+    assert confident.challenger_rmse == pytest.approx(point.challenger_rmse)
+
+
+def test_a_tighter_confidence_demands_a_lower_bound(tmp_path):
+    """More confidence means a more conservative bound, never a looser one.
+
+    Guards the one-sided translation. ``promotion_confidence`` is one-sided and
+    ``block_bootstrap`` takes a two-sided alpha, so the conversion is
+    ``alpha = 2 * (1 - confidence)``. Getting that backwards would make a
+    stricter setting promote more, which no assertion on a single arm catches.
+    """
+    loose = _one_cycle(tmp_path, "loose", promotion_confidence=0.80)
+    tight = _one_cycle(tmp_path, "tight", promotion_confidence=0.999)
+
+    assert tight.exam_margin_lo < loose.exam_margin_lo
+
+
+def test_the_exam_margin_statistic_is_computed_from_the_errors(isolated_mlflow):
+    """`rmse_margin` has to agree with the RMSEs the gate compares.
+
+    It takes squared errors so the resampler has observations to redraw, which
+    means it recomputes an RMSE the loop has already computed another way. Two
+    routes to one number is how they drift apart.
+    """
+    import numpy as np
+
+    from driftloop import stats
+
+    champion = np.array([1.0, 4.0, 9.0, 16.0])  # RMSE sqrt(7.5)
+    challenger = champion / 4.0  # exactly half the RMSE
+    assert stats.rmse_margin(challenger, champion) == pytest.approx(0.5)
+    assert np.isnan(stats.rmse_margin(challenger, np.zeros(4)))
+
+
+def test_a_window_too_short_to_resample_yields_no_opinion(isolated_mlflow):
+    """Not a block, which would let a missing interval reject by default."""
+    from driftloop.loop import _GATE_BLOCK_HOURS, _exam_margin_lower_bound
+    from driftloop.model import build_pipeline
+
+    src = SyntheticSource()
+    window = src.get_data(pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"))
+    fitted = build_pipeline().fit(window[FEATURES], window[TARGET])
+
+    short = window.iloc[: _GATE_BLOCK_HOURS]  # one block is not enough to resample
+    assert pd.isna(_exam_margin_lower_bound(fitted, fitted, short, 0.95))
+    assert not pd.isna(_exam_margin_lower_bound(fitted, fitted, window, 0.95))
+
+
+# --------------------------------------------------------------------------- #
+# Probation: promotion as a reversible decision                                 #
+# --------------------------------------------------------------------------- #
+
+
+def _register(cfg, source, start: str, end: str, alias=None) -> str:
+    """Train on a window and register it, returning the version."""
+    from driftloop.tracking import log_and_register
+
+    trained = train(source.get_data(pd.Timestamp(start), pd.Timestamp(end)))
+    with mlflow.start_run(run_name=f"fixture-{end}"):
+        return log_and_register(trained, cfg.registered_model_name, alias=alias)
+
+
+def test_probation_is_off_unless_asked_for(isolated_mlflow):
+    """The default must reproduce the irreversible-promotion loop exactly."""
+    cfg = isolated_mlflow
+    assert cfg.probation_days is None
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    result = run_cycle(src, pd.Timestamp("2025-10-15"), cfg)
+    assert result.probation_decision == "none"
+    assert pd.isna(result.probation_margin)
+
+
+def test_a_promotion_records_what_it_displaced(isolated_mlflow):
+    """Probation has to re-run the decision later against the same alternative.
+
+    The run that promotes overwrites its own `champion_version` tag with the
+    winner, so the displaced version is not recoverable from the run afterwards.
+    It goes on the model version instead.
+    """
+    from dataclasses import replace
+
+    from driftloop.tracking import load_champion
+
+    cfg = replace(isolated_mlflow, probation_days=14)
+    src = SyntheticSource()
+    first = bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    result = run_cycle(src, pd.Timestamp("2025-10-15"), cfg)
+    assert result.promotion_decision == "promoted"
+
+    champion = load_champion(cfg.registered_model_name)
+    assert champion.version != first
+    assert champion.replaced_version == first
+    assert champion.promoted_at == pd.Timestamp("2025-10-15")
+    assert champion.probation_cleared is False
+
+
+def test_a_bootstrap_champion_is_never_put_on_probation(isolated_mlflow):
+    """It displaced nothing, so there is no decision to re-run."""
+    from dataclasses import replace
+
+    cfg = replace(isolated_mlflow, probation_days=1)
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    assert run_cycle(src, pd.Timestamp("2025-08-15"), cfg).probation_decision == "none"
+
+
+def test_a_promotion_that_holds_up_keeps_its_place(isolated_mlflow):
+    """The autumn model really is better after the regime shift, so it stays."""
+    from dataclasses import replace
+
+    from driftloop.tracking import load_champion
+
+    cfg = replace(isolated_mlflow, probation_days=14)
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    run_cycle(src, pd.Timestamp("2025-10-15"), cfg)
+    promoted = load_champion(cfg.registered_model_name).version
+
+    judged = run_cycle(src, pd.Timestamp("2025-10-29"), cfg)  # 14 days later
+    assert judged.probation_decision == "kept"
+    assert judged.probation_margin > 0
+    assert load_champion(cfg.registered_model_name).version == promoted
+
+
+def test_a_promotion_that_does_not_hold_up_is_rolled_back(isolated_mlflow):
+    """The mechanism, on a promotion built to fail.
+
+    The synthetic world's shift is violent enough that a real challenger always
+    beats the model it replaced, so a rollback has to be constructed: a
+    summer-trained model is installed as champion over an autumn-trained one and
+    judged on an autumn window, where it is plainly worse.
+    """
+    from dataclasses import replace
+
+    from driftloop.tracking import CHAMPION_ALIAS, load_champion, mark_promoted
+
+    cfg = replace(isolated_mlflow, probation_days=14)
+    src = SyntheticSource()
+
+    good = _register(cfg, src, "2025-09-20", "2025-11-20")  # knows the new world
+    bad = _register(cfg, src, "2025-04-01", "2025-07-01", alias=CHAMPION_ALIAS)  # does not
+    mark_promoted(cfg.registered_model_name, bad, pd.Timestamp("2025-11-20"), good)
+
+    result = run_cycle(src, pd.Timestamp("2025-12-04"), cfg)  # 14 days on
+
+    assert result.probation_decision == "rolled_back"
+    assert result.probation_margin < 0
+    assert load_champion(cfg.registered_model_name).version == good
+
+
+def test_a_promotion_is_judged_once_and_then_settled(isolated_mlflow):
+    """Re-judging every run would be the retrying this mechanism avoids.
+
+    A window that keeps moving would eventually find a fortnight the promoted
+    model loses, which is selection by another name.
+    """
+    from dataclasses import replace
+
+    from driftloop.tracking import load_champion
+
+    cfg = replace(isolated_mlflow, probation_days=14)
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    run_cycle(src, pd.Timestamp("2025-10-15"), cfg)
+
+    assert run_cycle(src, pd.Timestamp("2025-10-29"), cfg).probation_decision == "kept"
+    assert load_champion(cfg.registered_model_name).probation_cleared is True
+    assert run_cycle(src, pd.Timestamp("2025-11-05"), cfg).probation_decision == "none"

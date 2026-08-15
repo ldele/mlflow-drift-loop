@@ -369,3 +369,75 @@ def test_the_gate_refuses_to_bound_a_group_of_three(source):
     values = np.array([-0.08, -0.04, -0.06])
     interval = block_bootstrap((values,), mean_stat)
     assert interval.lo == float("-inf") and interval.hi == float("inf")
+
+
+# --------------------------------------------------------------------------- #
+# Service spans, once a champion can be rolled back                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_version_that_serves_twice_gets_two_spans():
+    """Keying spans by version credits a restored model with someone else's weeks.
+
+    Before probation existed a champion sequence only ever went forwards, so
+    "first and last window this version served" was the same thing as "the
+    stretch it served". A rollback breaks that: v1 serves, v2 replaces it, v2 is
+    undone, v1 serves again. Recording v1 as having served from its first window
+    to its last hands it the two weeks v2 was in service.
+    """
+    from driftloop.retrospect import _service_spans
+
+    assert _service_spans([1, 1, 2, 2, 1, 1, 3]) == [
+        (1, 0, 1), (2, 2, 3), (1, 4, 5), (3, 6, 6)
+    ]
+
+
+def test_service_spans_are_unchanged_where_nothing_is_rolled_back():
+    """The monotone case has to survive the fix untouched.
+
+    Every published number was produced from a replay whose champion sequence
+    only goes forwards, so a change here that moved those spans would silently
+    restate the gate calibration on all six cities.
+    """
+    from driftloop.retrospect import _service_spans
+
+    assert _service_spans([1, 1, 2, 3, 3]) == [(1, 0, 1), (2, 2, 2), (3, 3, 4)]
+    assert _service_spans([1]) == [(1, 0, 0)]
+    assert _service_spans([]) == []
+
+
+def test_a_rolled_back_promotion_is_judged_only_on_the_weeks_it_served(source):
+    """The defect, end to end.
+
+    v2 is promoted at index 2 and rolled back at index 4, so it served two
+    windows. The restored v1 must not be judged as a promotion, and v2's
+    ``weeks_served`` must count its own stretch rather than reaching to the end
+    of the replay.
+    """
+    early = train(source.get_data(pd.Timestamp("2025-01-01"), pd.Timestamp("2025-03-01")))
+    late = train(source.get_data(pd.Timestamp("2025-05-01"), pd.Timestamp("2025-07-01")))
+    models = {1: _as_registered(early, 1), 2: _as_registered(late, 2)}
+
+    runs = pd.DataFrame(
+        {
+            "as_of": pd.date_range("2025-07-15", periods=7, freq="7D"),
+            "champion_version": [1, 1, 2, 2, 1, 1, 1],
+            "tags.promotion_decision": [
+                "none", "none", "promoted", "none", "none", "none", "none",
+            ],
+            "metrics.champion_rmse_holdout": [np.nan, np.nan, 10.0, np.nan, np.nan, np.nan, np.nan],
+            "metrics.challenger_rmse": [np.nan, np.nan, 8.0, np.nan, np.nan, np.nan, np.nan],
+        }
+    )
+
+    result = build(source, runs, models, monitor_days=14, lead_days=0, promotion_margin=0.05)
+
+    # One row: the promotion. The rollback restores v1 without promoting it, so
+    # it is not a decision the gate ever made and is not scored as one.
+    (gate,) = result.gate
+    assert gate["version"] == 2 and gate["replaced"] == 1
+    assert gate["weeks_served"] == 2, "must not reach past the rollback"
+
+    # And the decay curve still starts where the model was first promoted.
+    assert result.promoted_at[2] == runs["as_of"].iloc[2]
+    assert result.promoted_at[1] == runs["as_of"].iloc[0]

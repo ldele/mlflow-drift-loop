@@ -71,6 +71,14 @@ class ChampionRef:
     # When this version last sat a holdout exam and won, or None for a version
     # that has never sat one. Written by `mark_certified`.
     last_certified: pd.Timestamp | None = None
+    # Probation state, written by `mark_promoted` and `mark_probation_cleared`.
+    # `promoted_at` dates the promotion and `replaced_version` names the model
+    # displaced, which together are everything needed to re-run that decision
+    # later against the alternative it beat. `probation_cleared` stops the check
+    # repeating every run for the rest of the version's life.
+    promoted_at: pd.Timestamp | None = None
+    replaced_version: str | None = None
+    probation_cleared: bool = False
 
     def certified_at(self) -> pd.Timestamp:
         """The date this version's certificate runs from.
@@ -134,6 +142,34 @@ def promote(model_name: str, version: str) -> None:
     MlflowClient().set_registered_model_alias(model_name, CHAMPION_ALIAS, version)
 
 
+def mark_promoted(model_name: str, version: str, as_of: pd.Timestamp, replaced: str) -> None:
+    """Record when a version was promoted and which version it displaced.
+
+    Kept on the version because probation has to re-run that decision weeks
+    later, against the same alternative, and the run log cannot be trusted to
+    name it: the run that promotes overwrites its own `champion_version` tag
+    with the winner, so the loser is not recoverable from the run alone.
+    """
+    client = MlflowClient()
+    client.set_model_version_tag(model_name, version, "promoted_at", as_of.isoformat())
+    client.set_model_version_tag(model_name, version, "replaced_version", str(replaced))
+
+
+def mark_probation_cleared(model_name: str, version: str) -> None:
+    """Record that a version's probation has been judged, whichever way.
+
+    Set on a pass and on a failure. A rolled-back version keeps the tag so that
+    being promoted again later does not put it back on probation for a decision
+    already taken.
+    """
+    MlflowClient().set_model_version_tag(model_name, version, "probation_cleared", "true")
+
+
+def load_version(model_name: str, version: str) -> Pipeline:
+    """Load one registered version's pipeline by number rather than by alias."""
+    return mlflow.sklearn.load_model(f"models:/{model_name}/{version}")
+
+
 def mark_certified(model_name: str, version: str, as_of: pd.Timestamp) -> None:
     """Record that a version sat a holdout exam on ``as_of`` and kept its place.
 
@@ -168,6 +204,11 @@ def load_champion(model_name: str) -> ChampionRef | None:
         last_certified=(
             pd.Timestamp(mv.tags["last_certified"]) if "last_certified" in mv.tags else None
         ),
+        promoted_at=(
+            pd.Timestamp(mv.tags["promoted_at"]) if "promoted_at" in mv.tags else None
+        ),
+        replaced_version=mv.tags.get("replaced_version"),
+        probation_cleared=mv.tags.get("probation_cleared") == "true",
     )
 
 

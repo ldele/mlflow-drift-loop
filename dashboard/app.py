@@ -489,8 +489,9 @@ with tab_loop:
     st.plotly_chart(fig, width="stretch")
     st.caption(
         "Where the staircase ends up far above the error, the trigger has gone quiet and cannot "
-        "fire again whatever the model does. The bar was set at the seasonal peak and never comes "
-        "back down."
+        "fire again whatever the model does. The bar is reset by every promotion, and because "
+        "promotions land in the dirty season it ratchets upward. It can step down where a "
+        "challenger trained on a calmer stretch, but only slightly and only early."
     )
 
     if retro and retro.champion_skill:

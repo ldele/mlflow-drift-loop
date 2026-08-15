@@ -158,8 +158,9 @@
             <strong>What this page shows is wrong with it:</strong> the expensive alarm compares the
             model against <em>its own</em> error at training time, and every promotion resets that
             comparison. Because retrains fire in the dirty season, each new model inherits a higher
-            bar than the one it replaced, and the bar never comes back down. You can see it as a
-            staircase in “when it retrains, and against what bar”. Once it has ratcheted to the
+            bar than the one it replaced, and the bar ratchets upward. It can step down when a
+            challenger trains on a calmer stretch, but only slightly and only early. You can see it
+            as a staircase in “when it retrains, and against what bar”. Once it has ratcheted to the
             seasonal peak the alarm cannot fire again, whatever the model does. Kraków spends its
             last 30 weeks that way, serving a 210-day-old model while the trigger reports it as
             healthier than it has ever been.

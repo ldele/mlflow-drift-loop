@@ -302,6 +302,23 @@ def pct_improvement_unpaired(served: np.ndarray, frozen: np.ndarray) -> float:
     return float((1 - np.median(served) / denominator) * 100)
 
 
+def rmse_margin(challenger_sq_err: np.ndarray, champion_sq_err: np.ndarray) -> float:
+    """The challenger's fractional RMSE advantage, from per-observation errors.
+
+    ``1 - rmse_challenger / rmse_champion``, in the same units as
+    ``LoopConfig.promotion_margin``, so the two are directly comparable.
+
+    Takes squared errors rather than the two RMSEs because the resampler has to
+    redraw the *observations*. Handing it two scalars would leave nothing to
+    resample, and recomputing an RMSE inside the statistic is what makes the
+    interval an interval on the quantity the gate actually decides on.
+    """
+    champion = float(np.mean(champion_sq_err))
+    if champion <= 0:
+        return float("nan")
+    return float(1.0 - np.sqrt(np.mean(challenger_sq_err)) / np.sqrt(champion))
+
+
 def win_rate(served: np.ndarray, frozen: np.ndarray) -> float:
     """Percentage of windows where the served model beat the frozen one."""
     if served.size == 0:

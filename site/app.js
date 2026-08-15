@@ -747,7 +747,7 @@ function render() {
     chartCard(jobs,
       "When it retrains, and against what bar",
       "A retrain fires when the error crosses the dotted bar, which is 1.25× whatever the model in service scored when it was trained. " +
-      "The bar is a staircase because every promotion resets it, and promotions happen in the dirty season, so each new model inherits a higher bar than the one it replaced and the bar never comes back down. " +
+      "The bar is a staircase because every promotion resets it, and promotions happen in the dirty season, so each new model inherits a higher bar than the one it replaced and the bar ratchets upward. It can step down where a challenger trained on a calmer stretch, but only slightly and only early. " +
       "Where the staircase ends up far above the error, the trigger has gone quiet and cannot fire again whatever the model does.",
       chipsT, traces, lay);
   }

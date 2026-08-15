@@ -77,6 +77,18 @@ def rmse(model: Pipeline, df: pd.DataFrame) -> float:
     return float(np.sqrt(np.mean((df[TARGET].to_numpy() - pred) ** 2)))
 
 
+def squared_errors(model: Pipeline, df: pd.DataFrame) -> np.ndarray:
+    """Per-row squared error on a window, in the order the rows arrive.
+
+    The raw material an interval on RMSE has to be built from. An RMSE is one
+    number and cannot be resampled; the errors underneath it can, and keeping
+    them in time order is what lets the resampling redraw contiguous blocks.
+    """
+    if df.empty:
+        return np.empty(0, dtype=float)
+    return (df[TARGET].to_numpy(dtype=float) - model.predict(df[FEATURES])) ** 2
+
+
 def error_metrics(model: Pipeline, df: pd.DataFrame) -> dict[str, float]:
     """RMSE, MAE, R^2 and the row count for one window."""
     if df.empty:

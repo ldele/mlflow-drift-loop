@@ -93,8 +93,10 @@ class LoopConfig:
     # This trigger ratchets, which is the failure the project is built around.
     # The denominator is the champion's own baseline, so every promotion resets
     # it, and promotions happen at the seasonal peak, so each new champion
-    # inherits a higher bar that never comes back down. Kraków spends its last
-    # 30 of 48 runs unable to fire at any error. Kept as the cheap first check.
+    # inherits a higher bar. A challenger trained on a calmer stretch can lower
+    # it, and does once in Kraków and three times in Delhi, but never by enough
+    # to matter: Kraków still spends its last 30 of 48 runs unable to fire at
+    # any error. Kept as the cheap first check.
     perf_drift_threshold: float = 1.25
     # The second trigger, which a promotion cannot move: skill against a 30-day
     # hour-of-day profile of recent pollution. -0.5 reads as the champion being
@@ -133,6 +135,54 @@ class LoopConfig:
     psi_threshold: float = 0.25
     # A challenger must beat the champion by this fraction to be promoted.
     promotion_margin: float = 0.05
+    # And, when this is set, must beat it by that much with the holdout window's
+    # own uncertainty taken into account.
+    #
+    # The gate compares two RMSEs on one seven-day window of autocorrelated
+    # hourly data and promotes on the bare difference. That is a decision made on
+    # a point estimate, which is the error this project corrected everywhere it
+    # publishes a number and never applied to the decision itself. Measured over
+    # the 28 shipped promotions, 11 have an exam margin whose interval reaches
+    # below the 5% they were supposed to clear and 6 reach below zero. Los
+    # Angeles promoted on +21.9% [-6.9, +32.3] and delivered -6.7%.
+    #
+    # Set to a one-sided confidence (0.95 reads as "95% sure the margin is real")
+    # and a challenger must clear `promotion_margin` at the lower bound as well
+    # as at the point estimate. Strictly an additional hurdle: it can only ever
+    # block a promotion the existing rule allowed, never create one.
+    #
+    # None disables it, which is the behaviour every published number was
+    # produced under.
+    promotion_confidence: float | None = None
+
+    # How long a promotion stays provisional. Set, and this many days after a
+    # promotion the new champion is scored against the model it displaced on a
+    # window that postdates them both, and loses its place if it is worse.
+    #
+    # Every other mechanism here treats promotion as final and tries to make the
+    # one decision better: fire the trigger sooner, sit the exam more often,
+    # judge it harder. All four measured out neutral or harmful, because the
+    # loop retries until a challenger passes and no per-attempt rule can price
+    # the number of attempts (docs/DECISIONS.md D3).
+    #
+    # This does not try to make the decision better. It makes the decision
+    # reversible, which is the one thing a retry loop's bias cannot survive: the
+    # luck that got a challenger through the exam does not repeat on a window
+    # chosen in advance, so a promotion that was noise shows up as one.
+    #
+    # It is a check rather than a selection, and that is why it is not the gate
+    # fix over again. Nothing is being maximised: one model is compared with one
+    # alternative, once, at a time fixed before the result is known. The
+    # winner's curse comes from taking the best of many attempts, and there are
+    # no attempts here.
+    #
+    # 14 days at a weekly cadence is the first window that postdates the
+    # promotion entirely. At 7 the monitor window still holds the holdout the
+    # challenger was selected on, which would judge it on its own exam.
+    #
+    # None disables it, which is the behaviour every published number was
+    # produced under.
+    probation_days: int | None = None
 
     experiment_name: str = "drift-loop-synthetic"
     registered_model_name: str = "pm25-ridge"

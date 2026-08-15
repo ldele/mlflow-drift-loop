@@ -34,18 +34,28 @@ import pandas as pd
 from driftloop.config import DRIFT_FEATURES, LoopConfig
 from driftloop.data.base import DataSource
 from driftloop.drift import DataDriftResult, compute_data_drift, compute_perf_drift, distribution_report
-from driftloop.model import error_metrics, predictions_frame, rmse, train
+from driftloop import stats
+from driftloop.model import error_metrics, predictions_frame, rmse, squared_errors, train
 from driftloop.retrospect import climatology_skill
 from driftloop.tracking import (
     CHALLENGER_ALIAS,
     CHAMPION_ALIAS,
+    ChampionRef,
     load_champion,
+    load_version,
     log_and_register,
     mark_certified,
+    mark_probation_cleared,
+    mark_promoted,
     promote,
 )
 
 HOUR = pd.Timedelta(1, unit="h")
+
+# Block length and resample count for the promotion gate's interval. See
+# `_exam_margin_lower_bound` for both.
+_GATE_BLOCK_HOURS = 24
+_GATE_RESAMPLES = 2_000
 
 
 @dataclass
@@ -77,6 +87,17 @@ class CycleResult:
     # can be 200 days past its last exam with every drift signal quiet.
     certified_age_days: float = float("nan")
     recertify_due: bool = False
+    # The exam margin's lower bound, when the gate is asked for one. NaN where
+    # no challenger was trained or the confidence gate is off. Recorded even on
+    # runs it does not change, because the gap between this and the point
+    # estimate is how much of the exam was ever real.
+    exam_margin_lo: float = float("nan")
+    # Probation. "none" where nothing was due, otherwise whether the promotion
+    # being judged survived. `probation_margin` is the champion's advantage over
+    # the model it displaced on a window that postdates them both, so a negative
+    # value is a promotion that should not have happened.
+    probation_decision: str = "none"  # "none" | "kept" | "rolled_back"
+    probation_margin: float = float("nan")
     challenger_rmse: float | None = None
     champion_rmse_holdout: float | None = None
     performance_gap: float | None = None
@@ -122,6 +143,14 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
 
     monitor_start = as_of - pd.Timedelta(cfg.monitor_days, unit="D")
     monitor = source.get_data(monitor_start, as_of)
+
+    # Probation runs before anything else, so the rest of the cycle monitors
+    # whichever model is actually going to serve rather than one already known
+    # to have lost its place.
+    probation_decision, probation_margin = _judge_probation(champion, monitor, as_of, cfg)
+    if probation_decision == "rolled_back":
+        champion = load_champion(cfg.registered_model_name)
+
     reference = source.get_data(champion.train_start, champion.train_end + HOUR)
 
     # --- Signal 1: data drift (no model involved) ---
@@ -180,6 +209,8 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
         skill_drift_detected=skill_detected,
         certified_age_days=certified_age_days,
         recertify_due=recertify_due,
+        probation_decision=probation_decision,
+        probation_margin=probation_margin,
     )
 
     challenger = None
@@ -205,9 +236,22 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
         result.champion_rmse_holdout = champ_holdout
         result.challenger_rmse = chal_holdout
         result.performance_gap = champ_holdout - chal_holdout
-        result.promotion_decision = (
-            "promoted" if chal_holdout < champ_holdout * (1 - cfg.promotion_margin) else "rejected"
-        )
+        clears_point = chal_holdout < champ_holdout * (1 - cfg.promotion_margin)
+
+        if cfg.promotion_confidence is not None:
+            result.exam_margin_lo = _exam_margin_lower_bound(
+                challenger.pipeline, champion.pipeline, holdout, cfg.promotion_confidence
+            )
+            # Both hurdles, so the confidence gate can only ever subtract a
+            # promotion. A lower bound that cannot be computed (a window too
+            # short to resample) is no opinion, and the point estimate decides
+            # alone rather than a missing interval blocking by default.
+            clears_interval = pd.isna(result.exam_margin_lo) or (
+                result.exam_margin_lo > cfg.promotion_margin
+            )
+            clears_point = clears_point and clears_interval
+
+        result.promotion_decision = "promoted" if clears_point else "rejected"
 
     _log_cycle(result, challenger, data_drift, cfg, champion.pipeline, monitor, reference)
     return result
@@ -229,6 +273,87 @@ def _log_monitoring_artifacts(champion_pipeline, monitor: pd.DataFrame, referenc
         (tmp_path / "feature_distributions.json").write_text(json.dumps(report), encoding="utf-8")
 
         mlflow.log_artifacts(str(tmp_path), artifact_path="monitoring")
+
+
+def _judge_probation(
+    champion: ChampionRef, monitor: pd.DataFrame, as_of: pd.Timestamp, cfg: LoopConfig
+) -> tuple[str, float]:
+    """Re-run a promotion decision on a window that postdates it, once.
+
+    Returns ``(decision, margin)`` where the margin is the serving champion's
+    fractional RMSE advantage over the model it displaced. Negative means the
+    promotion made things worse, and the ``champion`` alias is moved back.
+
+    Deliberately not a second exam. It compares the two models that the original
+    decision was between, on a window fixed by the calendar rather than chosen,
+    and it happens exactly once per promotion. There is nothing to select from,
+    so there is no winner's curse to inherit, which is the whole reason this is
+    worth trying after three sharper gates failed.
+
+    Silent for a bootstrap champion, which displaced nothing, and for a version
+    already judged. A version whose predecessor cannot be loaded is left alone
+    rather than rolled back into a model that is not there.
+    """
+    if cfg.probation_days is None or champion.probation_cleared:
+        return "none", float("nan")
+    if champion.promoted_at is None or champion.replaced_version is None:
+        return "none", float("nan")
+    if (as_of - champion.promoted_at).days < cfg.probation_days:
+        return "none", float("nan")
+
+    try:
+        replaced = load_version(cfg.registered_model_name, champion.replaced_version)
+    except Exception:
+        mark_probation_cleared(cfg.registered_model_name, champion.version)
+        return "none", float("nan")
+
+    serving_rmse = rmse(champion.pipeline, monitor)
+    replaced_rmse = rmse(replaced, monitor)
+    if pd.isna(serving_rmse) or pd.isna(replaced_rmse) or not replaced_rmse:
+        return "none", float("nan")
+
+    margin = float(1.0 - serving_rmse / replaced_rmse)
+    # Judged once either way, so a promotion is provisional for one window and
+    # then settled. Leaving it open would re-judge the same decision every run
+    # against a window that keeps moving, which is the retrying this mechanism
+    # exists to avoid repeating.
+    mark_probation_cleared(cfg.registered_model_name, champion.version)
+    if margin >= 0:
+        return "kept", margin
+
+    promote(cfg.registered_model_name, champion.replaced_version)
+    return "rolled_back", margin
+
+
+def _exam_margin_lower_bound(challenger, champion, holdout: pd.DataFrame, confidence: float) -> float:
+    """The lower bound of the challenger's RMSE advantage on the holdout window.
+
+    Resampled in 24-hour blocks. Hourly pollution carries a strong diurnal cycle
+    and episodes that run for days, so redrawing single hours would treat 168
+    observations as 168 independent ones and report a range far narrower than
+    the week supports. A day is the shortest block that keeps a whole cycle
+    intact; at a seven-day holdout that leaves seven blocks, which is few, and
+    the resulting bound is conservative rather than sharp.
+
+    ``confidence`` is one-sided, because the gate asks a one-sided question. A
+    two-sided interval at alpha leaves alpha/2 in each tail, so the alpha that
+    puts ``1 - confidence`` below the lower bound is twice that.
+
+    Fewer resamples than a published interval: this crosses a threshold rather
+    than being printed, and a replay pays for it once per retrain.
+    """
+    champion_err = squared_errors(champion, holdout)
+    challenger_err = squared_errors(challenger, holdout)
+    if champion_err.size < _GATE_BLOCK_HOURS * 2:
+        return float("nan")
+    interval = stats.block_bootstrap(
+        (challenger_err, champion_err),
+        stats.rmse_margin,
+        block=_GATE_BLOCK_HOURS,
+        resamples=_GATE_RESAMPLES,
+        alpha=2 * (1 - confidence),
+    )
+    return interval.lo
 
 
 def _retrain_reason(result: CycleResult) -> str:
@@ -274,6 +399,7 @@ def _log_cycle(
                 "retrain_reason": _retrain_reason(result),
                 "retrain_triggered": str(result.retrain_triggered),
                 "promotion_decision": result.promotion_decision,
+                "probation_decision": result.probation_decision,
                 "data_drift_label": result.data_drift_label,
                 "worst_feature": result.worst_feature,
                 "champion_version": result.champion_version,
@@ -308,6 +434,11 @@ def _log_cycle(
             metrics["challenger_rmse"] = result.challenger_rmse
             metrics["champion_rmse_holdout"] = result.champion_rmse_holdout
             metrics["performance_gap"] = result.performance_gap
+        if not pd.isna(result.exam_margin_lo):
+            metrics["exam_margin_lo"] = result.exam_margin_lo
+        if not pd.isna(result.probation_margin):
+            metrics["probation_margin"] = result.probation_margin
+            metrics["rollback_event"] = float(result.probation_decision == "rolled_back")
         mlflow.log_metrics(metrics)
         _log_monitoring_artifacts(champion_pipeline, monitor, reference)
 
@@ -317,6 +448,11 @@ def _log_cycle(
             mlflow.set_tag("challenger_version", version)
             if result.promotion_decision == "promoted":
                 promote(cfg.registered_model_name, version)
+                # Which version this displaced, recorded now because the tag
+                # below is about to overwrite the only other record of it.
+                mark_promoted(
+                    cfg.registered_model_name, version, result.as_of, result.champion_version
+                )
                 mlflow.set_tag("champion_version", version)
             elif cfg.recertify_days is not None:
                 # The incumbent sat an exam on unseen data and kept its place,
