@@ -117,7 +117,7 @@ def bootstrap_champion(
 ) -> str:
     """Train the first champion and register it under the ``champion`` alias."""
     df = source.get_data(train_start, train_end)
-    trained = train(df, kind=cfg.model_kind)
+    trained = train(df, kind=cfg.model_kind, params=cfg.model_params)
 
     with mlflow.start_run(run_name=f"bootstrap-{train_end.date()}"):
         mlflow.set_tags({"cycle_type": "bootstrap", "promotion_decision": "promoted"})
@@ -228,7 +228,7 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
 
         challenger_df = source.get_data(challenger_start, holdout_start)
         holdout = source.get_data(holdout_start, as_of)
-        challenger = train(challenger_df, kind=cfg.model_kind)
+        challenger = train(challenger_df, kind=cfg.model_kind, params=cfg.model_params)
 
         champ_holdout = rmse(champion.pipeline, holdout)
         chal_holdout = rmse(challenger.pipeline, holdout)

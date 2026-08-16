@@ -23,20 +23,35 @@ Five findings, each with the interval that decides whether to believe it. Every
 percentage below is a 95% moving-block bootstrap over autocorrelated weekly
 windows; details in [evaluation.md](docs/evaluation.md#what-the-intervals-cost-this-page).
 
-1. **Retraining pays where the world really moved.** Delhi +49.4%
-   [+33.7, +61.8] week by week.
+1. **Retraining pays where the world really moved, and by much less than it
+   first appears.** Delhi +49.4% [+33.7, +61.8] week by week for the model that
+   ships. Tune that model properly and swap it for a better one and the premium
+   falls to **+9.7% [+8.0, +26.0]**, still clear of zero. The effect is real;
+   four fifths of it was the shipped model being under-regularised and linear
+   (see the caveat below).
 2. **And it costs where it did not.** Los Angeles, the control, −13.4%
    [−36.9, −3.8]. The interval excludes zero, so the control is a result rather
-   than an anecdote. This half of the headline is the fragile half: swap the
-   Ridge for a tree and the harm stops being measurable (see the caveat below).
+   than an anecdote. This is the fragile half of the headline, in two ways. Swap
+   the Ridge for a tree and the harm stops being measurable (see the caveat
+   below): with a properly tuned tree the harm is −6.9% [−13.2, +2.8] and no
+   longer clear of zero. And the whole −13.4% rests on a **single promotion**,
+   made on an exam margin of +21.9% [−6.9, +32.3]: an exam that could not
+   establish the challenger was better at all. Where the seasonal swing is small
+   the exam has little signal to select on, so part of "retraining costs where
+   the world did not move" is a statement about the gate's precision rather than
+   about the world.
 3. **The retrain trigger goes deaf**, because it measures a model against its
    own past and every promotion resets that bar upward. The fix was built and
    measured. At its cautious setting it leaves five cities bit-identical and
    improves the deafest by +11.8% [+2.1, +17.2]. Attaching intervals turned
    that from a wash into a result, and into an argument for switching it on.
-4. **A longer promotion exam does nothing at all.** Eighteen paired
-   comparisons across six cities and three exam lengths, not one clear of
-   zero. A negative result, run rather than argued.
+4. **Five fixes were built and measured. None pays, and one is harmful.** A
+   longer exam does nothing anywhere: eighteen paired comparisons, not one clear
+   of zero. A re-certification schedule bounds staleness and buys no accuracy. A
+   confidence-aware gate is worse than the gate it replaces. Making promotion
+   reversible does no harm and proves nothing. They fail for one reason, and it
+   took all five to see it: the loop retries until a challenger passes, so
+   raising any bar buys more attempts and a luckier winner.
 5. **The promotion gate has a shelf life.** It is honest for about five weeks
    (+9.8% [+6.4, +14.0] delivered across 25 promotions) and reverses beyond
    twenty, though that second group is three promotions, and is reported as
@@ -46,14 +61,20 @@ One caveat that belongs up here rather than in a footnote. **Two of the six
 cities show no measurable effect at all** once intervals are attached: Kraków
 and Melbourne.
 
-A second caveat has now been tested, and it splits the headline in two. The
-model is a near-linear Ridge, so "retraining pays" was entangled with "linear
-models need refitting to track seasonality". A gradient-boosted arm could not
-beat the Ridge in either city tried, which is itself evidence there is little
-nonlinearity to misspecify. Delhi's premium survives the swap at +36.3%
-[+17.4, +47.6], so finding 1 does not depend on the model class. **Los Angeles's
-does not**: the harm falls to −3.5% [−9.7, +1.2] and that change is itself
-measurable, so finding 2 holds for the model that ships and weakens for a tree.
+A second caveat has now been tested properly, and it takes most of finding 1
+away. The shipped model is a Ridge at `alpha=1.0`, a library default its own
+sweep beats by 11.9% in Delhi, so "retraining pays" was entangled with both
+"this model is under-regularised" and "linear models need refitting to track
+seasonality". Tuning the Ridge and a gradient-boosted challenger on the same
+protocol separates the three. Delhi's +49.4% decomposes into **21.6 points lost
+to the shipped `alpha`, 18.0 points lost to linearity, and +9.7% left over**.
+The effect is real and it is a fifth of what this page used to claim. Los
+Angeles's harm stops being measurable under the better model.
+
+An earlier version of this README reported the opposite, on the strength of a
+test that could not run: a tree at library defaults lost to the Ridge, and that
+was read as evidence the confound was small when it was really evidence the
+challenger was undertrained. Tuning it is worth 26.5%.
 [The ablation in full](docs/evaluation.md#is-the-finding-about-the-world-or-about-a-linear-model).
 
 ## The loop
@@ -117,13 +138,44 @@ every long-serving promotion still delivers a negative margin at every length,
 and a longer exam blocks challengers that the cities needing them cannot afford
 to lose.
 
-**Neither fix addresses the reversal, and that is the useful finding.** Waking
-the trigger helps the city that never retrains and harms the two where retraining
-already pays, which moves the problem rather than solving it. Lengthening the
-exam does nothing measurable anywhere. What is missing is a third mechanism:
-nothing re-examines a champion on fresh unseen data while it is serving. Both
-existing checks look at promotion time or at the model's own history. None of
-these conclusions would exist if the fixes had been argued instead of run.
+Neither fix addresses the reversal. Waking the trigger helps the city that never
+retrains and harms the two where retraining already pays. Lengthening the exam
+does nothing measurable anywhere. What both pointed at was a third mechanism:
+nothing re-examines a champion on fresh unseen data while it is serving.
+
+### Five fixes, and what they add up to
+
+So that third mechanism was built, and then two more, because each failure named
+the next thing to try. Every one of them was replayed across all six cities
+against the shipped loop, week by week, with intervals.
+
+| the fix | what it changes | what it did |
+|---|---|---|
+| a second retrain trigger | when the loop notices | helps the one deaf city, nothing elsewhere |
+| a longer exam | how much evidence one exam has | nothing measurable anywhere |
+| a re-certification schedule | how often the exam is sat | bounds staleness, buys no accuracy |
+| a confidence-aware gate | how hard one exam is to pass | **actively harmful** |
+| rollback | whether the result can be undone | no harm, and no proof of benefit |
+
+**They fail for one reason, and it took all five to find it.** The loop is a
+retry procedure: it keeps training challengers and sitting exams until one
+passes, so the model it promotes always carries the luck of whichever attempt
+cleared the bar. Raising the bar does not buy fewer bad promotions, it buys more
+attempts and a luckier winner, which is why the strictest gate is the harmful
+one. Nothing about *when* the loop acts, *how hard* it judges, or *whether it
+can undo the result* prices the number of attempts.
+
+Underneath all five is one measurement limit. The gate compares two models on a
+week of hourly air, and Los Angeles's promotion shows what that is worth: an
+exam margin of +21.9% [−6.9, +32.3], rolled back when re-judged at 14 days and
+kept when re-judged at 21 or 28. The same decision, three windows, opposite
+answers. A fortnight cannot resolve the difference the loop is asking about.
+
+That is a limit of the problem rather than a bug in the code, and it is a
+better answer than a mechanism that happened to work. None of it would exist if
+the fixes had been argued instead of run. The full workings, including the two
+decisions this left open, are in
+[evaluation.md](docs/evaluation.md) and [DECISIONS.md](docs/DECISIONS.md).
 
 ## Six cities that disagree
 
@@ -304,12 +356,14 @@ regularisation is nearly inert is close to a linear projection, so every result
 on this page was compatible with a duller explanation: linear models misspecify
 seasonal structure, and refitting is how you paper over it.
 
-Swapping in a gradient-boosted challenger and replaying Delhi and Los Angeles
-produced a model that fits *worse* in both, which is the most economical
-evidence available that this problem is close to linear and that there is little
-nonlinearity for a fresh fit to be covering. Delhi's retraining premium survives
-the swap at +36.3% [+17.4, +47.6]. Downgraded rather than closed, and
-[argued in full](docs/evaluation.md#is-the-finding-about-the-world-or-about-a-linear-model).
+Swapping in a gradient-boosted challenger at library defaults produced a model
+that fits *worse* in both cities, and that was read here as evidence the problem
+is close to linear. It was not. The tree was undertrained: tuning it is worth
+26.5% in Delhi, and once both classes are tuned on the same protocol the premium
+falls from +49.4% to +9.7%. **The confound was real and larger than this page
+claimed**, and the mistake was treating a check that could not run as evidence
+for the thing it failed to test.
+[Argued in full](docs/evaluation.md#is-the-finding-about-the-world-or-about-a-linear-model).
 
 Getting there meant working around a decision made for elegance. `retrospect.py`
 rebuilds each version from its coefficient tags, nine numbers, and only because

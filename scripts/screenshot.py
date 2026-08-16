@@ -11,6 +11,17 @@
     python scripts/screenshot.py http://localhost:8501/ docs/images/dashboard.png \
         --wait-for '[data-testid="stMetric"]' --size 1240x1800
 
+    # one section of the site, cropped by selector rather than by pixel offset
+    python scripts/screenshot.py http://localhost:8123/index.html?theme=light \
+        docs/images/method.png --size 1240x9900 --clip "section#method"
+
+`--clip` measures the element inside the page being captured, which is the only
+place the answer is right. A viewport tall enough to hold the whole document
+lays out differently from a scrolling one, so an offset read in one browser and
+applied to a capture in another lands somewhere else. Cropping by selector also
+survives the section growing, which is what makes a figure safe to regenerate
+after an edit rather than something to re-measure by hand.
+
 This drives Edge over the DevTools protocol and polls until a selector matches,
 rather than shelling out to `msedge --headless --screenshot`, which has two
 failure modes that both save a plausible-looking file instead of erroring.
@@ -64,7 +75,7 @@ def trim_to_content(path: Path) -> None:
 
 
 async def capture(url: str, out: Path, selector: str, width: int, height: int,
-                  settle: float) -> None:
+                  settle: float, clip: str | None = None) -> None:
     profile = Path(f"{Path.home()}/.cache/driftloop-shot-{DEBUG_PORT}")
     browser = subprocess.Popen(
         [str(EDGE), "--headless=new", "--disable-gpu", "--hide-scrollbars",
@@ -125,7 +136,31 @@ async def capture(url: str, out: Path, selector: str, width: int, height: int,
 
             # Charts keep drawing for a moment after their container exists.
             await asyncio.sleep(settle)
-            shot = await call("Page.captureScreenshot", {"format": "png"})
+
+            params: dict = {"format": "png"}
+            if clip:
+                # Measured inside the page being captured, which is the only
+                # place the answer is right. A viewport tall enough to hold the
+                # whole document lays out differently from a scrolling one, so
+                # offsets read in a browser at one height and applied to a
+                # capture at another land somewhere else entirely.
+                box = await call("Runtime.evaluate", {
+                    "expression": (
+                        "(() => { const e = document.querySelector(%r);"
+                        " if (!e) return null; const r = e.getBoundingClientRect();"
+                        " return {x: r.left + scrollX, y: r.top + scrollY,"
+                        " width: r.width, height: r.height}; })()" % clip
+                    ),
+                    "returnByValue": True,
+                })
+                rect = box.get("result", {}).get("value")
+                if not rect:
+                    raise SystemExit(f"--clip {clip!r} matched nothing")
+                params["clip"] = {**{k: float(v) for k, v in rect.items()}, "scale": 1}
+                print(f"  clipped to {clip} "
+                      f"({rect['width']:.0f}x{rect['height']:.0f} at y={rect['y']:.0f})")
+
+            shot = await call("Page.captureScreenshot", params)
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(base64.b64decode(shot["data"]))
             print(f"  wrote {out} ({out.stat().st_size} bytes)")
@@ -144,10 +179,13 @@ def main() -> None:
                         help="seconds to wait after the selector matches")
     parser.add_argument("--trim", action="store_true",
                         help="crop trailing background after capturing")
+    parser.add_argument("--clip", default=None,
+                        help="CSS selector to crop to, measured inside the captured page")
     args = parser.parse_args()
 
     width, height = (int(n) for n in args.size.lower().split("x"))
-    asyncio.run(capture(args.url, args.out, args.wait_for, width, height, args.settle))
+    asyncio.run(capture(args.url, args.out, args.wait_for, width, height,
+                        args.settle, args.clip))
     if args.trim:
         trim_to_content(args.out)
         print(f"  trimmed to {args.out.stat().st_size} bytes")

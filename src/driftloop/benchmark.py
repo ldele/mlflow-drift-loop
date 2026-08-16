@@ -215,6 +215,35 @@ def score_windows(
     return sorted(scored, key=lambda s: s.median_rmse)
 
 
+# The tree's grid. Four parameters, chosen because a couple of thousand rows is
+# small for a gradient-boosted model at library defaults and these are the four
+# that decide how hard it is allowed to fit: how fast it learns, how much
+# structure each tree may hold, how much evidence a leaf needs, and how strongly
+# the whole thing is shrunk. `max_iter` is fixed rather than swept, because with
+# early stopping off it trades directly against `learning_rate` and sweeping
+# both spends the grid on one degree of freedom.
+#
+# The ranges reach further toward "simple" than a grid for this model usually
+# would, and that is a finding rather than a preference. A first grid centred on
+# the library defaults put the optimum at its most-regularised corner in every
+# dimension at once, which meant the grid was truncating the answer rather than
+# containing it. Extending it moved the optimum again, twice, until
+# `max_leaf_nodes` reached 2, which is a decision stump and the floor of what
+# the estimator can be asked to do.
+#
+# So the tuned tree on this data is an additive model of stumps: it has been
+# regularised until it can express no feature interaction at all, which is the
+# one thing it had over a linear model. That is worth knowing before reading any
+# comparison between the two.
+GBM_GRID: dict[str, tuple] = {
+    "learning_rate": (0.01, 0.03, 0.1),
+    "max_leaf_nodes": (2, 3, 7),
+    "min_samples_leaf": (50, 200, 400),
+    "l2_regularization": (1.0, 10.0),
+}
+GBM_FIXED: dict[str, int] = {"max_iter": 200}
+
+
 @dataclass
 class AlphaSweep:
     best: float
@@ -260,3 +289,78 @@ def tune_alpha(
         curve.append((float(alpha), float(np.mean(folds))))
 
     return AlphaSweep(min(curve, key=lambda p: p[1])[0], shipped, curve, n_splits)
+
+
+@dataclass
+class GbmSweep:
+    """The tuned tree, and what tuning it was worth against its own defaults."""
+
+    best: dict
+    best_rmse: float
+    default_rmse: float
+    n_splits: int
+    n_candidates: int
+
+    @property
+    def gain_pct(self) -> float:
+        """How much better the tuned tree is than the library default, in percent."""
+        if not self.default_rmse or self.default_rmse != self.default_rmse:
+            return float("nan")
+        return float((1 - self.best_rmse / self.default_rmse) * 100)
+
+
+def tune_gbm(
+    train: pd.DataFrame,
+    grid: dict[str, tuple] | None = None,
+    n_splits: int = 5,
+) -> GbmSweep:
+    """Forward-chaining CV over the tree's hyper-parameters.
+
+    Exists so the model-class ablation compares two *tuned* models rather than a
+    tuned one and a default one. A gradient-boosted model at library defaults
+    loses to the Ridge on this data, and a comparison won by the model that
+    happened to suit the defaults answers a question nobody asked.
+
+    Same splitter and the same window as ``tune_alpha``, so neither class gets a
+    protocol the other did not. ``TimeSeriesSplit`` never lets a fold train on
+    rows that follow the ones it scores; on autocorrelated hourly data a random
+    fold leaks enough to make every setting look fine.
+
+    Scored on the champion's own training window, which is what a deployment
+    would have had before the replay starts. Tuning on the replay would be
+    choosing hyper-parameters with knowledge of the seasons they are about to be
+    tested against.
+    """
+    from itertools import product
+
+    grid = grid or GBM_GRID
+    if len(train) < n_splits + 1:
+        return GbmSweep({}, float("nan"), float("nan"), 0, 0)
+
+    splitter = TimeSeriesSplit(n_splits=n_splits)
+    x, y = train[FEATURES], train[TARGET]
+
+    def score(params: dict) -> float:
+        folds = [
+            _rmse(
+                y.iloc[test].to_numpy(dtype=float),
+                build_pipeline(kind="gbm", params={**GBM_FIXED, **params})
+                .fit(x.iloc[fit], y.iloc[fit])
+                .predict(x.iloc[test]),
+            )
+            for fit, test in splitter.split(x)
+        ]
+        return float(np.mean(folds))
+
+    names = list(grid)
+    candidates = [dict(zip(names, values)) for values in product(*(grid[n] for n in names))]
+    scored = [(params, score(params)) for params in candidates]
+    best, best_rmse = min(scored, key=lambda pair: pair[1])
+
+    return GbmSweep(
+        best={**GBM_FIXED, **best},
+        best_rmse=best_rmse,
+        default_rmse=score({}),
+        n_splits=n_splits,
+        n_candidates=len(candidates),
+    )

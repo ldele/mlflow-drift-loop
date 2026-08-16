@@ -66,6 +66,16 @@ Turning it on moves the six-city table, the gate calibration and the holdout
 sweep at once, and the before-and-after comparison the project is built on would
 have to be restated rather than extended.
 
+**Added 2026-08-14.** The Los Angeles result is one arm of eighteen in that
+sweep, and the page it sits on now reports more than two hundred intervals with
+no multiple-comparisons correction. That does not make it wrong, and it is a
+wide interval well clear of zero rather than a marginal one, but it is the kind
+of claim multiplicity reaches. See
+[evaluation.md](evaluation.md#what-is-still-not-corrected). It shifts this
+decision's weight further toward the resolution below: two cities chosen before
+the floor is swept on them settle it in a way that re-reading the same eighteen
+arms cannot.
+
 ### Decision
 
 **No change.** The default stays `None`, the knob stays in the code, and the
@@ -331,3 +341,83 @@ attack the measurement: a target with more signal per unit time, a model whose
 errors are less autocorrelated, or a horizon long enough that a fortnight is not
 the unit of evidence. Those are properties of the problem rather than of the
 loop, which is a fair conclusion for a project about a loop to reach.
+
+---
+
+## D5. The shipped alpha is a library default that costs accuracy and inflates a headline
+
+**Date:** 2026-08-14
+**Status:** open, and left that way by whoever wrote this
+**Affects:** the `alpha=1.0` default in `model.build_pipeline` and `model.train`
+
+### The choice
+
+Every model this project has ever trained ran at `alpha=1.0`, which is
+scikit-learn's default and was never chosen. `benchmark.tune_alpha` has reported
+for some time that it is not the best setting in any of the six cities, and the
+page described the curve as "nearly flat" and left it there.
+
+The model-class ablation makes that harder to leave alone, because it puts a
+number on what the default costs the *conclusions* rather than just the error.
+
+### What the measurement says
+
+Forward-chaining CV on each city's bootstrap window, from
+[evaluation.md](evaluation.md#is-the-finding-about-the-world-or-about-a-linear-model):
+
+- **The default costs real accuracy.** 11.9% in Delhi, 4.4% in Johannesburg,
+  3.6% in Kraków, and under 2.2% in the other three.
+- **And it inflates the retraining premium.** Delhi's +49.35% falls to +27.73%
+  from tuning `alpha` alone, with no change of model class. That is 21.6 of the
+  49.4 points, the single largest component of the headline, and larger than the
+  18.0 points attributable to linearity.
+
+The mechanism is not mysterious. A model penalised properly generalises across
+seasons better, so it decays less, so a retrain has less to recover. Retraining
+was partly compensating for a hyper-parameter nobody set.
+
+### The argument for changing it
+
+The project's own standard, applied everywhere else, is that a setting should be
+measured rather than inherited. `alpha=1.0` is inherited. The sweep that says so
+has been in the repository, and on the published page, for weeks.
+
+And the headline is currently reported for a model that is known to be worse
+than one line of configuration away. A reader is entitled to ask why.
+
+### The argument for leaving it
+
+Changing it restates the entire project. Every city figure, the gate
+calibration, all five mechanism sweeps and both open decisions were produced at
+`alpha=1.0`. This is not an extension, it is a re-baseline, and the before and
+after would not be comparable.
+
+The tuned values are also extreme in a way worth pausing on: `alpha=1000` in
+Delhi shrinks the slopes most of the way to zero. That is a legitimate CV answer
+and it is close to saying the features barely help, which is consistent with
+every model here sitting a few percent above a constant predictor. Shipping it
+would make the coefficient-evolution charts, which are a large part of what this
+project shows, much less legible for a gain the reader cannot see.
+
+And the honest framing does not require the change. What the ablation
+establishes is *reported*: the premium is decomposed, the default is named as
+the largest term, and the surviving effect is stated at +9.7%.
+
+### Decision
+
+**No change, and this one is genuinely open.** The default stays at 1.0 and the
+cost of that is now written down in three places rather than implied by a flat
+curve.
+
+Flipping it is a re-baseline of everything, which is the owner's call and not
+the analysis's. What the analysis is entitled to say is that the setting is
+unchosen, that it is the largest single component of the project's headline
+number, and that both facts are now on the page.
+
+### What would settle it
+
+Deciding what this project is for. If it is a demonstration of a drift loop,
+`alpha=1.0` is a defensible fixed point as long as its cost is published, which
+it now is. If the six-city table is meant to be read as a measurement of what
+retraining is worth, it should be measured on a model somebody chose, and the
+re-baseline is unavoidable.

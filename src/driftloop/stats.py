@@ -98,8 +98,10 @@ class Interval:
         """Whether the interval lies entirely on one side of zero.
 
         Not called "significant" on purpose: it is one interval at one alpha,
-        and six are read off a single table, which is a multiple-comparisons
-        problem this project does not correct for. A reading aid.
+        and the page it feeds reports more than two hundred of them, which is a
+        multiple-comparisons problem this project does not correct for. The
+        exposure and which claims it reaches are set out in
+        ``docs/evaluation.md``. A reading aid, not a verdict.
         """
         return (self.lo > 0 and self.hi > 0) or (self.lo < 0 and self.hi < 0)
 

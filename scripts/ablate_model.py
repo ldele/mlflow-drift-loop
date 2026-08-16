@@ -3,9 +3,8 @@
 Every published result came from a Ridge whose regularisation is close to inert
 at the shipped setting, so two readings survive: the world moved and a fresh
 model tracks it, or a linear model misspecifies seasonal structure and refitting
-papers over that. This script separates them by replaying a city twice under
-identical settings, once with the shipped Ridge and once with a gradient-boosted
-challenger flexible enough to absorb the nonlinearity.
+papers over that. This script separates them by replaying a city under three
+model settings and comparing the retraining premium each one earns.
 
     python scripts/ablate_model.py                    # Delhi and Los Angeles
     python scripts/ablate_model.py --city delhi
@@ -14,10 +13,27 @@ Delhi and Los Angeles by default: the city where retraining pays most and the
 control where it measurably costs. If the premium is a linear artefact, Delhi's
 should shrink toward Los Angeles's.
 
-Two validity checks are printed with the result. The gradient-boosted model has
-to come out the better model, or it absorbed nothing and the comparison is
-between two misspecified models. And the Ridge arm has to reproduce the shipped
-numbers, or the harness is not faithful.
+**Three arms, because two were not a fair test.** The shipped Ridge runs at
+``alpha=1.0``, which its own sweep beats by 11.9% in Delhi, so an earlier version
+of this script compared a defaulted tree against a defaulted line and concluded
+nothing when the tree lost. Now both classes are tuned on the champion's own
+training window, with the same splitter and the same folds, and the untouched
+Ridge is kept as a third arm to prove the harness still reproduces what the rest
+of the project published.
+
+- ``ridge``       the shipped model, alpha=1.0, the faithfulness check
+- ``ridge_tuned`` alpha chosen by forward-chaining CV
+- ``gbm_tuned``   a gradient-boosted model, hyper-parameters chosen the same way
+
+Two validity checks are printed with the result. The tuned tree has to come out
+the better model over the replay, or it absorbed nothing and the comparison is
+between two misspecified models. And the shipped arm has to reproduce the
+published numbers, or the harness is not faithful.
+
+Worth knowing before reading any of it: tuning drives the tree to
+``max_leaf_nodes=2``, a decision stump, which is the floor the estimator allows.
+The CV-optimal gradient-boosted model on this data is an additive model that can
+express no feature interaction at all. See ``benchmark.GBM_GRID``.
 
 Writes outputs/model_ablation.csv and outputs/model_ablation_series.json.
 """
@@ -44,6 +60,7 @@ from driftloop.config import CITY_CLI_NAMES as CITIES
 from driftloop.config import PROFILES, Profile
 from driftloop.data import OpenMeteoSource
 from driftloop.loop import bootstrap_champion, run_simulation
+from driftloop.benchmark import tune_alpha, tune_gbm
 from driftloop.model import GBM, RIDGE
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -51,15 +68,46 @@ OUTPUTS = REPO_ROOT / "outputs"
 DEFAULT_CITIES = ["delhi", "la"]
 
 
-def run_arm(profile: Profile, source: OpenMeteoSource, kind: str) -> dict:
+def tune_both(profile: Profile, source: OpenMeteoSource) -> dict:
+    """Tune each model class on the champion's own training window.
+
+    Both classes get the same window, the same splitter and the same number of
+    folds, which is the only way a difference between them afterwards is a
+    difference between the classes rather than between how hard each was tried.
+
+    That matters here more than it usually would. The shipped Ridge runs at
+    ``alpha=1.0``, a library default its own sweep disagrees with by 11.9% in
+    Delhi, so tuning only the tree would have replaced one unfair comparison
+    with its mirror image.
+
+    Tuned before the replay starts, on data a deployment would already have.
+    Tuning on the replay would choose hyper-parameters knowing the seasons they
+    are about to be tested against.
+    """
+    window = source.get_data(profile.replay.champion_train_start, profile.replay.champion_train_end)
+    alpha = tune_alpha(window)
+    gbm = tune_gbm(window)
+    return {
+        "rows": len(window),
+        "alpha": alpha,
+        "alpha_best_rmse": dict(alpha.curve).get(alpha.best, float("nan")),
+        "alpha_shipped_rmse": dict(alpha.curve).get(alpha.shipped, float("nan")),
+        "gbm": gbm,
+    }
+
+
+def run_arm(profile: Profile, source: OpenMeteoSource, kind: str,
+            params: dict | None = None, label: str | None = None) -> dict:
     """One full replay with one model class, scored the way the published numbers are."""
+    label = label or kind
     cfg = replace(
         profile.loop,
         model_kind=kind,
-        experiment_name=f"ablate-{kind}",
-        registered_model_name=f"{profile.loop.registered_model_name}-{kind}",
+        model_params=params,
+        experiment_name=f"ablate-{label}",
+        registered_model_name=f"{profile.loop.registered_model_name}-{label}",
     )
-    db = f"mlflow_ablate_{profile.key}_{kind}.db"
+    db = f"mlflow_ablate_{profile.key}_{label}.db"
 
     tracking.reset(db)
     tracking.setup(cfg.experiment_name, db)
@@ -95,7 +143,7 @@ def run_arm(profile: Profile, source: OpenMeteoSource, kind: str) -> dict:
 
     return {
         "city": profile.label,
-        "kind": kind,
+        "kind": label,
         "runs": len(df),
         "retrains": int(df["retrain_triggered"].sum()),
         "promotions": int((df["promotion_decision"] == "promoted").sum()),
@@ -127,8 +175,8 @@ def compare_kinds(arms: list[dict]) -> dict:
     confound poses. The count is reported because the intersection can
     be much smaller than either arm alone.
     """
-    ridge = next((a for a in arms if a["kind"] == RIDGE), None)
-    gbm = next((a for a in arms if a["kind"] == GBM), None)
+    ridge = next((a for a in arms if a["kind"] == "ridge_tuned"), None)
+    gbm = next((a for a in arms if a["kind"] == "gbm_tuned"), None)
     if ridge is None or gbm is None:
         return {}
 
@@ -186,9 +234,43 @@ def main() -> None:
                 source.timeline()
                 print(f"\n=== {profile.label} ===", flush=True)
 
+                tuning = tune_both(profile, source)
+                gbm_sweep, alpha_sweep = tuning["gbm"], tuning["alpha"]
+                print(
+                    f"  tuned on {tuning['rows']} rows of the champion's own window, "
+                    f"{gbm_sweep.n_candidates} tree candidates, "
+                    f"{alpha_sweep.n_splits}-fold forward chaining",
+                    flush=True,
+                )
+                print(
+                    f"    ridge  CV RMSE {tuning['alpha_shipped_rmse']:7.3f} at the shipped "
+                    f"alpha={alpha_sweep.shipped:g}  ->  {tuning['alpha_best_rmse']:7.3f} "
+                    f"at alpha={alpha_sweep.best:g}",
+                    flush=True,
+                )
+                print(
+                    f"    gbm    CV RMSE {gbm_sweep.default_rmse:7.3f} at library defaults"
+                    f"  ->  {gbm_sweep.best_rmse:7.3f} tuned ({gbm_sweep.gain_pct:+.1f}%)",
+                    flush=True,
+                )
+                print(f"           {gbm_sweep.best}", flush=True)
+
+                # Three arms, not two. The shipped Ridge keeps the harness
+                # honest by reproducing the published numbers; the other two are
+                # the actual comparison, both tuned the same way, so a gap
+                # between them cannot be a gap in effort.
                 arms = []
-                for kind in (RIDGE, GBM):
-                    arm = run_arm(profile, source, kind)
+                for kind, params, label in (
+                    (RIDGE, None, "ridge"),
+                    (RIDGE, {"alpha": alpha_sweep.best}, "ridge_tuned"),
+                    (GBM, gbm_sweep.best, "gbm_tuned"),
+                ):
+                    arm = run_arm(profile, source, kind, params, label)
+                    arm["cv_rmse"] = round(
+                        gbm_sweep.best_rmse if label == "gbm_tuned"
+                        else tuning["alpha_best_rmse"] if label == "ridge_tuned"
+                        else tuning["alpha_shipped_rmse"], 3
+                    )
                     arms.append(arm)
                     premium = (
                         "none" if arm["premium"] is None
@@ -197,18 +279,29 @@ def main() -> None:
                              f"{'  clears zero' if arm['premium_real'] else ''}"
                     )
                     print(
-                        f"  {kind:>5}: median RMSE {arm['median_rmse']:>7.2f}  "
+                        f"  {label:>11}: median RMSE {arm['median_rmse']:>7.2f}  "
                         f"{arm['retrains']:>3} retrains, {arm['promotions']:>2} promoted, "
                         f"acted {arm['acted_windows']:>2}   premium {premium}",
                         flush=True,
                     )
 
-                ridge, gbm = arms[0], arms[1]
+                shipped, ridge, gbm = arms
+                # Validity check one: the flexible model has to be the better
+                # model, or it absorbed nothing and the comparison is between
+                # two misspecified models rather than between two classes.
                 better = ridge["median_rmse"] - gbm["median_rmse"]
                 print(
-                    f"  gradient boosting is {abs(better):.2f} µg/m³ "
-                    f"{'better' if better > 0 else 'WORSE'} than the Ridge"
+                    f"  tuned gradient boosting is {abs(better):.2f} µg/m³ "
+                    f"{'better' if better > 0 else 'WORSE'} than the tuned Ridge over the replay"
                     f"{'' if better > 0 else '  <-- the ablation is void here'}",
+                    flush=True,
+                )
+                # Validity check two: the untouched arm still has to reproduce
+                # what the rest of the project published.
+                print(
+                    f"  shipped Ridge arm: median RMSE {shipped['median_rmse']:.2f}, "
+                    f"premium {shipped['premium']:+.2f}%  "
+                    "<-- must match the published figures",
                     flush=True,
                 )
 

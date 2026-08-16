@@ -40,7 +40,9 @@ class TrainedModel:
     baseline_rmse: float
 
 
-def build_pipeline(alpha: float = 1.0, kind: str = RIDGE) -> Pipeline:
+def build_pipeline(
+    alpha: float = 1.0, kind: str = RIDGE, params: dict | None = None
+) -> Pipeline:
     """The champion, or the gradient-boosted stand-in used to interrogate it.
 
     ``gbm`` is not a shipping candidate. It exists to separate two readings of
@@ -51,12 +53,29 @@ def build_pipeline(alpha: float = 1.0, kind: str = RIDGE) -> Pipeline:
 
     No scaler on the tree: it splits on thresholds, so monotone rescaling
     changes nothing it can learn, and keeping the step would imply otherwise.
+
+    ``params`` overrides the estimator's hyper-parameters, and is how a tuned
+    arm is built. For the Ridge it carries ``alpha``; for the tree, whatever
+    ``benchmark.tune_gbm`` selected. Both default to the shipped settings, so a
+    caller that passes nothing gets exactly the model that produced every
+    published number.
     """
+    params = dict(params or {})
     if kind == GBM:
-        return Pipeline([("gbm", HistGradientBoostingRegressor(random_state=0))])
+        # early_stopping off on purpose. Its automatic form holds out a random
+        # slice, which on autocorrelated hourly data is a validation set the
+        # model has effectively seen, so it would stop on a leaked signal. The
+        # iteration count is a tuned parameter instead.
+        return Pipeline([(
+            "gbm",
+            HistGradientBoostingRegressor(random_state=0, early_stopping=False, **params),
+        )])
     if kind != RIDGE:
         raise ValueError(f"unknown model kind: {kind!r}")
-    return Pipeline([("scale", StandardScaler()), ("ridge", Ridge(alpha=alpha))])
+    return Pipeline([
+        ("scale", StandardScaler()),
+        ("ridge", Ridge(alpha=params.pop("alpha", alpha), **params)),
+    ])
 
 
 def is_linear(pipeline: Pipeline) -> bool:
@@ -138,6 +157,7 @@ def train(
     alpha: float = 1.0,
     val_fraction: float = 0.2,
     kind: str = RIDGE,
+    params: dict | None = None,
 ) -> TrainedModel:
     """Fit on a training window and record an honest baseline RMSE.
 
@@ -151,11 +171,11 @@ def train(
     split = int(len(df) * (1 - val_fraction))
     fit_df, val_df = df.iloc[:split], df.iloc[split:]
 
-    warmup = build_pipeline(alpha, kind).fit(fit_df[FEATURES], fit_df[TARGET])
+    warmup = build_pipeline(alpha, kind, params).fit(fit_df[FEATURES], fit_df[TARGET])
     baseline = rmse(warmup, val_df)
 
     # Refit on the full window so the deployed model uses all available data.
-    final = build_pipeline(alpha, kind).fit(df[FEATURES], df[TARGET])
+    final = build_pipeline(alpha, kind, params).fit(df[FEATURES], df[TARGET])
 
     return TrainedModel(
         pipeline=final,

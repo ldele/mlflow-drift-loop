@@ -75,6 +75,10 @@ class LoopConfig:
     # Which model the loop trains. "ridge" ships and produced every published
     # number; "gbm" is set only by scripts/ablate_model.py.
     model_kind: str = "ridge"
+    # Hyper-parameters for it, or None for the shipped defaults. Set only by the
+    # ablation, which tunes both model classes on the same protocol so that a
+    # difference between them cannot be a difference in how hard each was tuned.
+    model_params: dict | None = None
 
     # Rolling window used to monitor the champion and to measure data drift.
     monitor_days: int = 14

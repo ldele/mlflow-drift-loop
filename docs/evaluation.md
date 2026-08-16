@@ -184,11 +184,54 @@ rather than as "always".
 
 #### What is still not corrected
 
-Six intervals are read off one table, and no multiple-comparisons correction is
-applied to them. With six cities at 95%, the chance that at least one interval
-excludes zero by luck alone is not negligible. The four surviving results are not
-all marginal. Delhi's and Santiago's sit far from the boundary. Johannesburg
-rests on six acted windows and should be read as the weakest of the four.
+No multiple-comparisons correction is applied anywhere on this page, and the
+exposure is no longer the six intervals of one table.
+
+The sweeps alone account for most of it: five of them, 96 arms, and roughly 170
+interval readings, since each arm is reported both over its whole replay and
+over the weeks it changed the serving model. Seventeen of those clear zero. Add
+the six-city table, the gate calibration, the ablation and the block-length
+sweep and the page reports more than two hundred intervals.
+
+There is no formal correction for two reasons. The arms are not independent:
+within a city they share one replay, one weather history and often one
+promotion, so the assumptions behind Bonferroni or Benjamini-Hochberg do not
+hold, and applying either would produce a number with the shape of rigour and
+none of the content. And the sections answer different questions, so there is no
+one family to correct over. Whatever the right adjustment is, it is not one this
+page can compute honestly, and an arbitrary one would be worse than none.
+
+What can be said is which way the exposure cuts, and it is not the usual way.
+**Multiplicity weakens a positive result and strengthens a negative one.**
+Failing to find an effect in a single comparison is weak evidence; failing to
+find it in eighteen, each with every opportunity to show one, is strong. Most of
+the conclusions on this page are negative — a longer exam does nothing across
+eighteen comparisons, re-certification buys no accuracy across twenty-four,
+probation establishes nothing across eighteen — and the number of tests makes
+those *more* credible rather than less.
+
+It bites the positive claims instead, and they are few enough to name:
+
+- **The skill floor's Los Angeles result**, +11.78% [+2.09, +17.17], is one arm
+  of eighteen. It is the evidence [D1](DECISIONS.md) turns on, and D1 is the
+  only decision this project leaves open. Read it as suggestive rather than
+  established, which is a further argument for the two-new-cities resolution
+  that decision already proposes.
+- **Re-certification's Los Angeles results**, two arms of twenty-four.
+- **Probation's Kraków result**, one arm of eighteen, discounted on exactly
+  these grounds where it is reported.
+
+Two findings are not weakened by any of this. The confidence gate's harm is five
+arms of eighteen, all in the same direction and concentrated in the two cities
+the mechanism predicts, which is well clear of what chance produces. And the
+large city effects, Delhi's +49.4% and Santiago's +17.3%, sit nowhere near the
+boundary, so no defensible correction reaches them. Johannesburg rests on six
+acted windows and is the weakest of the surviving city results, for reasons of
+sample size rather than multiplicity.
+
+**The reading rule.** A single interval that barely clears zero inside a table
+of eighteen is not a finding. One that clears it by a wide margin, or a whole
+table that fails to clear it, is.
 
 ### Every replay starts clear of its own training data
 
@@ -995,8 +1038,10 @@ five harmful arms for the confidence gate. Nothing here is harmful.
 
 It is also not a result. One arm in eighteen clearing a 95% interval is what
 eighteen tests produce by chance, and this project does not correct for multiple
-comparisons. Kraków's +1.5% rests on a single rollback affecting seven weeks.
-Read as "does no damage", not as "pays".
+comparisons: see
+[what is still not corrected](#what-is-still-not-corrected) for the exposure
+across the whole page and which claims it reaches. Kraków's +1.5% rests on a
+single rollback affecting seven weeks. Read as "does no damage", not as "pays".
 
 ### The diagnostic is worth more than the outcome
 
@@ -1067,83 +1112,139 @@ is here: it is the evidence, and the cities are the application.
 
 ## Is the finding about the world, or about a linear model?
 
-The largest open threat to everything above, and the one this page could not
-answer until 2026-08-12. The champion is a Ridge whose penalty is close to inert
-at the shipped setting, so it is roughly a linear projection. That leaves a
-duller reading of the whole project standing next to the interesting one:
-perhaps a linear model misspecifies seasonal structure, refitting papers over
-the misspecification, and "retraining pays where the world moved" is a fact
-about the model class.
+The largest open threat to everything above. The champion is a Ridge whose
+penalty is close to inert at the shipped setting, so it is roughly a linear
+projection. That leaves a duller reading of the whole project standing next to
+the interesting one: perhaps a linear model misspecifies seasonal structure,
+refitting papers over the misspecification, and "retraining pays where the world
+moved" is a fact about the model class.
 
-[`ablate_model.py`](../scripts/ablate_model.py) replays a city twice under
-identical settings, changing only the model, and asks whether the retraining
-premium survives a learner flexible enough to absorb the nonlinearity. Delhi,
-where retraining pays most, and Los Angeles, the control where it costs.
+[`ablate_model.py`](../scripts/ablate_model.py) replays a city under three model
+settings and compares the retraining premium each earns. Delhi, where retraining
+pays most, and Los Angeles, the control where it costs.
 
-Two checks were written down before the run. The Ridge arm has to reproduce the
-shipped numbers, or the harness is not faithful. And the gradient-boosted model
-has to come out the better model, or it has absorbed nothing and the
-comparison is between two misspecified models.
+### Three arms, because two were not a fair test
+
+An earlier version of this experiment ran two: the shipped Ridge against a
+gradient-boosted model at library defaults. The tree lost in both cities, so the
+designed comparison never ran, and the section published that as a downgraded
+confound.
+
+That test was unfair in a way worth stating plainly. **The shipped Ridge runs at
+`alpha=1.0`, a library default its own sweep beats by 11.9% in Delhi.** Tuning
+only the tree would have replaced one unfair comparison with its mirror image,
+so both classes are now tuned on the champion's own training window, with the
+same splitter and the same folds, before the replay starts. The untouched Ridge
+stays as a third arm to prove the harness still reproduces what this page
+publishes.
+
+| tuned on the bootstrap window | Delhi CV RMSE | Los Angeles CV RMSE |
+|---|---|---|
+| Ridge, shipped `alpha=1` | 31.63 | 8.18 |
+| Ridge, tuned | **28.27** (`alpha=1000`) | **8.01** (`alpha=100`) |
+| gradient boosting, library defaults | 37.95 | 9.12 |
+| gradient boosting, tuned | **27.90** (+26.5%) | **7.86** (+13.8%) |
+
+The old objection was right: the tree was badly undertrained, and tuning is
+worth 26.5% to it in Delhi.
+
+### The tuned tree is a stump, which is itself the answer
+
+Where the optimum sits matters more than that it exists. A first grid centred on
+the library defaults put the best configuration at its most-regularised corner
+in **every dimension at once**, which means the grid was truncating the answer
+rather than containing it: the same objection as "the defaults were undertrained",
+one level up. Extending it moved the optimum again, and again, until
+`max_leaf_nodes` reached **2**, which is a decision stump and the floor of what
+the estimator can be asked to do.
+
+So the CV-optimal gradient-boosted model on this data is an additive model of
+stumps, at a learning rate of 0.01. Tuning regularises it until it can express
+**no feature interaction at all**, which is the one capability it had over a
+straight line. A flexible learner, given the choice, declines to be flexible.
+
+### Both checks pass, and the headline does not survive intact
 
 | | model | median RMSE | retrains | promoted | retraining premium |
 |---|---|---|---|---|---|
-| **Delhi** | Ridge | **40.44** | 9 | 8 | **+49.35% [+33.74, +61.81]** |
-| **Delhi** | gradient boosting | 43.35 | 8 | 7 | **+36.28% [+17.41, +47.60]** |
-| **Los Angeles** | Ridge | **10.91** | 1 | 1 | **−13.36% [−36.88, −3.81]** |
-| **Los Angeles** | gradient boosting | 10.97 | 6 | 1 | −3.54% [−9.69, +1.21] |
+| **Delhi** | Ridge, shipped | 40.44 | 9 | 8 | **+49.35% [+33.74, +61.81]** |
+| **Delhi** | Ridge, tuned | 40.11 | 8 | 8 | **+27.73% [+14.99, +40.59]** |
+| **Delhi** | gradient boosting, tuned | **39.91** | 7 | 5 | **+9.74% [+7.97, +25.96]** |
+| **Los Angeles** | Ridge, shipped | 10.91 | 1 | 1 | **−13.36% [−36.88, −3.81]** |
+| **Los Angeles** | Ridge, tuned | 10.76 | 1 | 1 | **−12.78% [−33.58, −3.28]** |
+| **Los Angeles** | gradient boosting, tuned | **10.74** | 1 | 1 | −6.93% [−13.20, +2.83] |
 
-The first check passes. The Ridge arm reproduces the published figures to two
-decimals in both cities, from a replay run in a throwaway backend.
+The faithfulness check passes: the shipped arm reproduces the published figures
+to two decimals in both cities, from a replay in a throwaway backend. And the
+first check now passes too, for the first time: the tuned tree is the better
+model over the replay, by 0.20 µg/m³ in Delhi and 0.02 in Los Angeles. The
+designed experiment is finally available, and it does not go the way the earlier
+version of this section predicted.
 
-**The second check fails, and that is the result.** Gradient boosting is worse
-in both cities: by 2.91 µg/m³ in Delhi and by 0.06 in Los Angeles. It absorbed
-nothing, so the experiment as designed cannot run.
+**Delhi's premium falls from +49.35% to +9.74%.** Over the 37 weeks both arms
+retrained, the paired difference is **+13.92 points [+8.01, +16.69]**, clear of
+zero. The previous conclusion here, that retraining is worth about as much to a
+tree as to a straight line, was an artefact of an undertrained tree and is
+withdrawn.
 
-### What a failed ablation still establishes
+**Los Angeles's harm falls from −13.36% to −6.93% and stops clearing zero.** The
+paired difference over the 35 shared weeks is **−7.03 points [−15.53, −3.54]**,
+also clear of zero.
 
-Three things, in descending order of confidence.
+### Where the premium actually goes
 
-A flexible learner given the same eight features cannot beat a Ridge whose
-regularisation is nearly switched off. The most economical reading is that the
-relationship between a week-old weather forecast and an hour's pollution is
-close to linear at this feature set and horizon, which is the same conclusion
-the alpha sweep reached from the other direction: shrinking every slope most of
-the way to zero costs between 0.1% and 12%. **If there is little nonlinearity to
-misspecify, the confound is small.**
+The three arms decompose it, and the decomposition is the useful part:
 
-The headline survives the change of model class. Delhi's premium is +36.28%
-[+17.41, +47.60] under gradient boosting, still large and still clear of zero.
-Over the 37 weeks both arms retrained, the difference between the two premiums
-is +7.47 points [−3.04, +22.68], which does not clear zero. Retraining is worth
-about as much to a tree as to a straight line in the city where retraining
-matters most.
+| Delhi's +49.35% | points |
+|---|---|
+| lost by tuning `alpha`, same model class | **21.62** |
+| lost by leaving linearity | **17.99** |
+| **left over** | **+9.74%** |
 
-**The control result does not survive, and the two cities disagree.** Los
-Angeles's premium moves from −13.36% [−36.88, −3.81] to −3.54% [−9.69, +1.21],
-so under gradient boosting the harm stops being measurable. That shift is itself
-measurable: over the 31 weeks both arms retrained, the difference between the
-two premiums is −10.29 points [−24.47, −2.79], clear of zero.
+Less than a quarter of the headline survives contact with a well-specified
+model, and **the largest single component is not the model class at all**. It is
+the shipped Ridge being under-regularised. A model penalised properly
+generalises across seasons better, decays less, and has less for a retrain to
+recover. Retraining was substantially compensating for a hyper-parameter.
 
-So "retraining pays where the world really moved" holds whichever model class
-you use, and "and costs where it did not" does not. The second half of the headline holds
-for the Ridge that ships and weakens for a tree. Two caveats on that in turn: it
-is one city, and it is the city with three effective observations, the thinnest
-evidence anywhere on this page. It is reported because it points against the
-convenient reading rather than despite it.
+Los Angeles decomposes the same way and mostly through the other term: 0.58
+points from `alpha`, 5.85 from linearity.
 
-### What it does not establish, and the obvious objection
+### What this changes, and what survives
 
-The gradient-boosted model ran at library defaults on about 4,300 hourly rows
-per training window. A tuned one might beat the Ridge, and if it did, the
-designed experiment would become runnable and could still come out the other
-way. Nothing here rules that out. The mitigating point is that the Ridge is also
-running at a default its own sweep disagrees with in every city, so this
-compares two untuned models rather than a tuned one against an untuned one.
+**Finding 1 survives in sign and loses most of its magnitude.** Retraining still
+pays in Delhi with the best model on offer, +9.74% [+7.97, +25.96], clear of
+zero. It is a real effect about the world. It is roughly a fifth of what this
+page reported before the confound was tested properly.
 
-**The confound is downgraded, not closed.** It was "the headline may be an
-artefact of the model class, and nothing tests it". It is now "a more flexible
-model class does not change the headline, and cannot fit this problem better
-than a line". Tuning the challenger is the experiment that would close it.
+**Finding 2 no longer holds under the better model.** Los Angeles's harm is
+−6.93% [−13.20, +2.83] with a tuned tree, which does not clear zero. "Retraining
+costs where the world did not move" holds for the model that ships and cannot be
+established for the best model available.
+
+**The confound was real and larger than this page previously claimed.** The
+earlier version reported it as downgraded on the strength of a test that could
+not run. That was the wrong call, and the reason it was wrong is instructive:
+the failed check was treated as weak evidence for the conclusion it was supposed
+to threaten, when it was really evidence that the challenger was not up to the
+job.
+
+### What it still does not establish
+
+The tuning window is the bootstrap window, 1,296 to 1,848 rows, while challengers
+during the replay train on 180 days. Hyper-parameters chosen on a smaller window
+may be over-regularised for a larger one, which if anything understates how good
+a tuned tree could be, and so understates the confound rather than inflating it.
+
+Both tuned models sit close to a constant predictor under this CV: 29.47 in
+Delhi against 28.27 for the tuned Ridge. On the bootstrap window under forward
+chaining, every model here earns a few percent over predicting the mean. That is
+a statement about how hard the problem is, and it bounds how much any of these
+comparisons can be asked to carry.
+
+And this is two cities. The decomposition above is a strong claim resting on
+Delhi, and the sensible next step is the same one the rest of this page keeps
+arriving at: run it on the other four.
 
 ## Limitations
 
@@ -1175,14 +1276,22 @@ than a line". Tuning the challenger is the experiment that would close it.
   week-old weather forecast is hard, and the page should be read with
   that in mind: the loop is the demonstration, not the model.
 - The retrain trigger ratchets, and it is shipped that way on purpose. The bar
-  rises at every promotion and never falls, so after the seasonal peak the
-  trigger cannot fire at all. The fix for it now exists in the code
-  (`LoopConfig.skill_floor`) and is switched off, because replaying all six
-  cities with it on changes nothing at a cautious setting and makes two of them
-  worse at an aggressive one. See
+  is reset by every promotion and mostly rises, so after the seasonal peak the
+  trigger cannot fire at all. A fix exists in the code (`LoopConfig.skill_floor`)
+  and is switched off, because replaying all six cities with it on changes
+  nothing at a cautious setting and makes two of them worse at an aggressive
+  one. See
   [Fixing it](#fixing-the-trigger-one-fix-is-impossible-the-other-pays-in-one-city).
-  Lengthening the exam does not pay either, so what is left open is periodic
-  re-certification of the serving champion, which has not been built.
+- **Five mechanisms have been built against the loop's two faults and none of
+  them pays.** A second retrain trigger, a longer exam, a re-certification
+  schedule, a confidence-aware gate and rollback, each replayed across all six
+  cities with intervals. The confidence gate is actively harmful; rollback does
+  no harm and proves nothing. They fail together because the loop retries until
+  a challenger passes, so no rule about when it acts, how hard it judges or
+  whether it can undo the result prices the number of attempts. The limit
+  underneath is the measurement: a week of hourly air cannot resolve the
+  difference the gate is deciding on. That is a property of the problem, and it
+  is the honest end of this line of work rather than a to-do.
 - ~~On run 0, five of six cities score the bootstrap champion partly on its own
   training data.~~ **Fixed on 2026-08-06** and kept here because a limitation
   that silently disappears is indistinguishable from one nobody re-checked.
