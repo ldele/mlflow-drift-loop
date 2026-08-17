@@ -229,23 +229,49 @@ def climatology_skill(
     return 1.0 - model_rmse / reference
 
 
-def training_window_stats(source: DataSource, model: RegisteredModel) -> dict[str, dict[str, float]]:
-    """Each feature's central range over the window a model was trained on.
+def training_window_stats(
+    source: DataSource, model: RegisteredModel, window_days: int
+) -> dict[str, dict[str, float]]:
+    """Each feature's central range over the window a model was trained on,
+    measured the same way as the series drawn in front of it.
 
     Drawn behind the feature series as a band: the band is what the model was
     shown, the line is what the world did afterwards, and a line leaving its band
-    is the physical form of the covariate-drift claim. The 10th-90th percentile
-    rather than the full range, so one freak hour cannot widen it to cover
-    everything.
+    is the physical form of the covariate-drift claim.
+
+    ``window_days`` is the monitor window the line averages over, and passing the
+    right one is what makes the chart readable. The band is the 10th-90th
+    percentile of ``window_days``-long rolling means, so both sides describe the
+    same quantity. Percentiles of the raw hourly values answer a different
+    question -- how far one *hour* strays -- and radiation shows what that costs:
+    it runs from zero to full sun every day, so its hourly band was wide enough
+    that no fortnightly mean could ever leave it, and the chart shipped with a
+    caption telling the reader not to trust it.
+
+    The rolling windows overlap, so this describes the training window rather
+    than sampling from it. That is the object wanted here: the question is what
+    range a fortnightly mean held while the model was learning, not how uncertain
+    that range is.
     """
     window = source.get_data(model.train_start, model.train_end + pd.Timedelta(1, unit="h"))
     stats: dict[str, dict[str, float]] = {}
+    if window.empty:
+        return stats
+    indexed = window.set_index(TIMESTAMP).sort_index()
+    # Only fully-formed windows. A partial one averages fewer days than the line
+    # does and lands wherever the training window happened to start.
+    full_from = indexed.index[0] + pd.Timedelta(window_days, unit="D")
     for feature in DRIFT_FEATURES:
-        if feature not in window or window.empty:
+        if feature not in indexed:
             continue
-        values = window[feature].to_numpy(dtype=float)
+        hourly = indexed[feature].astype(float)
+        rolling = hourly.rolling(f"{window_days}D").mean().loc[full_from:]
+        # A training window shorter than one monitor window holds no comparable
+        # mean at all. Collapse the band onto the one value that is honest there
+        # rather than widening it with partial windows.
+        values = rolling.to_numpy() if len(rolling) else hourly.to_numpy()
         stats[feature] = {
-            "mean": float(np.mean(values)),
+            "mean": float(np.mean(hourly.to_numpy())),
             "lo": float(np.percentile(values, 10)),
             "hi": float(np.percentile(values, 90)),
         }

@@ -193,7 +193,8 @@ def load_training_band(db_filename: str, experiment: str, profile_key: str):
 
     Drawn behind the feature series: the band is what the model was shown, the
     line is what the world did afterwards, and a line leaving its band is the
-    case for retraining before any statistic is computed.
+    case for retraining before any statistic is computed. Measured over the same
+    window length the line averages over, or the two sides are not comparable.
     """
     from driftloop.data import replayable_source
 
@@ -207,7 +208,7 @@ def load_training_band(db_filename: str, experiment: str, profile_key: str):
         return None
     bootstrap = models[min(models)]  # the version everything else drifted away from
     return (
-        retrospect.training_window_stats(source, bootstrap),
+        retrospect.training_window_stats(source, bootstrap, profile.loop.monitor_days),
         bootstrap.train_start,
         bootstrap.train_end,
     )
@@ -617,26 +618,19 @@ with tab_dist:
         stats, train_start, train_end = band
         st.markdown("#### What changed in the world")
         st.markdown(
-            "Each weather ingredient averaged over every monitoring window, in the units it "
-            "is measured in. The shaded band is the middle 80% of the *hourly* values that "
-            f"ingredient held while the first model was trained ({train_start:%Y-%m-%d} to "
-            f"{train_end:%Y-%m-%d}), a percentile range rather than the full one, so a "
-            "single freak hour cannot widen it to cover everything. A line leaving its band "
-            "means the model is being asked about conditions it was never shown, which is the "
-            "case for retraining before any statistic is computed."
+            f"Each weather ingredient, averaged over every {CFG.monitor_days}-day monitoring "
+            "window. The band is where that same average sat while the first model was trained "
+            f"({train_start:%Y-%m-%d} to {train_end:%Y-%m-%d}) — the middle 80% of it, so one "
+            "freak fortnight cannot widen it to cover everything. A line leaving its band is the "
+            "model being asked about weather it was never shown, which is the case for retraining "
+            "before any statistic is computed. Temperature is where it bites: Kraków's spends the "
+            "whole winter below anything the first model saw."
         )
         st.plotly_chart(
             theme.factor_small_multiples(
                 retro.as_of, retro.feature_means, stats, DRIFT_FEATURES
             ),
             width="stretch",
-        )
-        st.caption(
-            "Read the bands as a rough guide rather than a test. They are hourly and the "
-            "lines are two-week means, so anything with a large day-to-night swing, radiation "
-            "most of all, gets a band far wider than a mean could ever leave. "
-            "Temperature is where the comparison bites: Kraków's spends the whole winter "
-            "below everything the first model was trained on."
         )
         st.divider()
 

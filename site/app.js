@@ -815,8 +815,8 @@ function render() {
     })), { zeroLine: false });
     chartCard(jobs,
       "What changed in the world",
-      `Each weather ingredient, averaged over every monitoring window, in its own units. The shaded band is the range that ingredient held while the first model was being trained (${R.factors.bootstrap_train[0]} to ${R.factors.bootstrap_train[1]}). ` +
-      "A line that leaves its band means the model is being asked about conditions it was never shown. This is the case for retraining, before any statistic is computed.",
+      `Each weather ingredient, averaged over every ${DATA.method?.params?.monitor_days ?? 14}-day monitoring window, in its own units. The band is where that same average sat while the first model was being trained (${R.factors.bootstrap_train[0]} to ${R.factors.bootstrap_train[1]}), its middle 80%. ` +
+      "A line leaving its band is the model being asked about weather it was never shown. This is the case for retraining, before any statistic is computed.",
       shown.map((f, i) => ({ label: f, color: pal.series[i], kind: "dot" })),
       sm.traces, sm.layout, "charts", true);
   }

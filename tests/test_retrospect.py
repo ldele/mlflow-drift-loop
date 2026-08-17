@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from driftloop.config import FEATURES, LoopConfig, SyntheticConfig, TARGET
+from driftloop.config import FEATURES, TIMESTAMP, LoopConfig, SyntheticConfig, TARGET
 from driftloop.data.synthetic import SyntheticSource
 from driftloop.model import effective_coefficients, train
 from driftloop.retrospect import (
@@ -23,6 +23,11 @@ from driftloop.retrospect import (
     climatology_prediction,
     training_window_stats,
 )
+
+
+# The shipped monitor window, which is what the band has to be measured over:
+# the chart draws it behind a series of means of exactly this length.
+MONITOR_DAYS = LoopConfig().monitor_days
 
 
 @pytest.fixture(scope="module")
@@ -274,11 +279,23 @@ def test_gate_calibration_excludes_the_promotion_window_itself(source):
     assert gate["delivered_margin"] == pytest.approx(expected)
 
 
-def test_training_window_band_covers_the_bulk_of_what_the_model_saw(source):
-    """The band is a 10th-90th percentile range, so at least 80% of hours sit in it.
+def _rolling_means(window: pd.DataFrame, feature: str, window_days: int) -> np.ndarray:
+    """The quantity the chart's line plots: a ``window_days`` mean of one feature."""
+    series = window.set_index(TIMESTAMP).sort_index()[feature].astype(float)
+    rolled = series.rolling(f"{window_days}D").mean()
+    return rolled.loc[series.index[0] + pd.Timedelta(window_days, unit="D") :].to_numpy()
 
-    At least, not exactly: precipitation is zero for ~89% of hours, so both the
-    10th percentile and the band's lower edge land inside that atom and the band
+
+def test_training_window_band_covers_the_bulk_of_what_the_model_saw(source):
+    """The band is a 10th-90th percentile range, so at least 80% of the line sits in it.
+
+    Of the *line*, not of the hours behind it. The band is drawn behind a series
+    of two-week means and has to be a statement about those, or the reader is
+    invited to compare two different quantities and conclude something from the
+    difference.
+
+    At least, not exactly: precipitation is zero for most hours, so both the 10th
+    percentile and the band's lower edge land inside that atom and the band
     sweeps up every zero with them. Weather features are lumpy and the assertion
     has to survive that.
 
@@ -287,14 +304,37 @@ def test_training_window_band_covers_the_bulk_of_what_the_model_saw(source):
     a fact about rain rather than a bug in the band.
     """
     window = source.get_data(pd.Timestamp("2025-01-01"), pd.Timestamp("2025-03-01"))
-    stats = training_window_stats(source, _as_registered(train(window), 1))
+    stats = training_window_stats(source, _as_registered(train(window), 1), MONITOR_DAYS)
 
     assert stats, "expected a band per drift feature"
     for feature, entry in stats.items():
         assert entry["lo"] <= entry["hi"]
-        values = window[feature].to_numpy(dtype=float)
+        values = _rolling_means(window, feature, MONITOR_DAYS)
         inside = float(np.mean((values >= entry["lo"]) & (values <= entry["hi"])))
-        assert 0.78 <= inside <= 1.0, f"{feature} band covers {inside:.0%}"
+        assert 0.78 <= inside <= 1.0, f"{feature} band covers {inside:.0%} of the line"
+
+
+def test_the_band_is_not_the_hourly_spread(source):
+    """The day-night swing must stay out of the band, or the chart cannot be read.
+
+    Radiation runs from zero at night to full sun at noon, so its hourly 10th-90th
+    range is wide enough that no two-week mean could ever leave it: the band said
+    "nothing has drifted" for every possible value of the line. This is the
+    regression guard on that, and it is a real one -- the chart shipped for a
+    while with a caption telling the reader not to trust the bands.
+    """
+    window = source.get_data(pd.Timestamp("2025-01-01"), pd.Timestamp("2025-03-01"))
+    stats = training_window_stats(source, _as_registered(train(window), 1), MONITOR_DAYS)
+
+    feature = "shortwave_radiation"
+    hourly = window[feature].to_numpy(dtype=float)
+    hourly_width = float(np.percentile(hourly, 90) - np.percentile(hourly, 10))
+    band_width = stats[feature]["hi"] - stats[feature]["lo"]
+
+    assert band_width < hourly_width / 2, (
+        f"radiation band is {band_width:.1f} wide against an hourly {hourly_width:.1f}: "
+        "the band is still measuring the day-night swing"
+    )
 
 
 def test_versions_without_coefficient_tags_are_skipped():

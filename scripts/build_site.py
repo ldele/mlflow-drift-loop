@@ -379,7 +379,7 @@ def retrospective_block(key: str, runs: pd.DataFrame) -> dict | None:
         "factors": {
             "features": {f: _floats(pd.Series(v)) for f, v in retro.feature_means.items()},
             "target": _floats(pd.Series(retro.target_mean)),
-            "trained_on": retrospect.training_window_stats(source, bootstrap),
+            "trained_on": retrospect.training_window_stats(source, bootstrap, cfg.monitor_days),
             "bootstrap_train": [
                 bootstrap.train_start.strftime("%Y-%m-%d"),
                 bootstrap.train_end.strftime("%Y-%m-%d"),

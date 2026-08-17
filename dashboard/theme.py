@@ -236,9 +236,9 @@ def factor_small_multiples(
     Small multiples for the same reason as the coefficients: °C, hPa and W/m² on
     one axis leaves five of the six features pinned flat against the sixth.
 
-    The band is the 10th-90th percentile of the training window rather than its
-    full range, so one freak hour cannot widen it to cover everything. A line
-    leaving its band is the model being asked about conditions it never saw.
+    The band is the 10th-90th percentile of training-window means over the same
+    window length as the line, so the two sides describe the same quantity. A
+    line leaving its band is the model being asked about conditions it never saw.
     """
     features = [f for f in features if f in values]
     nrows = -(-len(features) // ncols)  # ceil
