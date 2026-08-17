@@ -22,10 +22,9 @@ season that ruins it, and then out the other side.
 | **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 16.4 → 20.8 | 36 | 1 | 1 |
 
 **Retrains and shipped are different numbers, and the gap is the gate doing its
-job.** Johannesburg trains eleven challengers and promotes three; the other
-eight failed to clear the margin and were discarded. An earlier version of this
-table collapsed the two into a single "retrains" column, which hid the gate
-in the one city where it worked hardest.
+job.** Johannesburg trains eleven challengers and promotes three; the other eight
+failed to clear the margin and were discarded. Collapsing the two into one
+"retrains" column hides the gate in the city where it works hardest.
 
 What retraining was worth, with the interval on every figure:
 
@@ -554,10 +553,8 @@ cities: the error series are identical week for week, not merely close. In Los
 Angeles it acts in 25 of 35 weeks and improves them by **+11.78% [+2.09,
 +17.17]**.
 
-That is a floor which cannot harm any city here and measurably helps the one the
-ratchet leaves deafest. The previous version of this section called the same
-observation "a weaker case for shipping it off"; with the interval attached it is
-no longer a weak case for shipping it off, it is a case for shipping it on.
+A floor that cannot harm any city here and measurably helps the one the ratchet
+leaves deafest is a case for shipping it on, not off.
 
 Two honest limits before anyone acts on that. Over all 35 weeks rather than the
 25 it acts in, Los Angeles reads +2.49% [+0.00, +15.01], which touches zero, so
@@ -568,11 +565,6 @@ a floor that leaves these five alone.
 
 `LoopConfig.skill_floor` still ships at `None`, because flipping a shipped
 default is a decision rather than a finding, and this page is for findings.
-
-Two smaller corrections from the same rerun. Los Angeles's longest silence with
-the trigger off is 35 runs, not the 29 previously printed here. And the
-aggressive floor's effect on Kraków and Delhi was described as "worse by 9% and
-7%", which were median gaps; the paired figures over the acted weeks are larger.
 
 **The most consistent explanation is that the trigger was never the bottleneck.**
 Firing more often only pushes more challengers at a gate that certifies for about
@@ -1125,18 +1117,16 @@ pays most, and Los Angeles, the control where it costs.
 
 ### Three arms, because two were not a fair test
 
-An earlier version of this experiment ran two: the shipped Ridge against a
-gradient-boosted model at library defaults. The tree lost in both cities, so the
-designed comparison never ran, and the section published that as a downgraded
-confound.
+The obvious experiment is two arms: the shipped Ridge against a gradient-boosted
+model at library defaults. Run that way the tree loses in both cities, and the
+designed comparison never happens at all.
 
-That test was unfair in a way worth stating plainly. **The shipped Ridge runs at
+The test is unfair in a way worth stating plainly. **The shipped Ridge runs at
 `alpha=1.0`, a library default its own sweep beats by 11.9% in Delhi.** Tuning
-only the tree would have replaced one unfair comparison with its mirror image,
-so both classes are now tuned on the champion's own training window, with the
-same splitter and the same folds, before the replay starts. The untouched Ridge
-stays as a third arm to prove the harness still reproduces what this page
-publishes.
+only the tree would replace one unfair comparison with its mirror image, so both
+classes are tuned on the champion's own training window, with the same splitter
+and the same folds, before the replay starts. The untouched Ridge stays as a
+third arm to prove the harness still reproduces what this page publishes.
 
 | tuned on the bootstrap window | Delhi CV RMSE | Los Angeles CV RMSE |
 |---|---|---|
@@ -1145,8 +1135,8 @@ publishes.
 | gradient boosting, library defaults | 37.95 | 9.12 |
 | gradient boosting, tuned | **27.90** (+26.5%) | **7.86** (+13.8%) |
 
-The old objection was right: the tree was badly undertrained, and tuning is
-worth 26.5% to it in Delhi.
+A tree at library defaults is badly undertrained here: tuning is worth 26.5% to
+it in Delhi, which is more than the whole effect being argued about.
 
 ### The tuned tree is a stump, which is itself the answer
 
@@ -1222,12 +1212,11 @@ page reported before the confound was tested properly.
 costs where the world did not move" holds for the model that ships and cannot be
 established for the best model available.
 
-**The confound was real and larger than this page previously claimed.** The
-earlier version reported it as downgraded on the strength of a test that could
-not run. That was the wrong call, and the reason it was wrong is instructive:
-the failed check was treated as weak evidence for the conclusion it was supposed
-to threaten, when it was really evidence that the challenger was not up to the
-job.
+**The confound was real and larger than this page previously claimed**, which it
+did on the strength of a test that could not run. The reason that was wrong is
+worth keeping: a failed check had been read as weak evidence for the conclusion
+it was supposed to threaten, when it was really evidence that the challenger was
+not up to the job.
 
 ### What it still does not establish
 

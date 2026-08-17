@@ -24,13 +24,12 @@
           </div>
           <p class="lede">
             Models go stale. The world they were trained on moves on, and usually nobody notices
-            until something downstream breaks. This system notices on its own, every week, with
-            nobody watching it.
-            The job it does is forecasting <strong>how dirty a city's air will be</strong>
+            until something downstream breaks. This one notices on its own, every week, with nobody
+            watching it. The job: forecast <strong>how dirty a city's air will be</strong>
             (<strong>PM2.5</strong>, the soot fine enough to reach your bloodstream)
-            <strong>a week ahead</strong>, using nothing but the weather forecast. When the model
-            starts slipping, the system trains a replacement, then refuses to ship it unless it
-            beats the one already in service. Six cities, running since 2025.
+            <strong>a week ahead</strong>, from nothing but the weather forecast. When the model
+            starts slipping it trains a replacement, then refuses to ship it unless it beats the one
+            already in service. Six cities, running since 2025.
           </p>
           <p class="built" id="built"></p>
         </div>
@@ -158,33 +157,22 @@
             <strong>What this page shows is wrong with it:</strong> the expensive alarm compares the
             model against <em>its own</em> error at training time, and every promotion resets that
             comparison. Because retrains fire in the dirty season, each new model inherits a higher
-            bar than the one it replaced, and the bar ratchets upward. It can step down when a
-            challenger trains on a calmer stretch, but only slightly and only early. You can see it
-            as a staircase in “when it retrains, and against what bar”. Once it has ratcheted to the
-            seasonal peak the alarm cannot fire again, whatever the model does. Kraków spends its
-            last 30 weeks that way, serving a 210-day-old model while the trigger reports it as
-            healthier than it has ever been.
-          </p>
-          <p class="why">
-            <strong>And what happened when it was fixed:</strong> two changes were proposed, and
-            building them settled the question differently. An absolute error floor turns out to be
-            impossible: waking the quietest city needs a floor low enough to retrain the dirtiest
-            one every week, and there is nothing in between. A yardstick that holds still when a
-            model is promoted <em>is</em> buildable, and the loop now carries it. It also fires
-            when skill against the daily profile drops below a floor, which wakes the alarm up as
-            intended, taking Kraków's longest silence from 30 weeks down to 5. Replayed across all
-            six cities it then changes nothing in five of the six at a cautious setting, and at an
-            aggressive one makes two of them worse for one improvement. So it ships switched off.
-            The alarm going quiet was never what cost anything.
+            bar than the one it replaced, and the bar ratchets upward — a staircase you can watch in
+            “when it retrains, and against what bar”. Once it has ratcheted to the seasonal peak the
+            alarm cannot fire again, whatever the model does. Kraków spends its last 30 weeks that
+            way, serving a 210-day-old model while the trigger reports it as healthier than it has
+            ever been.
           </p>
           <p class="why">
             <strong>Five fixes were built, and none of them pays.</strong> Each failure named the
-            next thing to try, and every one was replayed across all six cities against the
-            shipped loop, week by week, with intervals attached. Waking the alarm helps the one
-            city it had gone deaf in and nothing else. A longer exam does nothing measurable
-            anywhere. Re-examining the serving model on a schedule bounds how stale it can get and
-            buys no accuracy for it. Making the exam harder to pass is <em>worse</em> than leaving
-            it alone. Letting the loop undo a promotion does no harm and proves nothing.
+            next thing to try, and every one was replayed across all six cities against the shipped
+            loop, week by week, with intervals attached. A second alarm — skill against a plain
+            daily profile, a yardstick that promoting a model cannot move — takes Kraków's longest
+            silence from 30 weeks to 5 and helps the one city that had gone deaf, and nothing else;
+            it is built, and still ships switched off. A longer exam does nothing measurable
+            anywhere. Re-examining the model on a schedule bounds how stale it can get and buys no
+            accuracy. Making the exam harder to pass is <em>worse</em> than leaving it alone.
+            Letting the loop undo a promotion does no harm and proves nothing.
           </p>
           <p class="why">
             <strong>They fail for one reason, and it took all five to see it.</strong> The loop
