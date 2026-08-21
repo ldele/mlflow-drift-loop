@@ -52,6 +52,11 @@ jobs:
       - name: Score the champions against the baselines and tune alpha
         run: uv run python scripts/benchmark.py --city all
 
+      # scripts/ablate_model.py is deliberately absent: it is six replays and a
+      # hyper-parameter search for a result that does not change from week to
+      # week, so its output is committed under outputs/ and read from there.
+      # build_site.py checks that snapshot against the numbers this run just
+      # measured and refuses to draw the section if they disagree.
       - name: Build the static site
         run: uv run python scripts/build_site.py
 

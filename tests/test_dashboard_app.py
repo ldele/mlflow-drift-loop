@@ -56,3 +56,33 @@ def test_the_dashboard_runs_without_raising():
 def test_every_generated_profile_renders(profile_key):
     """Every entry in the sidebar, not just the one that opens by default."""
     _run(profile_key)
+
+
+def test_every_chart_gets_its_reading_rendered():
+    """The "How to read this" panels reach the page, not just the source.
+
+    `tests/test_guides.py` checks statically that every chart names a reading.
+    This checks the other half: that Streamlit actually renders them, which a
+    grep cannot see and which a mistyped key would silently fail.
+    """
+    app = _run()
+    panels = [e for e in app.expander if e.label == "How to read this"]
+    assert panels, "no readings rendered at all"
+    # Six charts on the drift-loop tab alone, and the tabs below it add more.
+    assert len(panels) >= 6, f"only {len(panels)} readings rendered"
+
+
+def test_the_synthetic_knob_charts_get_theirs_too():
+    """The one place a reading is passed through a loop variable.
+
+    Every other panel names its key at the call site, so a typo there is caught
+    by the static check. The knob sweep carries the key in the tuple it iterates,
+    and that tab only renders under the synthetic profile, so it needs running.
+    """
+    app = _run("synthetic")  # the radio's options are keys, not labels
+    if any("No data" in w.value for w in app.warning):
+        pytest.skip("synthetic backend not generated -- run scripts/run_simulation.py --fresh")
+    bodies = " ".join(m.value for m in app.markdown)
+    # Each knob's reading names the dial it belongs to.
+    assert "This dial moves the weather" in bodies, "the covariate knob has no reading"
+    assert "changes how weather turns into pollution" in bodies, "the concept knob has no reading"

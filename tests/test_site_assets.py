@@ -123,3 +123,96 @@ def test_at_least_one_city_is_published_as_not_distinguishable_from_zero() -> No
     assert not all(s["retrain_acted_real"] for s in judged), (
         "every city now reads as a finding; re-check before publishing"
     )
+
+
+def test_the_ablation_publishes_its_validity_check_with_the_margin() -> None:
+    """The section that can take the headline away carries its own caveats.
+
+    The ablation compares model *classes* only where the tuned tree is really the
+    better model; where it is not, both arms are misspecified and the comparison
+    says nothing about linearity. A page that prints the premiums without that
+    check invites the reader to conclude something the experiment did not
+    establish, which is the exact mistake an earlier version of this analysis
+    made.
+
+    The margin, not just the boolean: it is 0.02 µg/m³ in Los Angeles, and a
+    check that passes by 0.02 should be visible as one.
+    """
+    import json
+
+    payload = SITE / "data.json"
+    if not payload.is_file():
+        pytest.skip("site/data.json not built")
+
+    ablation = json.loads(payload.read_text(encoding="utf-8")).get("ablation")
+    if not ablation:
+        pytest.skip("outputs/model_ablation.csv not built")
+
+    for city in ablation["cities"]:
+        check = city.get("tree_is_better")
+        assert check and check.get("margin") is not None, (
+            f"{city['city']} publishes premiums with no model-quality check"
+        )
+        for arm in city["arms"]:
+            missing = [f for f in ("lo", "hi", "real") if arm.get(f) is None]
+            assert not missing, f"{city['city']}/{arm['kind']} premium is missing {missing}"
+
+
+def test_the_committed_ablation_still_matches_the_loop_it_describes() -> None:
+    """The ablation snapshot has not gone stale against the rest of the page.
+
+    The replay behind this section is expensive and does not change week to week,
+    so ``outputs/model_ablation*`` is committed and the weekly rebuild reads it
+    rather than re-running it. Change a loop threshold and every other number on
+    the page moves while these do not.
+
+    ``build_site`` re-derives the untouched Ridge arm's premium and compares it
+    against the premium it measured for the same city on the same run; the page
+    refuses to draw the charts where they disagree. This fails the build instead,
+    so the disagreement is caught before it is published rather than after.
+    """
+    import json
+
+    payload = SITE / "data.json"
+    if not payload.is_file():
+        pytest.skip("site/data.json not built")
+
+    ablation = json.loads(payload.read_text(encoding="utf-8")).get("ablation")
+    if not ablation:
+        pytest.skip("outputs/model_ablation.csv not built")
+
+    stale = [
+        f"{c['city']}: ablation says {c['reproduces_published']['arm']:+.1f}%, "
+        f"the page says {c['reproduces_published']['published']:+.1f}%"
+        for c in ablation["cities"]
+        if c.get("reproduces_published") and not c["reproduces_published"]["passed"]
+    ]
+    assert not stale, "re-run scripts/ablate_model.py -- " + "; ".join(stale)
+def test_every_chart_carries_a_reading() -> None:
+    """No chart ships without a "How to read this" panel behind it.
+
+    The page rebuilds itself weekly and nobody writes a caption for the version
+    that comes out, so the reading has to be written once as a rule rather than
+    as an observation. That only works if it is attached to every chart; one
+    chart without a guide is the one a reader stalls on.
+
+    Checked statically rather than in a browser, because there is no JS test
+    runner here. Every ``chartCard`` call must close on an options object naming
+    a guide, which is a shape this file can see and a linter cannot.
+    """
+    # Lookbehind so the declaration of chartCard is not counted as a call of it.
+    calls = re.compile(r"(?<!function )chartCard\(\s*jobs,")
+    # The options object a chartCard call closes on: `..., { guide: "x" });`.
+    # KNOBS entries also carry a `guide:` and are deliberately not matched, since
+    # they end in a comma rather than in `);`.
+    options = re.compile(r"\{[^{}]*guide:[^{}]*\}\s*\)\s*;")
+
+    for page in ("app.js", "compare.js"):
+        src = (SITE / page).read_text(encoding="utf-8")
+        n_calls = len(calls.findall(src))
+        n_guided = len(options.findall(src))
+        assert n_calls, f"{page} has no chartCard calls -- has it been renamed?"
+        assert n_calls == n_guided, (
+            f"{page}: {n_calls} charts, {n_guided} with a guide. "
+            "Every chartCard call needs a `guide:` in its options object."
+        )

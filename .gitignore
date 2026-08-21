@@ -14,8 +14,25 @@ mlruns/
 # we gather, so we keep it versioned rather than re-fetching (and possibly losing)
 # it. The pages/scheduled workflows rebuild from this cache.
 
-# Generated analysis outputs
-outputs/
+# Generated analysis outputs. `outputs/*` rather than `outputs/`, because git
+# will not descend into an excluded directory and the negations below would
+# never be consulted.
+outputs/*
+
+# Two exceptions, committed on purpose. The model ablation is an expensive
+# two-city, three-arm replay that does not change from week to week, so the
+# weekly site build reads this snapshot instead of re-running it -- which would
+# add six replays and a hyper-parameter search to every Monday's job for a
+# result nobody re-ran.
+#
+# A snapshot can go stale silently, so it is checked rather than trusted:
+# `build_site.py` re-derives the untouched Ridge arm's premium and compares it
+# against the premium that same build just measured for the city. Where they
+# disagree the page draws no charts and says why, and
+# `tests/test_site_assets.py` fails the build first. Re-run with
+# `python scripts/ablate_model.py` when the loop changes.
+!outputs/model_ablation.csv
+!outputs/model_ablation_series.json
 
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and

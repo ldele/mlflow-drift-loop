@@ -257,14 +257,17 @@ function legendHTML(chips) {
  * deferred until every card is in the DOM so the CSS grid has settled into its
  * final column count; otherwise Plotly measures a detached/half-laid-out width
  * and hard-codes its 700px default, overflowing the card. */
-function chartCard(jobs, title, desc, chips, traces, layout, container = "charts", wide = false) {
+function chartCard(jobs, title, desc, chips, traces, layout, opts = {}) {
+  const { container = "charts", wide = false, guide = null } = opts;
   const card = document.createElement("section");
   // A small-multiples grid needs the whole row: at half width its panels are
   // narrower than their own axis labels.
   card.className = wide ? "card card-wide" : "card";
   card.innerHTML =
     `<div class="card-head"><h3>${title}</h3><div class="legend">${legendHTML(chips)}</div></div>` +
-    `<p class="desc">${desc}</p><div class="plot"></div>`;
+    `<p class="desc">${desc}</p><div class="plot"></div>` +
+    // After the chart, not before it: the reader looks first and asks second.
+    guideHTML(guide, DATA);
   document.getElementById(container).appendChild(card);
   jobs.push({ div: card.querySelector(".plot"), traces, layout });
 }
@@ -457,6 +460,8 @@ function renderMap() {
   // rather than showing an empty globe.
   card.hidden = cities.length === 0;
   if (!cities.length) return;
+  document.getElementById("map-guide").innerHTML =
+    guideHTML("map", DATA);
 
   const pal = P();
   const gd = document.getElementById("globe");
@@ -599,7 +604,7 @@ function render() {
         lineT(p.recent.timestamp, p.recent.actual, `measured ${t.name}`, pal.series[0]),
         lineT(p.recent.timestamp, p.recent.predicted, "champion prediction", pal.series[3], "dot"),
       ],
-      lay);
+      lay, { guide: "forecast" });
   }
 
   // 1. Skill against a baseline you could deploy instead.
@@ -621,7 +626,7 @@ function render() {
       `That baseline gets to see recent pollution readings and the model never does, so it is a hard bar rather than a fair fight. It is here because it is the alternative you could deploy instead.`,
       [{ label: `skill vs. ${days}-day daily profile`, color: pal.series[2], kind: "line" }],
       [lineT(p.as_of, R.skill.champion, "skill", pal.series[2], null, { hover: "%{y:+.2f}" })],
-      lay);
+      lay, { guide: "skill" });
   }
 
   // 2. One decay curve per model. THE chart the page was missing: the logged
@@ -717,7 +722,7 @@ function render() {
         ? `${n} models are summarised as a median and the middle half, because one line each stops being readable. `
         : `All ${n} are drawn, since there are few enough to tell apart. `) +
       `Two are named: the model answering now, and the longest unbroken run, which is where staleness shows up first.`,
-      chipsD, traces, lay, "charts", true);
+      chipsD, traces, lay, { wide: true, guide: "decay" });
   }
 
   // 3. The retrain trigger, in µg/m³ instead of as a ratio.
@@ -749,7 +754,7 @@ function render() {
       "A retrain fires when the error crosses the dotted bar, which is 1.25× whatever the model in service scored when it was trained. " +
       "The bar is a staircase because every promotion resets it, and promotions happen in the dirty season, so each new model inherits a higher bar than the one it replaced and the bar ratchets upward. It can step down where a challenger trained on a calmer stretch, but only slightly and only early. " +
       "Where the staircase ends up far above the error, the trigger has gone quiet and cannot fire again whatever the model does.",
-      chipsT, traces, lay);
+      chipsT, traces, lay, { guide: "trigger" });
   }
 
   // 4. Weather drift as a band per ingredient per week, not six lines.
@@ -801,7 +806,7 @@ function render() {
       { label: "shifted", color: pal.warn, kind: "dot" },
       { label: "properly different", color: pal.crit, kind: "dot" },
     ],
-    traces, lay);
+    traces, lay, { guide: "psi" });
 
   // 5. The physical story, in the units the features are measured in. This is
   // what "the world moved" means before it is compressed into a statistic, and
@@ -818,7 +823,7 @@ function render() {
       `Each weather ingredient, averaged over every ${DATA.method?.params?.monitor_days ?? 14}-day monitoring window, in its own units. The band is where that same average sat while the first model was being trained (${R.factors.bootstrap_train[0]} to ${R.factors.bootstrap_train[1]}), its middle 80%. ` +
       "A line leaving its band is the model being asked about weather it was never shown. This is the case for retraining, before any statistic is computed.",
       shown.map((f, i) => ({ label: f, color: pal.series[i], kind: "dot" })),
-      sm.traces, sm.layout, "charts", true);
+      sm.traces, sm.layout, { wide: true, guide: "factors" });
   }
 
   // 6. Champion vs. challenger on the held-out week
@@ -846,7 +851,7 @@ function render() {
   chartCard(jobs,
     "The exam: champion vs. challenger",
     "Being newer is not a qualification. The model in service and the one just trained sit the same exam, a week of air neither has ever seen, and the newcomer only takes the job if it wins by more than 5% rather than by a nose. Whether passing this exam predicts anything is tested further down the page.",
-    chips3, traces, lay);
+    chips3, traces, lay, { guide: "holdout" });
 
   // 7. What the model leans on. Answers the question the coefficient chart
   // cannot: the slopes are per original unit, so a slope per hPa and a slope
@@ -873,7 +878,7 @@ function render() {
       "What moves the prediction",
       `How much the model's answer shifts when each ingredient moves by one standard deviation. This is the comparable version of the coefficients below, in µg/m³, for version ${imp.version} over the most recent window. ` +
       "Boundary layer height, the depth of air that pollution is diluted into, would very likely top this list and is missing. Open-Meteo does not archive it at a seven-day lead, so shortwave radiation stands in for it.",
-      [], traces, lay, "charts", true);
+      [], traces, lay, { wide: true, guide: "importance" });
   }
 
   // 8. Model coefficients
@@ -906,7 +911,7 @@ function render() {
   chartCard(jobs,
     "Model coefficients",
     "What the model believes about each ingredient, and how that belief shifts every time it is retrained. A line crossing zero is the model changing its mind about which way something pushes: wind used to clear the air, now it dirties it. Each panel has its own scale, because the ingredients are measured in different units.",
-    chips4, traces, lay, "charts", coefPts > 1);
+    chips4, traces, lay, { wide: coefPts > 1, guide: "coefficients" });
 
   renderBenchmark(p);
   // Both profile-independent, but re-rendered here so a theme flip recolours
@@ -914,6 +919,7 @@ function render() {
   renderPooled();
   renderGate();
   renderControl(DATA.sweep);
+  renderAblation(DATA.ablation);
 
   // All cards are in the DOM now and the grid has settled — plot at the real width.
   plotAll(jobs);
@@ -1020,7 +1026,8 @@ function renderBenchmark(p) {
     `<div class="bench-wrap"><table class="bench">` +
     `<thead><tr><th>Predictor</th><th class="num">Median RMSE</th><th>What it does</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div>` +
-    `<div class="verdict">${verdict.join("")}</div>`;
+    `<div class="verdict">${verdict.join("")}</div>` +
+    guideHTML("benchmark", DATA);
 }
 
 /* ---------- one model for every city? ---------- */
@@ -1060,7 +1067,7 @@ function renderPooled() {
     "One model for all six cities, against six models",
     "Median error over the same monitoring windows, lower is better. The pooled model gets a separate intercept per city, which is doing most of the work: mean pollution runs from 7 µg/m³ in Melbourne to 84 in Delhi, and the same model without that adjustment scores 43% worse. So the weather slopes are shared and only the level is learned per place.",
     names.map((name, i) => ({ label: POOLED_LABEL[name], color: colors[i], kind: "dot" })),
-    traces, lay, "pooled-charts", true);
+    traces, lay, { container: "pooled-charts", wide: true, guide: "pooled" });
 
   const beatsFrozen = cities.filter((p) => pick(p, "pooled_cities") < pick(p, "champion_frozen"));
   const beatsServed = cities.filter((p) => pick(p, "pooled_cities") < pick(p, "champion_served"));
@@ -1156,7 +1163,7 @@ function renderGate() {
       { label: "perfect calibration", color: pal.muted, kind: "dash" },
     ],
     [pt(short, "short", pal.series[2]), pt(long, "long", pal.crit)],
-    lay, "gate-charts", true);
+    lay, { container: "gate-charts", wide: true, guide: "gate" });
 
   document.getElementById("gate-note").innerHTML =
     `<strong>The result:</strong> the exam is honest and well calibrated over the horizon it tests. ` +
@@ -1195,6 +1202,7 @@ function renderControl(sweep) {
   const KNOBS = [
     {
       key: "feature_shift",
+      guide: "control_covariate",
       title: "Turning the covariate knob",
       desc: "The feature distributions are pushed further from the training window, while the " +
         "relationship between weather and pollution is left alone. Data drift should climb and " +
@@ -1202,6 +1210,7 @@ function renderControl(sweep) {
     },
     {
       key: "drift_strength",
+      guide: "control_concept",
       title: "Turning the concept knob",
       desc: "The relationship between weather and pollution is changed, while the feature " +
         "distributions are left alone. Performance drift should climb and data drift should not " +
@@ -1226,7 +1235,7 @@ function renderControl(sweep) {
         lineT(s.level, s.psi_rel, "data drift (PSI)", pal.series[0]),
         lineT(s.level, s.perf_rel, "performance drift", pal.series[1]),
       ],
-      lay, "control-charts");
+      lay, { container: "control-charts", guide: knob.guide });
   }
 
   // Stated from the data rather than written down, so the claim cannot outlive
@@ -1254,6 +1263,149 @@ function renderControl(sweep) {
 /* Rendered from data.json rather than written into the HTML, because
  * build_site.py introspects these values out of the running code. Retyping them
  * here would let the page describe a model the loop stopped being. */
+/* ---------- is the finding about the world, or about a linear model? ---------- */
+
+/* The one section on this page that can take the headline away, so it publishes
+ * the validity checks beside the result rather than only the result.
+ *
+ * The experiment compares model *classes* only if the tuned tree is genuinely
+ * the better model over the replay. Where it is not, both arms are misspecified
+ * and the premium difference between them says nothing about linearity. An
+ * earlier version of this experiment failed exactly there, read the failure as
+ * evidence for the conclusion it was meant to threaten, and published a
+ * downgraded confound on the strength of a test that never ran. Drawing the
+ * check, and its margin, is how a reader can catch that happening again. */
+function renderAblation(ablation) {
+  const section = document.getElementById("ablation");
+  section.hidden = !ablation?.cities?.length;
+  if (section.hidden) return;
+
+  const pal = P();
+  const host = document.getElementById("ablation-charts");
+  host.innerHTML = "";
+  const jobs = [];
+  const cities = ablation.cities;
+
+  // This replay is expensive and does not change week to week, so it is read
+  // from a committed snapshot rather than re-run on every build. A snapshot goes
+  // stale silently, so the build re-derives the untouched arm's premium and
+  // compares it against what it measured for the same city on this run. Where
+  // they disagree, show the disagreement and draw nothing: a stale panel sitting
+  // beside fresh ones is worse than an absent one.
+  const stale = cities.filter((c) => c.reproduces_published && !c.reproduces_published.passed);
+  if (stale.length) {
+    document.getElementById("ablation-note").innerHTML =
+      `<strong>This experiment is out of date, so its charts are not being drawn.</strong> ` +
+      stale.map((c) =>
+        `The ${c.city} replay reports ${pct(c.reproduces_published.arm, 1)} where the rest of this ` +
+        `page now measures ${pct(c.reproduces_published.published, 1)}`).join("; ") +
+      `. The loop has changed since the ablation last ran, so it needs re-running ` +
+      `(<code>scripts/ablate_model.py</code>).`;
+    return;
+  }
+
+  const ARMS = ["ridge", "ridge_tuned", "gbm_tuned"];
+  const colors = [pal.series[3], pal.series[0], pal.series[1]];
+  const armOf = (c, kind) => c.arms.find((a) => a.kind === kind);
+  const label = (kind) => armOf(cities[0], kind)?.label ?? kind;
+
+  const lay = plotBase(pal, "% better than never retraining", { hovermode: "closest", height: 340 });
+  lay.barmode = "group";
+  lay.margin.b = 54;
+  thresholdLine(lay, pal, 0, "0 · retraining bought nothing");
+
+  const traces = ARMS.map((kind, i) => {
+    const arms = cities.map((c) => armOf(c, kind));
+    return {
+      type: "bar", name: label(kind),
+      x: cities.map((c) => c.city), y: arms.map((a) => (a ? a.premium : null)),
+      marker: { color: colors[i] }, showlegend: false,
+      // The intervals are the point of the chart, not decoration on it. Los
+      // Angeles's harm survives two of the three arms and dies in the third,
+      // and without the bars all three are just columns of different heights.
+      error_y: {
+        type: "data", symmetric: false,
+        array: arms.map((a) => (a ? a.hi - a.premium : 0)),
+        arrayminus: arms.map((a) => (a ? a.premium - a.lo : 0)),
+        color: pal.ink, thickness: 1.4, width: 5,
+      },
+      customdata: arms.map((a) => (a ? [a.lo, a.hi, a.cv_rmse] : [null, null, null])),
+      hovertemplate:
+        `%{x}: %{y:+.1f}% [%{customdata[0]:+.1f}, %{customdata[1]:+.1f}]` +
+        `<br>CV error %{customdata[2]:.2f} µg/m³<extra>${label(kind)}</extra>`,
+    };
+  });
+
+  // The paired figure belongs on the chart rather than in the note, because the
+  // chart is what invites the unpaired reading: three bars at different heights
+  // are three medians, and differencing two medians is the mistake this project
+  // spends a whole column of its city table warning about.
+  const delhiPaired = (cities.find((c) => c.city === "Delhi") || cities[0]).paired;
+  chartCard(jobs,
+    "The same city, replayed under three models",
+    "What retraining was worth in each city, week by week, under the model that ships and under " +
+    "two tuned properly on the same protocol. Bars are 95% intervals; one crossing the zero line " +
+    "means retraining cannot be shown to have paid at all. If the premium were really about the " +
+    "air changing, it would survive the change of model. " +
+    (delhiPaired
+      ? `Compared week for week rather than by differencing the bars, over the ` +
+        `${delhiPaired.weeks} weeks both models retrained, the flexible one gives up ` +
+        `${delhiPaired.points.toFixed(1)} points of premium in Delhi ` +
+        `[${delhiPaired.lo.toFixed(1)}, ${delhiPaired.hi.toFixed(1)}].`
+      : ""),
+    ARMS.map((kind, i) => ({ label: label(kind), color: colors[i], kind: "dot" })),
+    traces, lay, { container: "ablation-charts", wide: true, guide: "ablation" });
+
+  // Stated from the data, so the prose cannot outlive the numbers it describes.
+  //
+  // "+9.7% [+8.0, +26.0]" rather than repeating the % on each bound, matching
+  // how the README and docs/evaluation.md print the same figures. A reader
+  // comparing the two should not have to notice a formatting difference.
+  const iv = (lo, hi) => `[${pct(lo, 1).replace("%", "")}, ${pct(hi, 1).replace("%", "")}]`;
+  const delhi = cities.find((c) => c.city === "Delhi") || cities[0];
+  const la = cities.find((c) => c.city === "Los Angeles");
+  const shipped = armOf(delhi, "ridge"), tunedRidge = armOf(delhi, "ridge_tuned");
+  const tree = armOf(delhi, "gbm_tuned");
+
+  let note =
+    `<strong>The duller explanation was right about most of it.</strong> ` +
+    `${delhi.city}'s ${pct(shipped.premium, 1)} survives the change of model, but only as ` +
+    `${pct(tree.premium, 1)} ${iv(tree.lo, tree.hi)} — a fifth of the size. And the larger half ` +
+    `of what it lost is not the straight line at all: ` +
+    `${(shipped.premium - tunedRidge.premium).toFixed(1)} of the points go to <code>alpha=1.0</code>, ` +
+    `a library default nobody chose, and ${(tunedRidge.premium - tree.premium).toFixed(1)} to ` +
+    `linearity. What is left over is the air.`;
+
+  if (la) {
+    const laShipped = armOf(la, "ridge"), laTree = armOf(la, "gbm_tuned");
+    note +=
+      ` <strong>${la.city} loses its result entirely:</strong> ${pct(laShipped.premium, 1)} under ` +
+      `the model that ships, ${pct(laTree.premium, 1)} ${iv(laTree.lo, laTree.hi)} under the ` +
+      `better one, an interval that includes zero.`;
+  }
+
+  // The check, with its margin. A verdict without its margin is how "the check
+  // passed" survives being true by 0.02 µg/m³.
+  const checked = cities.filter((c) => c.tree_is_better);
+  const failed = checked.filter((c) => !c.tree_is_better.passed);
+  if (failed.length) {
+    note +=
+      ` <strong>Read none of that yet.</strong> The comparison is about model classes only where ` +
+      `the tuned tree is really the better model, and in ${failed.map((c) => c.city).join(" and ")} ` +
+      `it is not — so those arms are two misspecified models and say nothing about linearity.`;
+  } else if (checked.length) {
+    note +=
+      ` <strong>The check that licenses all of it is thin.</strong> The tuned tree has to be the ` +
+      `better model or both arms are just misspecified, and it is — by ` +
+      `${checked.map((c) => `${c.tree_is_better.margin.toFixed(2)} µg/m³ in ${c.city}`).join(" and ")}. ` +
+      `It also turns out to be a decision stump, which is its own answer about how close to a ` +
+      `straight line this problem is.`;
+  }
+
+  document.getElementById("ablation-note").innerHTML = note;
+  plotAll(jobs);
+}
+
 function specRows(el, rows) {
   el.innerHTML = rows
     .map(([k, v, gloss]) =>

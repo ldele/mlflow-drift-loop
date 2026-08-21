@@ -73,13 +73,16 @@ function legendHTML(chips) {
   }).join("");
 }
 
-function chartCard(jobs, title, desc, chips, traces, layout, container, wide = false) {
+function chartCard(jobs, title, desc, chips, traces, layout, opts = {}) {
+  const { container = "charts", wide = false, guide = null } = opts;
   const card = document.createElement("section");
   card.className = wide ? "card card-wide" : "card";
   card.innerHTML =
     `<div class="card-head"><h3>${title}</h3><div class="legend">${legendHTML(chips)}</div></div>` +
     (desc ? `<p class="desc">${desc}</p>` : "") +
-    `<div class="plot"></div>`;
+    `<div class="plot"></div>` +
+    // After the chart, not before it: the reader looks first and asks second.
+    guideHTML(guide, DATA);
   document.getElementById(container).appendChild(card);
   jobs.push({ div: card.querySelector(".plot"), traces, layout });
 }
@@ -196,7 +199,7 @@ function renderSkillGrid() {
         line: { color: pal.series[i % 6], width: 2.2 }, showlegend: false,
         hovertemplate: "%{x}<br>skill %{y:+.2f}<extra></extra>",
       }],
-      lay, "skill-grid");
+      lay, { container: "skill-grid", guide: "compare_city" });
   });
 
   plotAll(jobs);
@@ -260,7 +263,7 @@ function renderValue() {
       { label: "across the whole replay", color: pal.series[3], kind: "dot" },
       { label: "week by week, when it acted", color: pal.series[0], kind: "dot" },
     ],
-    traces, lay, "value-charts", true);
+    traces, lay, { container: "value-charts", wide: true, guide: "compare_value" });
 
   // Every claim here is counted off the data rather than asserted, including the
   // lead sentence. "Retraining helped in every city once the comparison is
@@ -334,7 +337,7 @@ function renderPooled() {
       marker: { color: colors[i] }, showlegend: false,
       hovertemplate: `%{x}: %{y:.2f} µg/m³<extra>${POOLED_LABEL[name]}</extra>`,
     })),
-    lay, "pooled-charts", true);
+    lay, { container: "pooled-charts", wide: true, guide: "pooled" });
 
   const beatsFrozen = rows.filter((c) => pick(c, "pooled_cities") < pick(c, "champion_frozen"));
   const beatsServed = rows.filter((c) => pick(c, "pooled_cities") < pick(c, "champion_served"));

@@ -27,7 +27,7 @@ from mlflow.tracking import MlflowClient
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from driftloop import retrospect, tracking  # noqa: E402
+from driftloop import guides, retrospect, tracking  # noqa: E402
 from driftloop.config import DRIFT_FEATURES, FEATURES, PROFILES  # noqa: E402
 
 OUT = REPO_ROOT / "site"
@@ -646,6 +646,142 @@ def sweep_block() -> dict | None:
     return out or None
 
 
+ABLATION_LABEL = {
+    "ridge": "Ridge, as shipped",
+    "ridge_tuned": "Ridge, tuned",
+    "gbm_tuned": "Gradient boosting, tuned",
+}
+
+
+def ablation_block(profiles: list[dict]) -> dict | None:
+    """The model-class ablation, from scripts/ablate_model.py.
+
+    The hardest test on this page's headline. Every published number came from a
+    Ridge whose penalty is close to inert, so "retraining pays" was compatible
+    with a duller reading: a linear model misspecifies seasonal structure and
+    refitting papers over it. Two cities replayed under three model settings
+    separate the two.
+
+    Published with both of the script's validity checks attached rather than only
+    the result, because the checks are what license reading it at all. The
+    experiment compares model *classes* only if the tuned tree is genuinely the
+    better model over the replay; where it is not, the arms are two misspecified
+    models and the comparison says nothing about linearity. And the untouched
+    Ridge arm has to reproduce the figures the rest of the site publishes, or the
+    replay harness is not faithful and none of the arms mean anything.
+
+    Both are derived here from the same numbers the chart draws, rather than
+    written down, so the page cannot claim a check passed while showing the
+    arithmetic that says it did not.
+
+    The faithfulness check matters more here than it does in the script that
+    produces the CSV. This replay is expensive and does not change week to week,
+    so ``outputs/model_ablation*`` is committed and the weekly rebuild reads the
+    snapshot rather than re-running it. A snapshot goes stale silently: change a
+    loop threshold and every other number on the page moves while these do not.
+    Comparing the untouched arm against the premium this build just computed for
+    the same city is what turns that into a visible failure.
+    """
+    path = REPO_ROOT / "outputs" / "model_ablation.csv"
+    series_path = REPO_ROOT / "outputs" / "model_ablation_series.json"
+    if not path.exists():
+        return None
+    df = pd.read_csv(path)
+    if df.empty:
+        return None
+
+    # The paired result: how many points of premium the flexible model absorbs,
+    # over the weeks both arms retrained. Positive means retraining is worth less
+    # to a model that can bend, which is what the confound predicts.
+    paired = {}
+    if series_path.exists():
+        series = json.loads(series_path.read_text(encoding="utf-8"))
+        for row in series.get("comparisons", []):
+            if "ridge_minus_gbm" not in row:
+                continue
+            paired[row["city"]] = {
+                "points": row["ridge_minus_gbm"],
+                "lo": row["ridge_minus_gbm_lo"],
+                "hi": row["ridge_minus_gbm_hi"],
+                "real": bool(row["ridge_minus_gbm_real"]),
+                "weeks": row["shared_weeks"],
+            }
+
+    # What this build measured for the same cities, to check the snapshot
+    # against. Rounded to one decimal because that is the precision the rest of
+    # the page publishes, so anything closer than that is not a disagreement.
+    published = {
+        p["label"]: (p.get("stats") or {}).get("retrain_acted")
+        for p in profiles
+    }
+
+    cities = []
+    for city, rows in df.groupby("city", sort=False):
+        by_kind = {r["kind"]: r for _, r in rows.iterrows()}
+        if not {"ridge", "ridge_tuned", "gbm_tuned"} <= set(by_kind):
+            continue
+        # Check one: the tree has to be the better model over the replay, or it
+        # absorbed nothing and both arms are misspecified. Margin published, not
+        # just the verdict -- it is 0.20 µg/m³ in Delhi and 0.02 in Los Angeles,
+        # and a check that passes by 0.02 should look like one on the page.
+        margin = float(by_kind["ridge_tuned"]["median_rmse"] - by_kind["gbm_tuned"]["median_rmse"])
+        # Check two: the untouched arm still reproduces what this build just
+        # published for the same city, or the snapshot has gone stale.
+        shipped = round(float(by_kind["ridge"]["premium"]), 1)
+        live = published.get(city)
+        faithful = None if live is None else {
+            "arm": shipped,
+            "published": round(float(live), 1),
+            "passed": abs(shipped - round(float(live), 1)) <= 0.1,
+        }
+        cities.append({
+            "city": city,
+            "paired": paired.get(city),
+            "tree_is_better": {"margin": round(margin, 2), "passed": margin > 0},
+            "reproduces_published": faithful,
+            "arms": [
+                {
+                    "kind": kind,
+                    "label": ABLATION_LABEL.get(kind, kind),
+                    "premium": float(r["premium"]),
+                    "lo": float(r["premium_lo"]),
+                    "hi": float(r["premium_hi"]),
+                    "real": bool(r["premium_real"]),
+                    "median_rmse": float(r["median_rmse"]),
+                    "cv_rmse": float(r["cv_rmse"]),
+                    "promotions": int(r["promotions"]),
+                }
+                for kind, r in by_kind.items()
+            ],
+        })
+    return {"cities": cities} if cities else None
+
+
+def guides_block() -> dict[str, dict]:
+    """How to read each chart, filled in with the thresholds the loop is running.
+
+    The prose lives in ``driftloop.guides`` because the Streamlit app draws the
+    same quantities and imports the same module. Two copies of a reading is two
+    readings within a month, which is the failure the shared stylesheet and the
+    single ``retrospect`` implementation already exist to avoid.
+
+    Filled here rather than in the browser so the substitution happens once,
+    against the config that produced these charts, instead of the parameter
+    names being spelled out a second time in JavaScript.
+    """
+    from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
+
+    cfg = PROFILES[DISPLAY_ORDER[0]].loop
+    located = [PROFILES[k].location for k in DISPLAY_ORDER if PROFILES[k].location]
+    leads = {loc.forecast_lead_days for loc in located}
+    return guides.payload(guides.context(
+        cfg,
+        horizon_days=leads.pop() if len(leads) == 1 else None,
+        climatology_days=retrospect.CLIMATOLOGY_DAYS,
+        psi_bands={"stable": PSI_STABLE, "significant": PSI_SIGNIFICANT},
+    ))
+
+
 def schedule_block() -> dict | None:
     """How the unattended loop is doing, as a few facts rather than as charts.
 
@@ -745,6 +881,8 @@ def build() -> Path:
         "raw_data": publish_raw_data(),
         "method": method_block(),
         "sweep": sweep_block(),
+        "guides": guides_block(),
+        "ablation": ablation_block(profiles),
         "schedule": schedule_block(),
         "profiles": profiles,
     }

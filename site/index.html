@@ -67,6 +67,7 @@
             <div id="city-list"></div>
           </div>
         </div>
+        <div id="map-guide"></div>
       </section>
 
       <div class="tiles" id="tiles"></div>
@@ -129,6 +130,25 @@
         </p>
         <div class="charts" id="control-charts"></div>
         <p class="why" id="control-note"></p>
+      </section>
+
+      <!-- Last, because it is the hardest test on everything above it. The
+           model that produced every number on this page is a Ridge whose
+           penalty is nearly inert, so the headline was always compatible with a
+           duller reading. A page that never runs that test is asserting rather
+           than showing, the same reason the pooled section exists. -->
+      <section id="ablation" hidden>
+        <h2 class="method-h">Is this about the weather, or about a linear model?</h2>
+        <p class="method-sub">
+          Everything above rests on one model: a straight line through eight weather
+          measurements. Straight lines are bad at seasons, so “the air changed and a fresh model
+          tracks it” has a duller twin — “a line cannot bend, and refitting is how you fake it”.
+          Those predict the same charts. Telling them apart needs a model that <em>can</em> bend,
+          tried as hard as the line was, on the same two cities: Delhi, where retraining pays most,
+          and Los Angeles, where it costs.
+        </p>
+        <div class="charts" id="ablation-charts"></div>
+        <p class="why" id="ablation-note"></p>
       </section>
 
       <div id="error"></div>
@@ -230,6 +250,7 @@
         </p>
       </footer>
     </div>
+    <script src="guides.js" defer></script>
     <script src="app.js" defer></script>
   </body>
 </html>

@@ -36,6 +36,7 @@ from driftloop.config import (  # noqa: E402
     PROFILES,
     TARGET,
 )
+from driftloop import guides  # noqa: E402
 from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
 from driftloop.model import build_pipeline, train as train_model  # noqa: E402
 from driftloop import retrospect  # noqa: E402
@@ -288,6 +289,31 @@ st.sidebar.caption(
 )
 PROFILE = PROFILES[profile_key]
 CFG = PROFILE.loop
+
+# The readings that go under each chart. Same prose as the published site, from
+# the same module, because two copies of "how to read this" is two readings
+# within a month. The thresholds quoted in them come from CFG, so a profile with
+# a non-default trigger gets a description of its own loop rather than of the
+# shipped one.
+GUIDE_VALUES = guides.context(
+    CFG,
+    horizon_days=PROFILE.location.forecast_lead_days if PROFILE.location else None,
+    climatology_days=retrospect.CLIMATOLOGY_DAYS,
+    psi_bands={"stable": PSI_STABLE, "significant": PSI_SIGNIFICANT},
+)
+
+
+def guide(key: str) -> None:
+    """Put the reading for one chart under it, collapsed.
+
+    An expander rather than a caption: an operator who reads these charts daily
+    should not scroll past a paragraph they know, and one seeing them for the
+    first time should not have to guess.
+    """
+    body = guides.markdown(key, GUIDE_VALUES)
+    if body:
+        with st.expander("How to read this"):
+            st.markdown(body)
 DB = PROFILE.db_filename
 IS_SYNTHETIC = profile_key == "synthetic"
 
@@ -467,6 +493,7 @@ with tab_loop:
             theme.line(fig, runs["as_of"], runs[col], feature, theme.FEATURE_COLOR[feature])
     theme.threshold(fig, runs["as_of"], PSI_SIGNIFICANT, f"significant ({PSI_SIGNIFICANT})")
     st.plotly_chart(fig, width="stretch")
+    guide("psi")
 
     # The trigger in µg/m³ rather than as a ratio. `error ÷ baseline` hides that
     # the denominator resets on every promotion, and since retrains fire in the
@@ -488,6 +515,7 @@ with tab_loop:
             "retrain triggered", theme.WARNING, symbol="circle",
         )
     st.plotly_chart(fig, width="stretch")
+    guide("trigger")
     st.caption(
         "Where the staircase ends up far above the error, the trigger has gone quiet and cannot "
         "fire again whatever the model does. The bar is reset by every promotion, and because "
@@ -504,6 +532,7 @@ with tab_loop:
         theme.line(fig, runs["as_of"], retro.champion_skill, "skill", theme.SERIES[2])
         theme.threshold(fig, runs["as_of"], 0.0, "0 · no better than the baseline")
         st.plotly_chart(fig, width="stretch")
+        guide("skill")
         st.caption(
             "Scale-free, and its yardstick holds still when a model is promoted, which is what "
             "the retrain ratio above cannot say. The baseline sees recent pollution readings and "
@@ -538,6 +567,7 @@ with tab_loop:
                 )
             fig.update_xaxes(title=dict(text="weeks in service", font=dict(color=theme.MUTED, size=11)))
             st.plotly_chart(fig, width="stretch")
+            guide("decay")
             st.caption(
                 "Followed past each model's own retirement, so a line that keeps falling shows what "
                 "keeping it would have cost. The version currently serving is drawn solid."
@@ -561,6 +591,7 @@ with tab_loop:
                 fig, promoted["as_of"], promoted["metrics.challenger_rmse"], "promoted", theme.GOOD
             )
         st.plotly_chart(fig, width="stretch")
+        guide("holdout")
         st.caption(
             "Being newer is not a qualification. Both models sit the same exam, a week of air "
             "neither has seen, and the challenger takes the job only by more than the "
@@ -577,6 +608,7 @@ with tab_loop:
         st.plotly_chart(
             theme.gate_scatter(retro.gate, retrospect.GATE_LONG_WEEKS), width="stretch"
         )
+        guide("gate")
         summary = retrospect.gate_summary(retro.gate)
         short, long = summary["short"], summary["long"]
         parts = []
@@ -632,6 +664,7 @@ with tab_dist:
             ),
             width="stretch",
         )
+        guide("factors")
         st.divider()
 
     st.markdown("#### The distributions PSI is summarising")
@@ -681,6 +714,10 @@ with tab_dist:
                     theme.FEATURE_COLOR[feature],
                 )
                 st.plotly_chart(fig, width="stretch", key=f"hist_{feature}")
+
+    # Once, under the whole grid rather than once per feature: the reading is
+    # about what a histogram pair means, which is the same for all of them.
+    guide("distributions")
 
 # --------------------------------------------------------------------------- #
 # Tab: the model itself                                                        #
@@ -756,6 +793,7 @@ with tab_model:
             ]
         )
         st.dataframe(table, hide_index=True, width="stretch")
+        guide("benchmark")
 
         # What retraining was worth, both ways. The across-replay figure alone
         # misleads: it compares one median against another, so in a city that
@@ -824,6 +862,7 @@ with tab_model:
             fig.add_vline(x=alpha["best"], line_dash="dash",
                           annotation_text=f"best {alpha['best']:g}")
             st.plotly_chart(fig, width="stretch")
+            guide("alpha_sweep")
             penalty = alpha.get("penalty_pct")
             caption = f"Shipped alpha {alpha['shipped']:g}; {alpha['best']:g} scored best"
             if penalty is not None:
@@ -858,6 +897,7 @@ with tab_model:
             "W/m², so the biggest of them is usually just the feature with the smallest units."
         )
         st.plotly_chart(theme.importance_bars(*importance), width="stretch")
+        guide("importance")
         st.caption(
             "Boundary layer height, the depth of air pollution is diluted into, would very "
             "likely top this list and is missing. Open-Meteo does not archive it at a seven-day "
@@ -884,6 +924,7 @@ with tab_model:
         st.plotly_chart(
             theme.coef_small_multiples(versions, DRIFT_FEATURES), width="stretch"
         )
+        guide("coefficients")
         show = versions[["version", "alias", "train_end", *[f"coef_{f}" for f in FEATURES], "coef_intercept"]]
         st.dataframe(
             show.rename(columns={"train_end": "trained through"}),
@@ -917,11 +958,13 @@ with tab_model:
             theme.scatter_fit(preds["predicted"], preds["actual"], theme.SERIES[0]),
             width="stretch",
         )
+        guide("fit_scatter")
     with right:
         st.plotly_chart(
             theme.residual_series(preds["timestamp"], resid, theme.SERIES[0]),
             width="stretch",
         )
+        guide("residuals")
     st.caption(
         "Pick an early-summer run and a deep-autumn run to compare: pre-drift the "
         "cloud hugs the diagonal and residuals sit around zero; post-drift (before a "
@@ -952,9 +995,9 @@ with tab_sweep:
             "champion's error sees it)."
         )
         left, right = st.columns(2)
-        for column, name, driven in (
-            (left, "feature_shift", "max_psi"),
-            (right, "drift_strength", "perf_drift_ratio"),
+        for column, name, driven, guide_key in (
+            (left, "feature_shift", "max_psi", "control_covariate"),
+            (right, "drift_strength", "perf_drift_ratio", "control_concept"),
         ):
             group = sweep[sweep["sweep"] == name]
             fig = theme.base_figure(f"Sweeping {name}", "signal")
@@ -964,6 +1007,10 @@ with tab_sweep:
             fig.update_xaxes(title=dict(text=f"{name} level", font=dict(color=theme.MUTED, size=11)))
             column.plotly_chart(fig, width="stretch")
             column.caption(f"`{driven}` monotonically increasing: **{group[driven].is_monotonic_increasing}**")
+            # `with`, not `column.expander`: guide() writes through the bare `st`
+            # namespace, which only lands in the column inside a context manager.
+            with column:
+                guide(guide_key)
 
 # --------------------------------------------------------------------------- #
 # Tab: registry                                                                #
