@@ -34,13 +34,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from driftloop.config import (
     CITY_CLI_NAMES,
-    FEATURES,
     FORECAST_LEAD_DAYS,
     PROFILES,
     TARGET,
     TIMESTAMP,
 )
 from driftloop.data.base import add_cyclical_features
+from driftloop.model import fitted_features
 from driftloop.tracking import CHAMPION_ALIAS, ChampionRef, load_champion, tracking_uri
 
 # Which profile's registry to serve. Every city keeps its own backend file and
@@ -201,7 +201,7 @@ def _model_info(served: ServedChampion) -> ModelInfo:
         trained_to=ref.train_end.to_pydatetime(),
         training_age_days=round(float(age), 2),
         baseline_rmse=ref.baseline_rmse,
-        features=list(FEATURES),
+        features=fitted_features(ref.pipeline),
         target=TARGET,
         forecast_lead_days=FORECAST_LEAD_DAYS,
         loaded_at=served.loaded_at.to_pydatetime(),
@@ -290,7 +290,7 @@ def create_app(profile_key: str | None = None) -> FastAPI:
         """Predict PM2.5 for a batch of forecast hours."""
         served = _require_champion(request)
         df = _feature_frame(body.observations)
-        raw = served.ref.pipeline.predict(df[FEATURES])
+        raw = served.ref.pipeline.predict(df[fitted_features(served.ref.pipeline)])
         return PredictResponse(
             model_name=PROFILES[served.profile_key].loop.registered_model_name,
             model_version=served.ref.version,

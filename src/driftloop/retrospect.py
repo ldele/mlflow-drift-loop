@@ -51,6 +51,7 @@ import pandas as pd
 from driftloop import stats
 from driftloop.config import DRIFT_FEATURES, FEATURES, TARGET, TIMESTAMP
 from driftloop.data.base import DataSource
+from driftloop.model import fitted_features
 
 # How much history the climatology baseline averages over. A month is long
 # enough to average out weather and short enough to still be the current season,
@@ -125,7 +126,8 @@ class ArtifactModel:
     baseline_rmse: float
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
-        return np.asarray(self.pipeline.predict(df[FEATURES]), dtype=float)
+        columns = fitted_features(self.pipeline)
+        return np.asarray(self.pipeline.predict(df[columns]), dtype=float)
 
     def importance(self, reference: pd.DataFrame) -> dict[str, float]:
         """Not available. A tree has no per-feature slope to scale."""

@@ -6,8 +6,11 @@ from the registry alone and score it on windows it never served. A more
 flexible model would absorb part of the drift into its own fit and leave less
 of it visible.
 
-The feature list is read from `config.FEATURES` everywhere; nothing hardcodes
-the count.
+The feature list for training is read from `config.FEATURES`; nothing hardcodes
+the count. A fitted model is scored on its own `feature_names_in_` instead
+(`fitted_features`), because a registered model outlives the list it was
+trained with: the scheduled champion predates the 2026-08-01 widening, and
+handing it today's list broke the weekly Action for six Mondays.
 """
 
 from __future__ import annotations
@@ -89,10 +92,30 @@ def is_linear(pipeline: Pipeline) -> bool:
     return "ridge" in pipeline.named_steps
 
 
+def fitted_features(model: Pipeline) -> list[str]:
+    """The columns ``model`` was fit on, in the order it was fit.
+
+    A registered model outlives the feature list it was trained with. `b1a15b8`
+    widened `FEATURES` from three columns to eight on 2026-08-01; the scheduled
+    champion had been fit on the three, every scoring helper handed it all
+    eight, and scikit-learn refused. The weekly Action failed on exactly that
+    every Monday from 2026-08-03. A fitted estimator records its columns in
+    ``feature_names_in_``, so the model says what it needs and the frame is cut
+    to that. An old champion keeps serving until the loop promotes a challenger
+    trained on today's list, which is the loop doing its job rather than a
+    migration.
+
+    Falls back to `FEATURES` for an estimator fit on a bare array, which records
+    no names.
+    """
+    names = getattr(model, "feature_names_in_", None)
+    return [str(n) for n in names] if names is not None else list(FEATURES)
+
+
 def rmse(model: Pipeline, df: pd.DataFrame) -> float:
     if df.empty:
         return float("nan")
-    pred = model.predict(df[FEATURES])
+    pred = model.predict(df[fitted_features(model)])
     return float(np.sqrt(np.mean((df[TARGET].to_numpy() - pred) ** 2)))
 
 
@@ -105,7 +128,7 @@ def squared_errors(model: Pipeline, df: pd.DataFrame) -> np.ndarray:
     """
     if df.empty:
         return np.empty(0, dtype=float)
-    return (df[TARGET].to_numpy(dtype=float) - model.predict(df[FEATURES])) ** 2
+    return (df[TARGET].to_numpy(dtype=float) - model.predict(df[fitted_features(model)])) ** 2
 
 
 def error_metrics(model: Pipeline, df: pd.DataFrame) -> dict[str, float]:
@@ -113,7 +136,7 @@ def error_metrics(model: Pipeline, df: pd.DataFrame) -> dict[str, float]:
     if df.empty:
         return {"rmse": float("nan"), "mae": float("nan"), "r2": float("nan"), "n": 0}
     actual = df[TARGET].to_numpy()
-    pred = model.predict(df[FEATURES])
+    pred = model.predict(df[fitted_features(model)])
     return {
         "rmse": float(np.sqrt(np.mean((actual - pred) ** 2))),
         "mae": float(mean_absolute_error(actual, pred)),
@@ -124,7 +147,7 @@ def error_metrics(model: Pipeline, df: pd.DataFrame) -> dict[str, float]:
 
 def predictions_frame(model: Pipeline, df: pd.DataFrame) -> pd.DataFrame:
     """timestamp | actual | predicted | residual, for the monitoring panels."""
-    pred = model.predict(df[FEATURES])
+    pred = model.predict(df[fitted_features(model)])
     return pd.DataFrame(
         {
             "timestamp": df["timestamp"].to_numpy(),
@@ -147,7 +170,8 @@ def effective_coefficients(pipeline: Pipeline) -> dict[str, float]:
     ridge: Ridge = pipeline.named_steps["ridge"]
     coefs = ridge.coef_ / scaler.scale_
     intercept = float(ridge.intercept_ - np.sum(ridge.coef_ * scaler.mean_ / scaler.scale_))
-    out = {feature: float(c) for feature, c in zip(FEATURES, coefs)}
+    names = fitted_features(pipeline)
+    out = {feature: float(c) for feature, c in zip(names, coefs, strict=True)}
     out["intercept"] = intercept
     return out
 
