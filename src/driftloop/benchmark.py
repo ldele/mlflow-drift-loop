@@ -41,6 +41,19 @@ from driftloop.model import build_pipeline
 # spend most of their samples at the insensitive end.
 ALPHA_GRID: tuple[float, ...] = (0.001, 0.01, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 1000.0)
 
+# What the loop tunes over when `LoopConfig.tune_alpha` is on, and it is wider
+# for a measured reason. ALPHA_GRID stops at 1000, which was interior for every
+# window the published ablation tuned on -- those are bootstrap windows of about
+# 1,300 rows, where Los Angeles's optimum is 100. A challenger trains on 180 days,
+# about 4,300 rows, and there the optimum is 3000: at the old grid's top edge,
+# where a sweep reports the boundary rather than the answer. That is the trap
+# this project already hit with the tree's grid, so the grid the loop uses runs
+# past where the curve turns.
+#
+# ALPHA_GRID itself is left alone, because re-running the ablation over a
+# different grid would silently change a published comparison.
+LOOP_ALPHA_GRID: tuple[float, ...] = ALPHA_GRID + (3000.0, 10000.0, 30000.0)
+
 # Predictors that get to look at past values of the target. The Ridge does not.
 USES_PAST_TARGET = {"persistence", "seasonal_naive"}
 

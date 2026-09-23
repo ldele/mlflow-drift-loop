@@ -31,6 +31,11 @@ from driftloop.config import FEATURES, TARGET
 RIDGE = "ridge"
 GBM = "gbm"
 
+# The shipped Ridge penalty, and the subject of DECISIONS D5: a library default
+# that no sweep on this data agrees with. Named rather than repeated, so the loop
+# and the sweeps cannot drift apart on what "the default" was.
+DEFAULT_ALPHA = 1.0
+
 
 @dataclass
 class TrainedModel:
@@ -41,6 +46,11 @@ class TrainedModel:
     # RMSE on a chronological tail the model did not fit. This is the number
     # performance drift is measured against later.
     baseline_rmse: float
+    # The Ridge penalty this model was fitted at, recorded because it stopped
+    # being a constant when `LoopConfig.tune_alpha` was added: a champion that
+    # chose its own penalty has to be able to say which one. NaN for a model
+    # class that has no such thing.
+    alpha: float = 1.0
 
 
 def build_pipeline(
@@ -207,4 +217,5 @@ def train(
         train_end=df["timestamp"].iloc[-1],
         n_rows=len(df),
         baseline_rmse=baseline,
+        alpha=float(alpha) if kind == RIDGE else float("nan"),
     )

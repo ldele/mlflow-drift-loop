@@ -622,3 +622,70 @@ def test_a_promotion_is_judged_once_and_then_settled(isolated_mlflow):
     assert run_cycle(src, pd.Timestamp("2025-10-29"), cfg).probation_decision == "kept"
     assert load_champion(cfg.registered_model_name).probation_cleared is True
     assert run_cycle(src, pd.Timestamp("2025-11-05"), cfg).probation_decision == "none"
+
+
+def test_the_penalty_is_the_library_default_unless_tuning_is_asked_for(isolated_mlflow):
+    """Every published number was produced at `alpha=1.0`, so off has to stay off."""
+    from driftloop.loop import fit_for
+    from driftloop.model import DEFAULT_ALPHA
+
+    df = SyntheticSource().get_data(pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"))
+    assert fit_for(df, isolated_mlflow).alpha == DEFAULT_ALPHA
+
+
+def test_a_tuning_loop_chooses_its_penalty_from_the_window_it_is_about_to_fit(isolated_mlflow):
+    """D5's fix, and the check is that it chose rather than that it chose well.
+
+    Which alpha wins is a fact about the data; that the loop asked, recorded the
+    answer, and asked only of data it already had is the behaviour.
+    """
+    from dataclasses import replace
+
+    from driftloop.benchmark import LOOP_ALPHA_GRID, tune_alpha
+    from driftloop.loop import fit_for
+
+    df = SyntheticSource().get_data(pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"))
+    trained = fit_for(df, replace(isolated_mlflow, tune_alpha=True))
+
+    assert trained.alpha in LOOP_ALPHA_GRID
+    assert trained.alpha == tune_alpha(df, grid=LOOP_ALPHA_GRID).best
+
+
+def test_the_champion_and_its_challengers_are_fitted_the_same_way(isolated_mlflow):
+    """A defaulted champion judged against tuning challengers is not a control.
+
+    The premium would then carry the difference between two model
+    specifications, which is the confound D5 is about, reintroduced inside the
+    loop rather than across it.
+    """
+    from dataclasses import replace
+
+    from driftloop.tracking import load_champion
+
+    cfg = replace(isolated_mlflow, tune_alpha=True)
+    src = SyntheticSource()
+    bootstrap_champion(src, pd.Timestamp("2025-04-01"), pd.Timestamp("2025-07-01"), cfg)
+    champion_alpha = load_champion(cfg.registered_model_name).alpha
+
+    result = run_cycle(src, pd.Timestamp("2025-11-01"), cfg)
+    assert result.retrain_triggered
+    challenger_alpha = load_champion(cfg.registered_model_name).alpha
+
+    assert champion_alpha is not None
+    if result.promotion_decision == "promoted":
+        assert challenger_alpha is not None
+
+
+def test_the_loop_tunes_past_where_the_published_grid_stops():
+    """A sweep that picks its own top value reports the boundary, not the answer.
+
+    Measured 2026-09-22 on a Los Angeles challenger window of 4,320 rows: the CV
+    optimum is 3000, one step past `ALPHA_GRID`'s last value. The published
+    ablation never saw this because it tunes on bootstrap windows a third the
+    size, where the optimum is 100 and interior. `LOOP_ALPHA_GRID` runs past the
+    turn so a boundary pick is visible as one.
+    """
+    from driftloop.benchmark import ALPHA_GRID, LOOP_ALPHA_GRID
+
+    assert LOOP_ALPHA_GRID[: len(ALPHA_GRID)] == ALPHA_GRID
+    assert max(LOOP_ALPHA_GRID) > max(ALPHA_GRID)

@@ -35,7 +35,18 @@ from driftloop.config import DRIFT_FEATURES, LoopConfig
 from driftloop.data.base import DataSource
 from driftloop.drift import DataDriftResult, compute_data_drift, compute_perf_drift, distribution_report
 from driftloop import stats
-from driftloop.model import error_metrics, predictions_frame, rmse, squared_errors, train
+from driftloop.benchmark import LOOP_ALPHA_GRID
+from driftloop.benchmark import tune_alpha as tune_ridge_alpha
+from driftloop.model import (
+    DEFAULT_ALPHA,
+    RIDGE,
+    TrainedModel,
+    error_metrics,
+    predictions_frame,
+    rmse,
+    squared_errors,
+    train,
+)
 from driftloop.retrospect import climatology_skill
 from driftloop.tracking import (
     CHALLENGER_ALIAS,
@@ -109,6 +120,25 @@ class CycleResult:
         return row
 
 
+def fit_for(df: pd.DataFrame, cfg: LoopConfig) -> TrainedModel:
+    """Train one model the way this loop is configured to train models.
+
+    The one place a fit happens, so the bootstrap champion and every later
+    challenger are produced identically. That mattered as soon as `tune_alpha`
+    existed: a champion at the library default judged against challengers that
+    tune themselves is a comparison between two different things, and the
+    retraining premium would absorb the difference.
+
+    Tuning reads only the window it is about to fit, which is data a deployment
+    already has on the day it retrains. Tuning on anything later would choose
+    hyper-parameters knowing the weather they are about to be scored against.
+    """
+    alpha = DEFAULT_ALPHA
+    if cfg.tune_alpha and cfg.model_kind == RIDGE:
+        alpha = tune_ridge_alpha(df, grid=LOOP_ALPHA_GRID).best
+    return train(df, alpha=alpha, kind=cfg.model_kind, params=cfg.model_params)
+
+
 def bootstrap_champion(
     source: DataSource,
     train_start: pd.Timestamp,
@@ -117,7 +147,7 @@ def bootstrap_champion(
 ) -> str:
     """Train the first champion and register it under the ``champion`` alias."""
     df = source.get_data(train_start, train_end)
-    trained = train(df, kind=cfg.model_kind, params=cfg.model_params)
+    trained = fit_for(df, cfg)
 
     with mlflow.start_run(run_name=f"bootstrap-{train_end.date()}"):
         mlflow.set_tags({"cycle_type": "bootstrap", "promotion_decision": "promoted"})
@@ -228,7 +258,7 @@ def run_cycle(source: DataSource, as_of: pd.Timestamp, cfg: LoopConfig) -> Cycle
 
         challenger_df = source.get_data(challenger_start, holdout_start)
         holdout = source.get_data(holdout_start, as_of)
-        challenger = train(challenger_df, kind=cfg.model_kind, params=cfg.model_params)
+        challenger = fit_for(challenger_df, cfg)
 
         champ_holdout = rmse(champion.pipeline, holdout)
         chal_holdout = rmse(challenger.pipeline, holdout)

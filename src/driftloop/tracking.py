@@ -68,6 +68,11 @@ class ChampionRef:
     train_end: pd.Timestamp
     baseline_rmse: float
     run_id: str
+    # The Ridge penalty this version was fitted at, or None for a version
+    # registered before the loop recorded one. Read from the version's tags,
+    # because with `tune_alpha` on it is a property of the model rather than of
+    # the configuration that produced it.
+    alpha: float | None = None
     # When this version last sat a holdout exam and won, or None for a version
     # that has never sat one. Written by `mark_certified`.
     last_certified: pd.Timestamp | None = None
@@ -97,6 +102,11 @@ def _version_tags(trained: TrainedModel) -> dict[str, str]:
         "baseline_rmse": f"{trained.baseline_rmse:.6f}",
         "n_rows": str(trained.n_rows),
     }
+    # Which penalty this version chose, when the loop chooses one per retrain.
+    # A version tag rather than a run param because it is a property of the
+    # model that serves, and outlives the run that produced it.
+    if trained.alpha == trained.alpha:
+        tags["alpha"] = f"{trained.alpha:.6f}"
     # Coefficients in original feature units, stored per version: this is what
     # makes concept drift plottable and what lets `retrospect` score a version
     # without unpickling it.
@@ -201,6 +211,7 @@ def load_champion(model_name: str) -> ChampionRef | None:
         train_end=pd.Timestamp(mv.tags["train_end"]),
         baseline_rmse=float(mv.tags["baseline_rmse"]),
         run_id=mv.run_id,
+        alpha=float(mv.tags["alpha"]) if "alpha" in mv.tags else None,
         last_certified=(
             pd.Timestamp(mv.tags["last_certified"]) if "last_certified" in mv.tags else None
         ),

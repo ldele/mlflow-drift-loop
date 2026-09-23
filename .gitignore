@@ -34,6 +34,13 @@ outputs/*
 !outputs/model_ablation.csv
 !outputs/model_ablation_series.json
 
+# The re-baseline: all six cities replayed twice, as shipped and with D1 and D5
+# taken (`python scripts/rebaseline.py`). Committed for the reason the ablation
+# is -- docs/evaluation.md reads its table off these, and a published figure
+# whose working is not in the repository is one nobody can check.
+!outputs/rebaseline.csv
+!outputs/rebaseline.json
+
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and
 # published. The glob covers cities added later without another edit here.

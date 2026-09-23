@@ -1235,6 +1235,103 @@ And this is two cities. The decomposition above is a strong claim resting on
 Delhi, and the sensible next step is the same one the rest of this page keeps
 arriving at: run it on the other four.
 
+## The loop as it should have been configured
+
+Run 2026-09-22 with `python scripts/rebaseline.py`, and it is the next step the
+section above keeps asking for, taken through the loop rather than beside it. It
+sits next to the published figures and replaces none of them, which is the habit
+[HISTORY.md](HISTORY.md) exists to keep.
+
+Two arms per city, identical but for the two decisions this project has measured
+and not taken: the Ridge penalty chosen at every fit by forward-chaining CV over
+the window being fitted (D5), and the model-independent skill floor at −0.5 (D1).
+
+**The shipped arm reproduces all six published premiums to the decimal**, so the
+harness is measuring what this page measured.
+
+| | premium, shipped | premium, fixed | median served RMSE | fires | longest silence |
+|---|---|---|---|---|---|
+| **Delhi** | +49.4% [+33.7, +61.8] | **+22.8% [+11.8, +36.4]** | 40.44 → 40.11 | 9 → 8 of 39 | 21w → 21w |
+| **Santiago** | +17.3% [+9.0, +37.0] | +17.5% [+8.6, +37.1] | 24.54 → 24.55 | 13 → 13 of 21 | 3w → 3w |
+| **Johannesburg** | +14.9% [+8.7, +21.4] | **+9.7% [+4.6, +14.0]** | 21.13 → 21.72 | 11 → 12 of 19 | 3w → 3w |
+| **Kraków** | +6.5% [−15.3, +27.5] | +5.7% [−14.8, +26.8] | 17.49 → 17.49 | 14 → 21 of 48 | **30w → 22w** |
+| **Melbourne** | +1.2% [−0.6, +3.0] | **+5.6% [+2.0, +6.6]** | 3.97 → 4.01 | 8 → 9 of 30 | 15w → 15w |
+| **Los Angeles** | −13.4% [−36.9, −3.8] | **−3.5% [−25.6, +3.0]** | 10.91 → 10.21 | **1 → 7 of 36** | **35w → 16w** |
+
+Bold where an interval moved across zero, or where the loop's behaviour changed.
+
+**The premium falls where the model was doing the work.** Delhi's more than
+halves and stays clear of zero, which is the ablation's finding arriving through
+the loop: a champion that is no longer under-regularised leaves less for a
+retrain to recover. Johannesburg's falls by a third the same way.
+
+**Los Angeles stops being a harm.** −3.5% [−25.6, +3.0] covers zero. The cost
+half of the headline does not survive here either, which is three separate
+measurements now saying so.
+
+**The loop acts where it had stopped acting.** Los Angeles fires 7 times in 36
+weeks instead of once, and its longest silence falls from 35 weeks to 16;
+Kraków's from 30 to 22. That is the skill floor doing what its own sweep said,
+and it is the difference between a loop that adjusts and one that has gone deaf.
+
+**Melbourne went the other way, and the prediction written before the run said it
+would not.** It moves from +1.2% [−0.6, +3.0] to +5.6% [+2.0, +6.6]: a null
+result becoming a positive one. Read it as a caution rather than a win. The
+premium compares an arm against *its own* frozen champion, so a tuned control
+that generalises worse would raise the premium without the loop improving at all,
+and Melbourne's median served error does get slightly worse (3.97 → 4.01).
+Johannesburg's worsens too (21.13 → 21.72). Tuning per fit is not free, and a
+premium is not an accuracy.
+
+Scored against the predictions written before the first replay: Delhi falls
+(yes), Los Angeles covers zero (yes), Kraków and Melbourne stay null (**no** —
+Melbourne moved), the quiet cities fire more and go silent for less (yes, in Los
+Angeles and Kraków), median error improves in most cities (**no** — two improve,
+two are flat, two are slightly worse).
+
+### Can the ratcheting trigger just be deleted?
+
+The `fixed` arm leaves the ratio trigger in place and adds a second trigger
+beside it, which compensates for the fault rather than removing it. The cheaper
+fix would be to delete the ratchet: one trigger, model-independent, nothing to
+reset upward. A third arm asks that directly — tuning and the floor as before,
+`perf_drift_threshold` set to infinity so the ratio can never fire. Added after
+the first run, so it is exploratory rather than predicted.
+
+**It does not work, and it is not close.** Without the ratio trigger the loop
+mostly stops acting:
+
+| | fires, both triggers | fires, floor only | longest silence | median served RMSE |
+|---|---|---|---|---|
+| Johannesburg | 12 of 19 | **0 of 19** | 3w → 19w | 21.72 → 21.72 |
+| Melbourne | 9 of 30 | **0 of 30** | 15w → 30w | 4.01 → 4.04 |
+| Santiago | 13 of 21 | 2 of 21 | 3w → 11w | 24.55 → 24.55 |
+| Delhi | 8 of 39 | 3 of 39 | 21w → 21w | 40.11 → **44.67** |
+| Los Angeles | 7 of 36 | 2 of 36 | 16w → 34w | 10.21 → 9.91 |
+| Kraków | 21 of 48 | 11 of 48 | 22w → 15w | 17.49 → 18.25 |
+
+Two cities never retrain at all, and Delhi — where retraining genuinely pays —
+loses five of its eight retrains and 4.6 µg/m³ of accuracy. The floor asks
+whether the champion is 50% worse than a daily profile, which is a backstop for a
+model that has become bad in absolute terms, not a detector of the ordinary
+decay the ratio catches. The two triggers answer different questions, and the
+ratchet is the price of the cheap one.
+
+So the loop keeps both, and the ratchet stays a known fault with a backstop
+rather than a fault that was removed. Read the floor-only premiums with care:
+with two acted windows or none, the bootstrap returns intervals like
+[−102.3, +28.6] and, in Los Angeles, [−inf, +inf]. That is the resampling saying
+it has nothing to work with, and it is the reason those rows are read as
+behaviour rather than as premiums.
+
+**What this does not settle.** D1 and D5 are decisions, and this is evidence for
+them rather than a substitute for taking them. One replay per city, six cities
+chosen for contrast, no multiple-comparisons correction, and the two arms do not
+share a control. The tuning grid had to be widened before any of it could be
+believed: a 180-day challenger window optimises at alpha 3000, past
+`ALPHA_GRID`'s top of 1000, so the loop tunes over `LOOP_ALPHA_GRID` instead and
+the published grid is left exactly as it was.
+
 ## Limitations
 
 - **Two of the six city results are not distinguishable from zero.** Kraków's
@@ -1243,16 +1340,18 @@ arriving at: run it on the other four.
   are not findings. The four that survive are Delhi, Santiago, Johannesburg and
   Los Angeles. The last of those is a negative result, which is the one the
   argument most needs.
-- **The model-class confound is downgraded rather than closed.** The champion is
-  a Ridge whose penalty is close to inert at the shipped setting (see
-  [methodology](methodology.md#choosing-alpha)), so "retraining pays where the
-  world moved" was entangled with "a linear model needs refitting to track
-  seasonality". A gradient-boosted arm was run on 2026-08-12 and could not beat
-  the Ridge in either city, so it absorbed no nonlinearity and the designed test
-  did not run. The premium survives the change of model class regardless. See
-  [above](#is-the-finding-about-the-world-or-about-a-linear-model). What would
-  close it is a tuned challenger that does beat the Ridge; the one tested ran at
-  library defaults.
+- **The model-class confound was real, and this bullet said otherwise until
+  2026-09-22.** It read "the premium survives the change of model class
+  regardless", which was the 2026-08-12 reading from an arm that ran a
+  gradient-boosted challenger at library defaults. That arm could not beat the
+  Ridge, so it absorbed no nonlinearity and the designed test never ran; the
+  conclusion was withdrawn
+  [above](#is-the-finding-about-the-world-or-about-a-linear-model) on 2026-08-16
+  and this list was not updated with it. What the tuned comparison found:
+  Delhi's +49.4% is 21.6 points of shipped `alpha`, 18.0 points of linearity and
+  +9.7% left over, and the re-baseline through the loop puts the surviving
+  premium at +22.8% [+11.8, +36.4]. The confound is measured, not closed: the
+  decomposition rests on Delhi and Los Angeles.
 - No multiple-comparisons correction. Six city intervals are read off one
   table at 95% each. Johannesburg's rests on six acted windows and is the
   weakest of the four survivors.

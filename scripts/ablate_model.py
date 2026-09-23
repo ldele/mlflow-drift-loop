@@ -97,8 +97,13 @@ def tune_both(profile: Profile, source: OpenMeteoSource) -> dict:
 
 
 def run_arm(profile: Profile, source: OpenMeteoSource, kind: str,
-            params: dict | None = None, label: str | None = None) -> dict:
-    """One full replay with one model class, scored the way the published numbers are."""
+            params: dict | None = None, label: str | None = None, **overrides) -> dict:
+    """One full replay with one model class, scored the way the published numbers are.
+
+    ``overrides`` sets any other ``LoopConfig`` field for this arm. It is how
+    `scripts/rebaseline.py` replays these cities with `tune_alpha` and the skill
+    floor switched on. The ablation passes none, so its own arms are unchanged.
+    """
     label = label or kind
     cfg = replace(
         profile.loop,
@@ -106,6 +111,7 @@ def run_arm(profile: Profile, source: OpenMeteoSource, kind: str,
         model_params=params,
         experiment_name=f"ablate-{label}",
         registered_model_name=f"{profile.loop.registered_model_name}-{label}",
+        **overrides,
     )
     db = f"mlflow_ablate_{profile.key}_{label}.db"
 

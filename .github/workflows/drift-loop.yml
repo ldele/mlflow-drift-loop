@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write # to commit the persisted MLflow state back
+  issues: write # to say so when a cycle fails (see the last step)
 
 concurrency:
   group: drift-loop # never let two scheduled runs overlap on the same state
@@ -51,6 +52,30 @@ jobs:
       - name: Announce promotion
         if: steps.cycle.outputs.promotion == 'true'
         run: echo "::notice title=Drift loop — champion promoted::${{ steps.cycle.outputs.headline }}"
+
+      # A red tick in the Actions tab is only a notice to somebody who looks at
+      # the Actions tab. This job failed every Monday from 2026-08-03 to
+      # 2026-09-07 and the loop was down for six weeks before anyone noticed, so
+      # a failure now files itself where the work is. One issue, reopened and
+      # commented on rather than duplicated, so a long outage is one thread.
+      - name: File a failure where it will be seen
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="drift-loop: the weekly cycle is failing"
+          body="The scheduled cycle failed: $RUN_URL
+
+          Every failed Monday is a weekly decision nobody takes. The runner catches
+          up the weeks it missed once it runs again (\`scripts/run_scheduled.py\`),
+          so fixing this restores the decisions as well as the schedule."
+          number=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
 
       - name: Persist MLflow state + gathered data back to the repo
         run: |

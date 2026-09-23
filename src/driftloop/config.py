@@ -79,6 +79,21 @@ class LoopConfig:
     # ablation, which tunes both model classes on the same protocol so that a
     # difference between them cannot be a difference in how hard each was tuned.
     model_params: dict | None = None
+    # Whether the loop chooses the Ridge penalty at every fit, by forward-chaining
+    # CV over the training window it is about to use, instead of taking the
+    # library default.
+    #
+    # D5 is why this exists. `alpha=1.0` is a default nobody chose; it costs 11.9%
+    # accuracy in Delhi and supplies 21.6 of that city's 49.4 headline points, so
+    # a loop running at it spends much of its retraining budget compensating for
+    # its own regularisation. Tuning per fit makes the setting adjust with the
+    # data, which is what the rest of the loop already claims to do.
+    #
+    # Ships off, and that is not a recommendation. Every published number was
+    # produced at the default, so leaving it off is what keeps them reproducible;
+    # `scripts/rebaseline.py` turns it on and publishes both side by side.
+    # Ridge only: the tree's hyper-parameters come from `model_params`.
+    tune_alpha: bool = False
 
     # Rolling window used to monitor the champion and to measure data drift.
     monitor_days: int = 14
