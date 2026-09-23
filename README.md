@@ -310,6 +310,9 @@ tests/            data contract, drift math, no-leak guards, baseline fairness,
 - **[DECISIONS.md](docs/DECISIONS.md)** — the calls made on top of the findings,
   with the evidence and the date. One is open: whether the skill floor should
   still ship switched off now that the evidence has reversed.
+- **[HISTORY.md](docs/HISTORY.md)** — how every number above changed, and what
+  the correction was each time. The first headline was measured four flattering
+  ways at once, and the claim ended at about a fifth of where it started.
 - **[stats.py](src/driftloop/stats.py)** — how much to believe it: why the weekly
   windows are not independent observations, why that needs a block bootstrap
   rather than an ordinary one, and the two places the bootstrap has to admit it
