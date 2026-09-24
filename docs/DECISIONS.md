@@ -35,7 +35,7 @@ At the cautious floor, `skill < −0.5`:
 
 - Five cities are **bit-identical** to the trigger left alone. Not close, the
   same error every week.
-- Los Angeles acts in 25 of 35 weeks and improves by **+11.78% [+2.09, +17.17]**.
+- Los Angeles acts in 25<!--fig:floor.la.-0.50.differing--> of 35<!--fig:la.acted.n--> weeks and improves by **+11.78% [+2.09, +17.17]**<!--fig:floor.la.-0.50.acted-->.
 
 Los Angeles is the city the ratchet leaves deafest, silent for 35 of 36 runs, and
 the one where retraining otherwise measurably hurts.
@@ -51,13 +51,13 @@ longer a close call in the direction it was assumed to fall.
 
 Three things, none decisive alone.
 
-The whole-replay figure for Los Angeles is **+2.49% [+0.00, +15.01]**, which
+The whole-replay figure for Los Angeles is **+2.49% [+0.00, +15.01]**<!--fig:floor.la.-0.50.all-->, which
 touches zero. The acted-week effect is established; the effect on the replay as a
 whole is not, because ten of the 35 weeks are ties and they pull the median in.
 
 "Cannot harm any city" is a statement about six cities picked for contrast, not
 about cities in general. A seventh could behave like Kraków does at
-`skill < −0.25`, where the floor costs **−23.98% [−39.40, −5.48]** in the weeks
+`skill < −0.25`, where the floor costs **−23.98% [−39.40, −5.48]**<!--fig:floor.krakow.-0.25.acted--> in the weeks
 it acts. The gap between a floor that is inert and a floor that is destructive is
 one setting wide.
 
@@ -289,7 +289,7 @@ Full detail in
 [evaluation.md](evaluation.md#making-the-promotion-reversible-and-why-that-does-not-rescue-it-either).
 
 **It does no harm.** Of 18 city-by-window arms, one has an interval clear of
-zero and it is positive (Kraków +1.5% [+0.8, +2.0] at 21 days). The confidence
+zero and it is positive (Kraków +1.5% [+0.8, +2.0]<!--fig:probation.krakow.21d.acted--> at 21 days). The confidence
 gate produced five harmful arms and no positive ones. On that comparison alone
 this is the best-behaved mechanism of the five.
 

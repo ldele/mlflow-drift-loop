@@ -577,7 +577,7 @@ modelling choice and is now labelled as one.
 **Where the bootstrap cannot help, it says so.** Two failure modes are handled
 explicitly rather than papered over. At a boundary, in a city that won every
 window it acted on, every resample also wins every window and the interval
-collapses to a false [100, 100]; win rates therefore use a Wilson interval,
+collapses to a false [100, 100]<!--nofig: what the bootstrap would wrongly report, not a result-->; win rates therefore use a Wilson interval,
 which handles proportions at 0 and 1 properly. And below four observations the
 bootstrap returns an explicitly infinite interval rather than a narrow invented
 one, which is what forces the gate's three long-serving promotions to be

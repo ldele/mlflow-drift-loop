@@ -66,3 +66,9 @@ HANDOFF.md
 # whichever project is current. Documents that stay here are the ones a reader
 # of this repository needs.
 docs/PRACTICES.md
+
+# Every figure the docs quote, keyed. Committed because the outputs it is read
+# from mostly are not: CI checks each page against this file
+# (tests/test_figures.py), and `python scripts/figures.py` rewrites it, and lists
+# the sentences the new numbers contradict, after any re-run.
+!outputs/figures.json

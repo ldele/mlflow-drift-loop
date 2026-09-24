@@ -88,6 +88,12 @@ curve nearly flat. That judged the setting by its effect on the model's accuracy
 effect on the headline, where it is worth 21.6 points. `docs/DECISIONS.md` D5 records it: the page
 described the curve as nearly flat and left it there.
 
+**A restated figure had drifted from its own output** (2026-09-23). Keying every figure the
+README quotes to `outputs/figures.json` found Santiago's across-the-replay interval published as
+[−0, +43] when the output holds an upper bound of 42.49. Small, and the reason the check exists:
+the same numbers were restated in three to five places by hand, which is also how finding 2
+outlived its own withdrawal. Every page now fails CI when a keyed figure disagrees with the file.
+
 ## The half that should have been withdrawn
 
 Finding 2, "retraining costs where the air did not move", was written on 2026-07-31 as "it costs
@@ -98,7 +104,9 @@ measurably harmed.
 
 `docs/evaluation.md` states the conclusion plainly — the cost half "holds for the model that ships
 and cannot be established for the best model available" — while the README and the published
-report still lead with it. Those two should agree. What the evidence supports is narrower and
+report still led with it. Those two should agree. On 2026-09-23 the README's finding 2 was narrowed
+to "for the model that ships", with the tuned tree's −6.9% [−13.2, +2.8] beside it; the published
+report has not been changed. What the evidence supports is narrower and
 more interesting: where the air barely moves, the promotion gate has almost no signal to select
 on. Los Angeles's exam intervals are 39.2 points wide at the median, its one promotion was won on
 +21.9% [−6.9, +32.3], and the ratcheted trigger then left that model serving for 35 of 36 weeks.
