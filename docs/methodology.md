@@ -353,11 +353,13 @@ to fire. Every run is tagged `retrain_reason` as `ratio`, `skill`, `both` or
 
 The setting was measured rather than assumed:
 [`sweep_skill_floor.py`](../scripts/sweep_skill_floor.py) replays all six cities
-at several floors, on the loop as it first shipped. The conservative floor of
-−0.5 leaves the outcome identical in five of six and improves the sixth, while
-an aggressive one makes two cities worse for one improvement. So it ships at
-−0.5, and has since 2026-11-10 ([DECISIONS.md](DECISIONS.md), D1). Numbers in
-[evaluation.md](evaluation.md#fixing-the-trigger-one-fix-is-impossible-the-other-pays-in-one-city).
+at several floors, on both loops. The conservative floor of −0.5 leaves the
+outcome identical in four or five of the six cities and harms none, while a more
+aggressive one costs Kraków accuracy on both. On the first loop −0.5 improved Los
+Angeles; on the loop as it ships that gain no longer clears zero. So it ships at
+−0.5, since 2026-11-10, for what it does to the loop's silences and with no claim
+about accuracy ([DECISIONS.md](DECISIONS.md), D1). Numbers in
+[evaluation.md](evaluation.md#the-five-fixes-and-the-model-ablation-on-the-loop-as-it-ships).
 
 ### Step 3: train a challenger
 

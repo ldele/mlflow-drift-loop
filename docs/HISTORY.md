@@ -121,7 +121,9 @@ retrain alarm, switched on that same day partly for improving Los Angeles by +11
 improves it by +6.6% [−1.1, +9.3] on the tuned loop, an interval that covers zero. Across the five
 sweeps, intervals clear of zero fell from 15 of 55 to 6 of 59. The default penalty had inflated
 the effects measured on top of the model as well as the headline, and the README's "they fail for
-one reason" is now written as what was observed on the first loop.
+one reason" is now written as what was observed on the first loop. The alarm stays on by the
+owner's decision of the same day, as a bound on how long the loop can go deaf, and the pages no
+longer claim it improves accuracy.
 
 ## The half that should have been withdrawn
 

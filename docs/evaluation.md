@@ -112,7 +112,9 @@ off, the tuned loop cannot fire for 35<!--fig:floor.la.off.silence--> of Los Ang
 48<!--fig:krakow.weeks-->. With it on those silences are 16<!--fig:floor.la.-0.50.silence--> and
 22<!--fig:floor.krakow.-0.50.silence-->, and nothing changes in the other four cities. So the
 alarm is a bound on silence, shown on both loops, and an accuracy gain shown on one. The
-decision to ship it was taken on both, and [D1](DECISIONS.md) now records it as reopened.
+decision to ship it was taken on both, reopened on this result, and confirmed on the first
+ground alone: it stays on as a bound on silence, with no claim about accuracy
+([D1](DECISIONS.md)).
 
 One notch more aggressive it still costs: Kraków loses
 −20.1% [−47.5, −5.5]<!--fig:floor.krakow.-0.25.acted--> in the weeks the alarm acts, against
@@ -1549,11 +1551,11 @@ the published grid is left exactly as it was.
   [that section](#the-five-fixes-and-the-model-ablation-on-the-loop-as-it-ships) is the
   current reading; the ratchet and gate-calibration analyses were not redone in the same
   depth.
-- **The second alarm ships on a gain that did not repeat.** D1's settling condition was a
-  seventh and an eighth city, chosen before the floor was swept on them, and they were never
-  run. On the loop as it ships the alarm's gain in Los Angeles is
-  +6.6% [−1.1, +9.3]<!--fig:floor.la.-0.50.acted-->, which covers zero. What it is known to do is
-  shorten the loop's silences.
+- **The second alarm is kept for the silences it shortens, not for accuracy.** The gain it
+  was first adopted on did not repeat: on the loop as it ships it reads
+  +6.6% [−1.1, +9.3]<!--fig:floor.la.-0.50.acted--> in Los Angeles, which covers zero. D1's settling
+  condition, a seventh and an eighth city chosen before the alarm is swept on them, was never
+  run, so whether it helps accuracy anywhere is untested.
 - **Both runs of the five fixes use the same six cities.** A verdict that repeats across two
   loops has not been tested on a city it was not found on.
 - **The pooled baseline is fitted at the default penalty** while each city's own

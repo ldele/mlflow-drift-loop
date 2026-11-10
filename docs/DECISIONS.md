@@ -9,9 +9,9 @@ top of them, which are a different kind of thing and were previously mixed in.
 ## D1. The skill floor ships switched on, at −0.5
 
 **Date:** 2026-08-11, decided 2026-11-10
-**Status:** on, at `skill < −0.5`, and reopened the day it was decided: the accuracy
-gain it was adopted on did not repeat on the loop it now runs in. The reasoning
-below is kept as it was written.
+**Status:** decided: on, at `skill < −0.5`, as a bound on how long the loop can go
+deaf. No claim is made that it improves accuracy. It was reopened and confirmed on
+the day it was decided, and the reasoning below is kept as it was written.
 **Affects:** `LoopConfig.skill_floor`, set to −0.5 by `config.SHIPPED` in all six
 city profiles and the live schedule. A bare `LoopConfig` still has it off.
 
@@ -52,6 +52,17 @@ improve accuracy. Keeping it on is defensible as the first and not as the second
 The setting was not changed by the analysis that found this, because whether a
 staleness bound alone is worth a shipped default is the owner's call. The seventh
 and eighth city would still settle the accuracy question either way.
+
+### Confirmed 2026-11-10, on the narrower ground
+
+**It stays on, by the project's owner, as a bound on silence and nothing more.**
+The pages say what it is kept for and make no claim that it improves the
+forecasts. It costs nothing measurable in five cities, and the silences it
+prevents are the same on both loops.
+
+What would change this. A city it harms at −0.5 would switch it off. A seventh and
+an eighth city, chosen before the alarm is swept on them, are what could turn the
+Los Angeles gain into a claim about accuracy or retire it.
 
 ### The choice
 

@@ -161,8 +161,9 @@ adopted: switched on by itself on the tuned loop it improves Los Angeles by
 +6.6% [−1.1, +9.3]<!--fig:floor.la.-0.50.acted-->, where the first loop showed
 +11.8% [+2.1, +17.2]<!--fig:first.floor.la.-0.50.acted-->, and it changes nothing in four
 other cities. One notch more aggressive it costs Kraków
-**−20.1% [−47.5, −5.5]**<!--fig:floor.krakow.-0.25.acted--> in the weeks it acts. Whether it
-should stay on is open again ([D1](docs/DECISIONS.md)).
+**−20.1% [−47.5, −5.5]**<!--fig:floor.krakow.-0.25.acted--> in the weeks it acts. So it stays
+on at the cautious setting as a bound on how long the loop can go deaf, and no
+claim is made that it improves the forecasts ([D1](docs/DECISIONS.md)).
 
 The stricter exam is the result that changed most. On the first loop it cost two
 cities accuracy, and the account given was that a loop which retries until a

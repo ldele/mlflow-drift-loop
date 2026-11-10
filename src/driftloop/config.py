@@ -129,7 +129,9 @@ class LoopConfig:
     # per-city knob and the cities stop being comparable.
     #
     # None disables it. Every shipped profile sets it to -0.5 (`SHIPPED` below),
-    # the one setting the sweep found to harm no city; docs/DECISIONS.md D1.
+    # the one setting the sweeps found to harm no city. It is kept as a bound on
+    # how long the loop can go without firing, not as an accuracy gain: that gain
+    # did not repeat on the tuned loop (docs/DECISIONS.md D1).
     skill_floor: float | None = None
     # The third trigger, and the only one that does not wait to be told the
     # model is failing: re-sit the promotion exam when the serving champion's
