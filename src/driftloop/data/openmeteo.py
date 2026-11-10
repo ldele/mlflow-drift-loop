@@ -16,6 +16,7 @@ handshake, so ``truststore`` routes verification through the OS trust store.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -60,13 +61,34 @@ def _ensure_truststore() -> None:
         _TRUSTSTORE_INJECTED = True
 
 
+# Open-Meteo answers a busy moment with one of these and is fine a minute later.
+# The weekly cycle of 2026-11-02 died on a single 503, with no second attempt.
+RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+RETRY_WAITS = (5, 20, 60)  # seconds before the second, third and fourth attempt
+
+
 def _get_json(url: str, params: dict) -> dict:
+    """GET one endpoint, trying again when the failure is the kind that passes.
+
+    A busy server, a dropped connection and a timeout are retried after each of
+    ``RETRY_WAITS``. Anything else (a 400 for a bad request, say) raises at once,
+    and so does the last attempt, so a real outage still fails the run.
+    """
     import requests
 
     _ensure_truststore()
-    response = requests.get(url, params=params, timeout=60)
-    response.raise_for_status()
-    return response.json()
+    for wait in (*RETRY_WAITS, None):
+        try:
+            response = requests.get(url, params=params, timeout=60)
+        except (requests.ConnectionError, requests.Timeout):
+            if wait is None:
+                raise
+        else:
+            if wait is None or response.status_code not in RETRY_STATUS:
+                response.raise_for_status()
+                return response.json()
+        time.sleep(wait)
+    raise AssertionError("unreachable: the last attempt returns or raises")
 
 
 def _weather_request(cfg: OpenMeteoConfig) -> tuple[str, list[str], dict[str, str]]:
@@ -91,7 +113,8 @@ def _weather_request(cfg: OpenMeteoConfig) -> tuple[str, list[str], dict[str, st
 def _fetch_span(cfg: OpenMeteoConfig) -> pd.DataFrame:
     """Fetch and join the whole [origin, horizon] span from both endpoints.
 
-    The target is always observed PM2.5. Only the features move with the lead.
+    The target is always PM2.5 as the air-quality API serves it, which is CAMS model output
+    rather than a station measurement. Only the features move with the lead.
     """
     date_params = {
         "latitude": cfg.latitude,

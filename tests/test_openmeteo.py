@@ -145,3 +145,71 @@ def test_get_data_slices_the_window(mocked_source):
 def test_empty_window_rejected(mocked_source):
     with pytest.raises(ValueError):
         mocked_source.get_data(pd.Timestamp("2025-06-01T05:00"), pd.Timestamp("2025-06-01T05:00"))
+
+
+class _Response:
+    """The two things `_get_json` asks of a response."""
+
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+
+    def raise_for_status(self) -> None:
+        import requests
+
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code}", response=self)
+
+    def json(self) -> dict:
+        return {"ok": True}
+
+
+def _serve(monkeypatch, outcomes: list) -> tuple[list[int], list[float]]:
+    """Answer successive GETs with `outcomes` (a status code, or an exception to
+    raise) and record the waits between them without sleeping through any."""
+    import requests
+
+    attempts: list[int] = []
+    waits: list[float] = []
+
+    def fake_get(url, params, timeout):
+        outcome = outcomes[len(attempts)]
+        attempts.append(len(attempts))
+        if isinstance(outcome, Exception):
+            raise outcome
+        return _Response(outcome)
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(openmeteo, "_ensure_truststore", lambda: None)
+    monkeypatch.setattr(openmeteo.time, "sleep", waits.append)
+    return attempts, waits
+
+
+def test_a_busy_server_is_asked_again(monkeypatch):
+    # The 2026-11-02 cycle: one 503 from the forecast archive, and the run died on it.
+    import requests
+
+    attempts, waits = _serve(monkeypatch, [503, requests.ConnectionError(), 200])
+    assert openmeteo._get_json("https://example.invalid", {}) == {"ok": True}
+    assert len(attempts) == 3
+    assert waits == list(openmeteo.RETRY_WAITS[:2])
+
+
+def test_an_outage_still_fails_the_run(monkeypatch):
+    import requests
+
+    tries = len(openmeteo.RETRY_WAITS) + 1
+    attempts, waits = _serve(monkeypatch, [503] * tries)
+    with pytest.raises(requests.HTTPError):
+        openmeteo._get_json("https://example.invalid", {})
+    assert len(attempts) == tries
+    assert waits == list(openmeteo.RETRY_WAITS)
+
+
+def test_a_bad_request_is_not_retried(monkeypatch):
+    import requests
+
+    attempts, waits = _serve(monkeypatch, [400, 200])
+    with pytest.raises(requests.HTTPError):
+        openmeteo._get_json("https://example.invalid", {})
+    assert len(attempts) == 1
+    assert waits == []

@@ -32,7 +32,7 @@ percentage is a 95% moving-block bootstrap over autocorrelated weekly windows �
 2. **And it costs where the air did not — for the model that ships.** Los Angeles
    is the control, and week by week the loop leaves it
    **−13.4% [−37, −4]**<!--fig:la.acted--> behind never retraining. That rests on a single
-   promotion, won on an exam margin of +21.9% [−6.9, +32.3]<!--nofig: printed by scripts/sweep_promotion_confidence.py, not written to outputs/-->,
+   promotion, won on an exam margin of +21.9% [−6.9, +32.3]<!--nofig: recorded in the docstring of scripts/sweep_promotion_confidence.py; no output holds a per-promotion exam interval-->,
    and it does not survive a better model: under the tuned tree it reads
    −6.9% [−13.2, +2.8]<!--fig:ablation.la.gbm_tuned-->, which is not distinguishable from zero. Where the
    seasonal swing is small, the gate has almost no signal to select on.
@@ -73,7 +73,7 @@ One run a week, four steps:
 
 | | | |
 |---|---|---|
-| **1. Mark its homework** | check the last 14 days of forecasts against what the air did | |
+| **1. Mark its homework** | check the last 14 days of forecasts against the PM2.5 recorded for those days | a model's estimate, not a station ([why](docs/methodology.md#the-prediction-task)) |
 | **2. Look for trouble, two ways** | has the weather stopped looking like what the model learned from, and separately, is the model's error rising? | two signals, on purpose |
 | **3. Train a rival** | error is 1.25× what it used to be, so train a fresh model on the last 180 days | only if step 2 says so |
 | **4. Make it earn the job** | both sit the same exam, a week of air neither has seen | the newcomer wins by 5% or it is thrown away |

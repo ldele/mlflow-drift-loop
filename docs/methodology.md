@@ -37,6 +37,15 @@ Used precisely throughout, so the prose does not stop to re-explain them.
 
 Hourly PM2.5 concentration in µg/m³, seven days ahead.
 
+**The target is a model's estimate, not a measurement.** Open-Meteo's air-quality API serves
+the Copernicus Atmosphere Monitoring Service (CAMS): for Kraków the European domain, which is
+reanalysis up to September 2023 and CAMS forecasts from October 2023, and for the other five
+cities the global domain, which begins on 2022-08-04. No station reading enters the project.
+So the loop learns to predict another model's account of the air, and a change in how CAMS
+produces that account moves the target the same way a change in the air would. Some of what
+the loop reads as drift may be the source changing rather than the city, and nothing here
+separates the two.
+
 The features are the weather forecast *for the target hour, as it stood a week
 earlier*, taken from Open-Meteo's archive of previous model runs. That archive
 stores what the forecast said at the time rather than what the weather turned out
@@ -188,7 +197,7 @@ loop.
 
 ## The features
 
-Six observed weather variables, chosen for how pollution accumulates and clears,
+Six forecast weather variables, chosen for how pollution accumulates and clears,
 plus two terms encoding the clock.
 
 **temperature.** Cold air under warmer air is an inversion: a lid, with the city

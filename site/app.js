@@ -592,7 +592,8 @@ function render() {
     }
     chartCard(jobs,
       `What the model forecasts: ${t.name}`,
-      `What the air did, against what the model thought it would do. The call was made ` +
+      `The PM2.5 recorded for each hour, against what the model thought it would be. The record is ` +
+      `CAMS's estimate of the air, not a station reading. The call was made ` +
       `<em>a week before it happened</em>, working only from the weather forecast, with no ` +
       `knowledge of how dirty the air had been lately. The gap between the two lines is the ` +
       `mistake every other chart on this page is measuring.`,
@@ -1426,7 +1427,7 @@ function renderMethod(m) {
     "differently, it is their air that differs and not their tuning.";
 
   const steps = [
-    ["Mark its homework", `Take the model in service and check the last ${days(p.monitor_days)} of forecasts against what the air did.`],
+    ["Mark its homework", `Take the model in service and check the last ${days(p.monitor_days)} of forecasts against the PM2.5 recorded for those days.`],
     ["Look for trouble, two ways", "First, whether the weather has stopped resembling what the model learned from. Separately, whether the model's error is rising. The first can fire before any damage shows. Only the second is allowed to spend money."],
     ["Train a rival", `If the error is ${p.perf_drift_threshold}× what it used to be, train a fresh model on the last ${days(p.challenger_train_days)} and let it apply for the job.`],
     ["Make it earn the job", `Both sit the same exam, ${days(p.holdout_days)} of air neither has seen. The newcomer has to win by ${pct(p.promotion_margin)} rather than squeak past, or it is thrown away.`],
@@ -1472,11 +1473,25 @@ function renderMethod(m) {
 
 /* The unattended loop, as a count of cycles and the dates they cover.
  *
- * Kept out of the city selector, where two data points would invite a
- * comparison with a 48-week replay: this is a mode, not a place. Reported as
- * facts about what the tracking store holds, with no claim about what put them
- * there, because a cycle run by hand and one run by the weekly Action leave
- * identical records and this page cannot tell them apart. */
+ * Kept out of the city selector, where a few months of cycles would invite a
+ * comparison with a 48-week replay: this is a mode, not a place. Every count in
+ * the sentence comes from the tracking store, so it stays true as cycles
+ * accrue. The store cannot say what started a cycle (one run by hand and one
+ * run by the weekly Action leave identical records), so the page points at the
+ * Action's own run history for that instead of guessing. */
+function scheduleOutcome(s) {
+  if (!s.retrains) {
+    return "The error alarm has not asked for a replacement yet, so the first model is still serving.";
+  }
+  const asked = `The error alarm has asked for a replacement ${s.retrains} ` +
+    `${s.retrains === 1 ? "time" : "times"}`;
+  if (!s.promotions) {
+    return `${asked}, and no rival has passed its exam, so the first model is still serving.`;
+  }
+  const passed = s.promotions === 1 ? "one rival passed its exam" : `${s.promotions} rivals passed their exams`;
+  return `${asked}, and ${passed}, so the model serving now is version ${s.champion_version}.`;
+}
+
 function renderSchedule(s) {
   const card = document.getElementById("schedule-card");
   card.hidden = !s;
@@ -1486,11 +1501,10 @@ function renderSchedule(s) {
     `Alongside the six replays, the same code runs one cycle at a time against live Kraków data, ` +
     `keeping its history in a tracking store committed back to the repository. So far ${s.cycles} ` +
     `${plural} been recorded, covering ${s.first} to ${s.last}, most recently logged on ` +
-    `${s.logged_at}. It is still serving its first model and has triggered ${s.retrains} retrains, ` +
-    `which is what two cycles can be expected to show. ` +
-    `<span class="gloss">The records do not say what ran them. A cycle started by hand and one ` +
-    `started by the weekly job are indistinguishable in the store, so this is a count of what is ` +
-    `there rather than evidence the schedule is firing.</span>`;
+    `${s.logged_at}. ${scheduleOutcome(s)} ` +
+    `<span class="gloss">The store does not record what started each cycle. The weekly job's own ` +
+    `history, including the Mondays it failed, is in ` +
+    `<a href="https://github.com/ldele/mlflow-drift-loop/actions/workflows/drift-loop.yml">its run log</a>.</span>`;
 }
 
 function renderDataLinks(data) {

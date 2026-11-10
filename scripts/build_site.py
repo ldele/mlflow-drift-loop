@@ -803,6 +803,8 @@ def schedule_block() -> dict | None:
             runs["tags.champion_version"].iloc[-1] if "tags.champion_version" in runs else None
         ),
         "retrains": int((runs["tags.retrain_triggered"] == "True").sum()),
+        # Monitor cycles only, so the bootstrap that registered v1 is not counted.
+        "promotions": int((runs["tags.promotion_decision"] == "promoted").sum()),
     }
 
 

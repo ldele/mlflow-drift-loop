@@ -327,7 +327,7 @@ if IS_SYNTHETIC:
 else:
     st.caption(
         "track → detect drift → retrain challenger → promote &nbsp;·&nbsp; "
-        f"observed weather and air quality · {meta.get('location', 'Open-Meteo')}"
+        f"forecast weather and CAMS air quality · {meta.get('location', 'Open-Meteo')}"
     )
 
 if runs.empty:

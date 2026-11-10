@@ -17,7 +17,7 @@ The prose keeps its own rounding, and cannot keep a stale value.
 An interval no output file holds is declared rather than keyed, with the reason
 where the next reader will see it::
 
-    +21.9% [−6.9, +32.3]<!--nofig: printed by sweep_promotion_confidence.py-->
+    +21.9% [−6.9, +32.3]<!--nofig: recorded in sweep_promotion_confidence.py's docstring-->
 
 ``figures.json`` is written by ``scripts/figures.py`` from the local outputs, and
 is committed because most of those outputs are not: CI checks the prose against
@@ -86,12 +86,19 @@ def _uncertainty(data: dict, figures: dict[str, float]) -> None:
         won = city["point"]["win_rate"]
         lo, hi = stats.wilson_interval(round(won * acted["n"] / 100), acted["n"])
         _put(figures, f"{slug}.won", won, lo, hi)
+        # The bootstrap's own win-rate interval, kept only because the page quotes
+        # it failing: [100, 100] wherever a city won every window it acted on.
+        _interval(figures, f"{slug}.won.bootstrap", city["interval"]["win_rate"])
 
     gate = data["gate"]
     for length in ("short", "long"):
         summary = gate["summary"][length]
         figures[f"gate.{length}.n"] = summary["n"]
         figures[f"gate.{length}.harmful"] = summary["harmful"]
+        # The share that came out harmful, with Wilson's interval as the win rates
+        # carry it: the one claim a group of three can support.
+        lo, hi = stats.wilson_interval(summary["harmful"], summary["n"])
+        _put(figures, f"gate.{length}.harmful_rate", 100 * summary["harmful"] / summary["n"], lo, hi)
         for part in ("exam", "delivered"):
             block = gate["interval"][length][part]
             # An interval over three promotions is infinite, and not a figure.
@@ -122,6 +129,31 @@ def _ablation(rows: list[dict[str, str]], figures: dict[str, float]) -> None:
     for slug, premium in arms.items():
         figures[f"ablation.{slug}.alpha_points"] = premium["ridge"] - premium["ridge_tuned"]
         figures[f"ablation.{slug}.linearity_points"] = premium["ridge_tuned"] - premium["gbm_tuned"]
+
+
+def _ablation_paired(data: dict, figures: dict[str, float]) -> None:
+    """Tuned Ridge's premium minus the tuned tree's, in points, over the weeks both
+    retrained. No interval where too few weeks are shared to resample."""
+    for comparison in data["comparisons"]:
+        slug = CITY_SLUGS[comparison["city"]]
+        figures[f"ablation.{slug}.shared_weeks"] = comparison["shared_weeks"]
+        if "ridge_minus_gbm" in comparison:
+            _put(figures, f"ablation.{slug}.ridge_minus_gbm", comparison["ridge_minus_gbm"],
+                 comparison["ridge_minus_gbm_lo"], comparison["ridge_minus_gbm_hi"])
+
+
+def _holdout(rows: list[dict[str, str]], figures: dict[str, float]) -> None:
+    """Every exam length against the shipped seven days, over the runs every arm shares."""
+    for row in rows:
+        days = int(row["holdout"])
+        key = f"holdout.{CITY_SLUGS[row['city']]}.{days}d"
+        figures[f"{key}.retrains"] = int(row["retrains"])
+        figures[f"{key}.promotions"] = int(row["promotions"])
+        # Over the shared runs, not the arm's own span: the median the page compares.
+        figures[f"{key}.rmse"] = float(row["median_rmse_common"])
+        if days != 7:  # the seven-day row is the reference, compared with itself
+            _put(figures, f"{key}.all", float(row["vs_7d"]),
+                 float(row["vs_7d_lo"]), float(row["vs_7d_hi"]))
 
 
 # Each mechanism sweep: its output file, the key prefix, and the column naming the arm.
@@ -169,6 +201,10 @@ def collect(outputs: Path) -> dict[str, float]:
     figures: dict[str, float] = {}
     _uncertainty(json.loads((outputs / "uncertainty.json").read_text(encoding="utf-8")), figures)
     _ablation(_rows(outputs / "model_ablation.csv"), figures)
+    _ablation_paired(
+        json.loads((outputs / "model_ablation_series.json").read_text(encoding="utf-8")), figures
+    )
+    _holdout(_rows(outputs / "holdout_sweep.csv"), figures)
     for name, prefix, arm in SWEEPS:
         _sweep(_rows(outputs / name), prefix, arm, figures)
     _rebaseline(_rows(outputs / "rebaseline.csv"), figures)

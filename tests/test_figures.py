@@ -17,10 +17,8 @@ from driftloop import figures
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
 
-# Pages every interval on which is keyed or declared. evaluation.md is not yet:
-# its unkeyed intervals are capped at today's count, so the number can only fall.
-FULLY_KEYED = ("README.md", "docs/DECISIONS.md", "docs/methodology.md")
-EVALUATION_UNKEYED_CEILING = 86
+# Pages every interval on which is keyed or declared.
+FULLY_KEYED = ("README.md", "docs/DECISIONS.md", "docs/evaluation.md", "docs/methodology.md")
 
 
 @pytest.fixture(scope="module")
@@ -41,13 +39,6 @@ def test_every_keyed_figure_agrees_with_the_committed_figures(committed):
 def test_every_interval_is_keyed_or_declared(name):
     found = figures.unbound((REPO_ROOT / name).read_text(encoding="utf-8"))
     assert not found, f"{name}: key these or declare them <!--nofig: why-->: {found}"
-
-
-def test_evaluation_unkeyed_intervals_do_not_grow():
-    found = figures.unbound((REPO_ROOT / "docs/evaluation.md").read_text(encoding="utf-8"))
-    assert len(found) <= EVALUATION_UNKEYED_CEILING, (
-        f"{len(found)} unkeyed intervals, ceiling {EVALUATION_UNKEYED_CEILING}: key the new ones"
-    )
 
 
 def test_history_is_not_checked():
