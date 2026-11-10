@@ -27,10 +27,11 @@ the weeks a retrained model was actually serving. That switch is itself one of t
 | 08-11 | `bc0bf4c` | +49.4% [+33.7, +61.8] | −13.4% [−36.9, −3.8] | +6.5% [−15.3, +27.5] | moving-block bootstrap intervals |
 | 08-12 | `541db47` | +36.3% [+17.4, +47.6] | −3.5% [−9.7, +1.2] | — | ablation arm: a tree at library defaults |
 | 08-16 | `d22977b` | +9.7% [+8.0, +26.0] | −6.9% [−13.2, +2.8] | — | ablation arm: both model classes tuned |
+| 11-10 | this change | +22.8% [+11.8, +36.4] | −3.5% [−25.6, +3.0] | +5.7% [−14.8, +26.8] | the loop itself: penalty tuned at every fit, second retrain alarm on |
 
-The last two rows are arms of an ablation rather than replacements for the shipped figure. The
-README still leads with the shipped model's numbers, which is a choice and not an oversight — but
-see "The half that should have been withdrawn" below.
+The rows dated 08-12 and 08-16 are arms of an ablation, not replacements for the shipped
+figure, and for three months the README went on leading with the first loop's numbers beside them.
+The last row is the loop itself being changed, and it is the figure the README leads with now.
 
 ## What each correction was
 
@@ -94,13 +95,30 @@ README quotes to `outputs/figures.json` found Santiago's across-the-replay inter
 the same numbers were restated in three to five places by hand, which is also how finding 2
 outlived its own withdrawal. Every page now fails CI when a keyed figure disagrees with the file.
 
+**The configuration was changed, three months after the evidence said to** (2026-11-10). The
+ablation of 2026-08-16 priced the default penalty at 21.6 of Delhi's 49.4 points, and the
+side-by-side replay of 2026-09-22 measured the loop with the penalty tuned at every fit and the
+second retrain alarm switched on. Both sat on the page as open decisions (D1, D5) while the README
+led with numbers the project had itself explained away. On 2026-11-10 the six city profiles and the
+live schedule took that configuration, and a fresh replay reproduced the September figures to the
+decimal: Delhi +22.8% [+11.8, +36.4], Los Angeles −3.5% [−25.6, +3.0] and no longer a harm,
+Melbourne up from nothing to +5.6% [+2.0, +6.6]. The ablation and the five mechanism sweeps were
+not re-run, so they still describe the first loop, and the pages say so.
+
+Two things the same pass found. The benchmark's "never retrained" model was still being fitted at
+the default penalty, which would have credited retraining with the gain that tuning the first fit
+had already made: it read +44.2% for Delhi where the replay reads +17.9%. And the site's sentence
+that no short-serving promotion "left its city worse off" was written into the page, not counted
+from the data; under the new replay two of 28 did.
+
 ## The half that should have been withdrawn
 
 Finding 2, "retraining costs where the air did not move", was written on 2026-07-31 as "it costs
 12.7% in Los Angeles. A drift loop needs drift." Los Angeles has since read −11.6, −8.2, −8.9,
 0.0, −2.8 and −13.4, and −3.5 and −6.9 under better models. The sentence survived all of it, with
 a new caption each time: a cost, then a coin toss, then a coin toss that costs money, then
-measurably harmed.
+measurably harmed. Under the loop as it ships since 2026-11-10 it reads −3.5% [−25.6, +3.0], and
+the README no longer makes the claim.
 
 `docs/evaluation.md` states the conclusion plainly — the cost half "holds for the model that ships
 and cannot be established for the best model available" — while the README and the published
@@ -122,12 +140,15 @@ thinner than the replay's:
 - The six missed weeks were never run. The loop resumed at the current week, so those weekly
   decisions do not exist.
 - v2 was promoted on 2026-09-21, winning its seven-day exam by 0.51 µg/m³ (6.35 against 6.86).
-- Every mechanism this project built and measured is switched off in that config: the skill floor,
-  re-certification, probation and the confidence gate. The retrain alarm is the ratcheting one, now
-  set at 1.25 × v2's own baseline of 5.45.
-
-In two months of running, the loop made one retraining decision, and it is configured to reproduce
-the ratchet this winter.
+- Until 2026-11-10 every mechanism this project built and measured was switched off in that
+  config, and the only retrain alarm was the ratcheting one, set at 1.25 × v2's own baseline of
+  5.45. In its first two months the loop made one retraining decision.
+- From the first cycle after 2026-11-10 the live loop runs the same configuration as the six
+  replays: the penalty tuned at every fit and the second alarm at −0.5. The model serving then is
+  v7, promoted in the cycle for 2026-11-02 and fitted at the default penalty. It keeps serving
+  until a rival passes its exam; nothing was re-bootstrapped.
+- One cycle failed on 2026-11-02, on a single busy-server reply from Open-Meteo, and the following
+  Monday caught the week up. The fetch now tries again before it gives up.
 
 ## What this history is for
 

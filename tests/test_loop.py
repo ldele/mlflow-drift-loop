@@ -1,5 +1,7 @@
 """Guards on the loop's decision rules -- especially the evaluation leak."""
 
+from pathlib import Path
+
 import mlflow
 import pandas as pd
 import pytest
@@ -625,7 +627,9 @@ def test_a_promotion_is_judged_once_and_then_settled(isolated_mlflow):
 
 
 def test_the_penalty_is_the_library_default_unless_tuning_is_asked_for(isolated_mlflow):
-    """Every published number was produced at `alpha=1.0`, so off has to stay off."""
+    """A bare `LoopConfig` fits at the default. The ablation and the five sweeps were
+    measured at it and pin it (`config.FIRST_SHIPPED`), so off has to stay off here
+    even though every shipped profile now tunes."""
     from driftloop.loop import fit_for
     from driftloop.model import DEFAULT_ALPHA
 
@@ -689,3 +693,41 @@ def test_the_loop_tunes_past_where_the_published_grid_stops():
 
     assert LOOP_ALPHA_GRID[: len(ALPHA_GRID)] == ALPHA_GRID
     assert max(LOOP_ALPHA_GRID) > max(ALPHA_GRID)
+
+
+# --------------------------------------------------------------------------- #
+# What ships. A bare LoopConfig is the loop as it first shipped; the profiles   #
+# add the two settings adopted on 2026-11-10 (docs/DECISIONS.md D1 and D5).     #
+# --------------------------------------------------------------------------- #
+
+
+def test_every_city_and_the_live_schedule_ship_the_adopted_settings():
+    from driftloop.config import PROFILES, SHIPPED
+
+    shipped = [p for p in PROFILES.values() if p.location is not None or p.key == "scheduled"]
+    assert len(shipped) == 7
+    for profile in shipped:
+        got = {name: getattr(profile.loop, name) for name in SHIPPED}
+        assert got == SHIPPED, f"{profile.key} ships {got}"
+    # The synthetic world is the controlled experiment for the two detectors and
+    # stays on the bare loop, so its published ratios do not move with this.
+    assert PROFILES["synthetic"].loop == LoopConfig()
+
+
+def test_first_shipped_is_what_a_bare_config_does():
+    from driftloop.config import FIRST_SHIPPED
+
+    bare = LoopConfig()
+    assert {name: getattr(bare, name) for name in FIRST_SHIPPED} == FIRST_SHIPPED
+
+
+@pytest.mark.parametrize("script", [
+    "ablate_model.py", "sweep_holdout.py", "sweep_probation.py",
+    "sweep_promotion_confidence.py", "sweep_recertify.py", "sweep_skill_floor.py",
+])
+def test_the_published_sweeps_pin_the_loop_they_were_measured_on(script):
+    """Each builds its arms from a city profile, and the profiles now ship different
+    settings from the ones these experiments ran under. Without the pin a re-run
+    would overwrite a published table with the answer to another question."""
+    source = (Path(__file__).resolve().parents[1] / "scripts" / script).read_text(encoding="utf-8")
+    assert "FIRST_SHIPPED" in source, f"{script} no longer pins the first-shipped loop"

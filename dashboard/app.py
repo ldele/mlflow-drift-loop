@@ -517,8 +517,10 @@ with tab_loop:
     st.plotly_chart(fig, width="stretch")
     guide("trigger")
     st.caption(
-        "Where the staircase ends up far above the error, the trigger has gone quiet and cannot "
-        "fire again whatever the model does. The bar is reset by every promotion, and because "
+        "Where the staircase ends up far above the error, this alarm has gone quiet and cannot "
+        "fire again whatever the model does. A second alarm covers that case: it fires when the "
+        "model falls too far behind a plain daily profile of recent air, a yardstick no promotion "
+        "can reset. The bar is reset by every promotion, and because "
         "promotions land in the dirty season it ratchets upward. It can step down where a "
         "challenger trained on a calmer stretch, but only slightly and only early."
     )
@@ -627,9 +629,9 @@ with tab_loop:
             )
         st.caption(
             " ".join(parts)
-            + " A seven-day exam certifies a model for about a month. The models that end up "
-            "serving half a year are the ones the ratcheted trigger above can no longer replace, "
-            "so the two faults compound."
+            + " A seven-day exam certifies a model for about a month. A model serves half a "
+            "year only when no rival replaces it, because neither alarm fired or every rival "
+            "failed its exam, so that exam is asked to stand for longer than it can."
         )
         if len(retro.gate) < 4:
             st.caption(
@@ -858,18 +860,17 @@ with tab_model:
             )
             fig.update_xaxes(type="log", title_text="alpha (log scale)")
             fig.add_vline(x=alpha["shipped"], line_dash="dot",
-                          annotation_text=f"shipped {alpha['shipped']:g}")
+                          annotation_text=f"library default {alpha['shipped']:g}")
             fig.add_vline(x=alpha["best"], line_dash="dash",
                           annotation_text=f"best {alpha['best']:g}")
             st.plotly_chart(fig, width="stretch")
             guide("alpha_sweep")
             penalty = alpha.get("penalty_pct")
-            caption = f"Shipped alpha {alpha['shipped']:g}; {alpha['best']:g} scored best"
+            caption = f"Alpha {alpha['best']:g} scored best"
             if penalty is not None:
                 caption += (
-                    f", costing {penalty:.1f}% error. The curve is nearly flat, which says the "
-                    "model is limited by what a week-old weather forecast can express, not by "
-                    "regularisation."
+                    f"; the library default of {alpha['shipped']:g} would cost {penalty:.1f}% "
+                    "error. The loop makes this choice again at every fit."
                 )
             st.caption(caption)
     else:

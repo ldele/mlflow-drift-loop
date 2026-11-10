@@ -74,7 +74,8 @@ the machinery is not coupled to the problem.
 
 ![Method](images/method.png)
 
-`StandardScaler → Ridge(alpha=1.0)` on eight features, fitted on a chronological
+`StandardScaler → Ridge` on eight features, with the penalty `alpha`
+[chosen at each fit](#choosing-alpha), fitted on a chronological
 80/20 tail split, then refit on the full window. The tail split is what produces
 the champion's **baseline RMSE**, the number performance drift is later measured
 against.
@@ -113,11 +114,12 @@ shortwave_radiation  0.61   0.10  -0.62   -0.08   0.11   1.00
 
 but correlated is a long way from collinear. The condition number of the
 standardised feature matrix is **6.9**, where trouble starts north of 30 and an
-ill-posed problem runs into the thousands. At the shipped α = 1.0 the fitted
-coefficients match plain least squares to three decimal places, so **the
-regularisation is close to inert at the setting that ships**. It stays because
-every challenger is fitted on a different 180-day window that nobody inspects
-first.
+ill-posed problem runs into the thousands. At the library default α = 1.0, which
+this loop ran at until 2026-11-10, the fitted coefficients match plain least
+squares to three decimal places, so **the regularisation was close to inert**.
+The loop now picks α itself at every fit and lands in the hundreds and
+thousands. A penalty is there at all because every challenger is fitted on a
+different 180-day window that nobody inspects first.
 
 ### Why the features are standardised
 
@@ -168,10 +170,11 @@ tuning.
 
 ### Choosing alpha
 
-`alpha=1.0` ships, which is scikit-learn's default and so needs justifying. It is
-swept per city on a logarithmic grid, scored by five-fold forward-chaining
+The loop chooses `alpha` at every fit, for the first model and for each rival
+alike: a sweep over a logarithmic grid, scored by five-fold forward-chaining
 cross-validation (`TimeSeriesSplit`), which never lets a fold train on rows that
-follow the rows it scores. On autocorrelated hourly data a random split leaks
+follow the rows it scores. Until 2026-11-10 it ran at scikit-learn's default of
+1.0, and the table below is what that cost on each city's first training window. On autocorrelated hourly data a random split leaks
 badly enough to make every α look fine (Bergmeir & Benítez, 2012).
 
 Every city wants heavier regularisation than 1.0:
@@ -185,8 +188,10 @@ Every city wants heavier regularisation than 1.0:
 | Johannesburg | 1000 | 4.4% |
 | Delhi | 1000 | 11.9% |
 
-The curve is nearly flat, which is why 1.0 survives a sweep that disagrees with
-it everywhere. On Kraków's window, α = 1000 shrinks each coefficient by 15%
+The curve is nearly flat, which is why 1.0 survived for so long a sweep that
+disagreed with it everywhere. Judged by accuracy it looked harmless; judged by
+the headline it supplied 21.6<!--fig:ablation.delhi.alpha_points--> of Delhi's first 49.4<!--fig:first.delhi.acted--> points
+([DECISIONS.md](DECISIONS.md), D5). On Kraków's window, α = 1000 shrinks each coefficient by 15%
 (temperature) to 49% (surface pressure), and costs 3.6%. **If shrinking every
 slope most of the way to zero costs between 0.1% and 12% of error, the
 relationship this model can express is weak.** That is the fairest one-line
@@ -332,8 +337,9 @@ reference that holds still, the same champion is at its worst there rather than
 its best, with skill of −1.67 against climatology having been +0.43 in January.
 See [evaluation.md](evaluation.md#the-retrain-trigger-stops-measuring-staleness).
 
-**A second trigger exists for that, and ships disabled.** `LoopConfig.skill_floor`
-also fires when skill against climatology drops below a floor:
+**A second trigger runs beside it for that.** `LoopConfig.skill_floor`, set to
+−0.5 in every shipped profile, also fires when skill against climatology drops
+below a floor:
 
 ```
 retrain if   rmse_now / baseline_rmse > 1.25        (ratchets)
@@ -345,14 +351,13 @@ number works for every city and no promotion can move it. It only ever adds a wa
 to fire. Every run is tagged `retrain_reason` as `ratio`, `skill`, `both` or
 `none`.
 
-It ships at `None` because it was measured rather than assumed:
+The setting was measured rather than assumed:
 [`sweep_skill_floor.py`](../scripts/sweep_skill_floor.py) replays all six cities
-at several floors, and a conservative floor leaves the outcome identical in five
-of six while an aggressive one makes two cities worse for one improvement. It
-wakes the trigger as designed, and the waking is not worth having. Numbers in
+at several floors, on the loop as it first shipped. The conservative floor of
+−0.5 leaves the outcome identical in five of six and improves the sixth, while
+an aggressive one makes two cities worse for one improvement. So it ships at
+−0.5, and has since 2026-11-10 ([DECISIONS.md](DECISIONS.md), D1). Numbers in
 [evaluation.md](evaluation.md#fixing-the-trigger-one-fix-is-impossible-the-other-pays-in-one-city).
-The knob stays in the code so the next person to propose this fix finds it
-already built and already answered.
 
 ### Step 3: train a challenger
 

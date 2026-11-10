@@ -54,7 +54,7 @@ from mlflow.tracking import MlflowClient
 
 from driftloop import retrospect, stats, tracking
 from driftloop.config import CITY_CLI_NAMES as CITIES
-from driftloop.config import PROFILES, Profile
+from driftloop.config import FIRST_SHIPPED, PROFILES, Profile
 from driftloop.data import OpenMeteoSource
 from driftloop.loop import bootstrap_champion, run_simulation
 
@@ -86,6 +86,7 @@ def run_arm(profile: Profile, source: OpenMeteoSource, days: int | None) -> dict
     slug = _slug(days)
     cfg = replace(
         profile.loop,
+        **FIRST_SHIPPED,
         probation_days=days,
         experiment_name=f"probation-{slug}",
         registered_model_name=f"{profile.loop.registered_model_name}-prob-{slug}",

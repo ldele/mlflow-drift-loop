@@ -41,6 +41,12 @@ outputs/*
 !outputs/rebaseline.csv
 !outputs/rebaseline.json
 
+# The six-city intervals and the gate calibration as they stood under the loop as
+# first shipped, frozen on 2026-11-10 when the profiles took the tuned penalty and
+# the skill floor. No script regenerates it at today's settings, and the docs
+# still quote those figures beside the new ones (keys under `first.`).
+!outputs/uncertainty_first_shipped.json
+
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and
 # published. The glob covers cities added later without another edit here.

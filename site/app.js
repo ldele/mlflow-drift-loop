@@ -754,7 +754,7 @@ function render() {
       "When it retrains, and against what bar",
       "A retrain fires when the error crosses the dotted bar, which is 1.25× whatever the model in service scored when it was trained. " +
       "The bar is a staircase because every promotion resets it, and promotions happen in the dirty season, so each new model inherits a higher bar than the one it replaced and the bar ratchets upward. It can step down where a challenger trained on a calmer stretch, but only slightly and only early. " +
-      "Where the staircase ends up far above the error, the trigger has gone quiet and cannot fire again whatever the model does.",
+      "Where the staircase ends up far above the error, this alarm has gone quiet and cannot fire again whatever the model does. That is what the second alarm is for: a retrain marked below the bar was fired by the model falling too far behind a plain daily profile of recent air, a yardstick no promotion can reset.",
       chipsT, traces, lay, { guide: "trigger" });
   }
 
@@ -1012,8 +1012,8 @@ function renderBenchmark(p) {
       `</div>`);
   }
   if (a) {
-    verdict.push(`<div><b>alpha ${a.shipped}</b>shipped; ${a.best} scored best on ` +
-      `${a.n_splits}-fold forward CV, costing ` +
+    verdict.push(`<div><b>alpha ${a.best}</b>scored best on ${a.n_splits}-fold forward CV; ` +
+      `the library default of ${a.shipped} would cost ` +
       `${a.penalty_pct == null ? "—" : `${a.penalty_pct.toFixed(1)}%`} error</div>`);
   }
 
@@ -1166,17 +1166,34 @@ function renderGate() {
     [pt(short, "short", pal.series[2]), pt(long, "long", pal.crit)],
     lay, { container: "gate-charts", wide: true, guide: "gate" });
 
-  document.getElementById("gate-note").innerHTML =
-    `<strong>The result:</strong> the exam is honest and well calibrated over the horizon it tests. ` +
+  // Counted from the points the chart draws, so the sentence cannot outlive a
+  // replay that changes them. It did once: "not one of them left its city worse
+  // off" stayed on the page until a re-run produced two that had.
+  const harmed = (group) => group.filter((r) => r.delivered < 0).length;
+  const shortHarmed = harmed(short), longHarmed = harmed(long);
+  const shortVerdict = shortHarmed === 0
+    ? "and not one of them left its city worse off"
+    : `and ${shortHarmed} of them left ${shortHarmed === 1 ? "its city" : "their cities"} worse off`;
+  let note =
+    `<strong>The result:</strong> over the horizon it tests, the exam mostly keeps its promise. ` +
     `Across ${short.length} promotions that served under ${GATE_LONG_WEEKS} weeks it promised ` +
-    `${pct(mean(short, "exam") * 100, 1)} and delivered ${pct(mean(short, "delivered") * 100, 1)}, and not one of them ` +
-    `left its city worse off. But every one of the ${long.length} models that ended up serving ${GATE_LONG_WEEKS} weeks or more ` +
-    `delivered a <em>negative</em> margin, ${pct(mean(long, "exam") * 100, 1)} promised against ` +
-    `${pct(mean(long, "delivered") * 100, 1)} delivered, despite passing the same exam just as convincingly. ` +
-    `A seven-day exam can certify a model for about a month. It cannot certify one for half a year. ` +
-    `And the long-serving models are long-serving for a reason: they were promoted at the seasonal peak, ` +
-    `which sets the retrain bar so high that nothing crosses it afterwards. So the two faults compound. ` +
-    `The trigger goes quiet, the model stays, and the exam that cleared it is asked to stand for far longer than it can.`;
+    `${pct(mean(short, "exam") * 100, 1)} and delivered ${pct(mean(short, "delivered") * 100, 1)}, ${shortVerdict}.`;
+  if (long.length) {
+    const who = long.length === 1 ? "the one model" : `the ${long.length} models`;
+    const outcome = longHarmed === long.length
+      ? (long.length === 1 ? "delivered a <em>negative</em> margin" : "each delivered a <em>negative</em> margin")
+      : `delivered a negative margin in ${longHarmed} ${longHarmed === 1 ? "case" : "cases"}`;
+    note +=
+      ` But ${who} that ended up serving ${GATE_LONG_WEEKS} weeks or more ${outcome}, ` +
+      `${pct(mean(long, "exam") * 100, 1)} promised against ${pct(mean(long, "delivered") * 100, 1)} ` +
+      `delivered, despite passing the same exam just as convincingly. A seven-day exam can certify a ` +
+      `model for about a month, and nothing here shows it certifying one for half a year. A model ` +
+      `serves that long only when no rival replaces it, because neither alarm fired or because every ` +
+      `rival failed its exam, so the exam that cleared it is asked to stand for far longer than it can. ` +
+      `With ${long.length} such ${long.length === 1 ? "model" : "models"}, read that as a direction ` +
+      `and not as a measurement.`;
+  }
+  document.getElementById("gate-note").innerHTML = note;
 
   plotAll(jobs);
 }
@@ -1344,7 +1361,7 @@ function renderAblation(ablation) {
   const delhiPaired = (cities.find((c) => c.city === "Delhi") || cities[0]).paired;
   chartCard(jobs,
     "The same city, replayed under three models",
-    "What retraining was worth in each city, week by week, under the model that ships and under " +
+    "What retraining was worth in each city, week by week, under the model as it first shipped and under " +
     "two tuned properly on the same protocol. Bars are 95% intervals; one crossing the zero line " +
     "means retraining cannot be shown to have paid at all. If the premium were really about the " +
     "air changing, it would survive the change of model. " +
@@ -1370,18 +1387,20 @@ function renderAblation(ablation) {
 
   let note =
     `<strong>The duller explanation was right about most of it.</strong> ` +
-    `${delhi.city}'s ${pct(shipped.premium, 1)} survives the change of model, but only as ` +
+    `${delhi.city} first read ${pct(shipped.premium, 1)}. That survives the change of model, but only as ` +
     `${pct(tree.premium, 1)} ${iv(tree.lo, tree.hi)} — a fifth of the size. And the larger half ` +
     `of what it lost is not the straight line at all: ` +
-    `${(shipped.premium - tunedRidge.premium).toFixed(1)} of the points go to <code>alpha=1.0</code>, ` +
+    `${(shipped.premium - tunedRidge.premium).toFixed(1)} of the points went to <code>alpha=1.0</code>, ` +
     `a library default nobody chose, and ${(tunedRidge.premium - tree.premium).toFixed(1)} to ` +
-    `linearity. What is left over is the air.`;
+    `linearity. What is left over is the air. This is the experiment that changed the loop: it now ` +
+    `chooses that setting itself at every fit, and the figures at the top of this page were ` +
+    `measured after the change.`;
 
   if (la) {
     const laShipped = armOf(la, "ridge"), laTree = armOf(la, "gbm_tuned");
     note +=
       ` <strong>${la.city} loses its result entirely:</strong> ${pct(laShipped.premium, 1)} under ` +
-      `the model that ships, ${pct(laTree.premium, 1)} ${iv(laTree.lo, laTree.hi)} under the ` +
+      `the model as first shipped, ${pct(laTree.premium, 1)} ${iv(laTree.lo, laTree.hi)} under the ` +
       `better one, an interval that includes zero.`;
   }
 
@@ -1429,7 +1448,9 @@ function renderMethod(m) {
   const steps = [
     ["Mark its homework", `Take the model in service and check the last ${days(p.monitor_days)} of forecasts against the PM2.5 recorded for those days.`],
     ["Look for trouble, two ways", "First, whether the weather has stopped resembling what the model learned from. Separately, whether the model's error is rising. The first can fire before any damage shows. Only the second is allowed to spend money."],
-    ["Train a rival", `If the error is ${p.perf_drift_threshold}× what it used to be, train a fresh model on the last ${days(p.challenger_train_days)} and let it apply for the job.`],
+    ["Train a rival", `If the error is ${p.perf_drift_threshold}× what it used to be` +
+      (p.skill_floor == null ? "" : `, or the model has fallen ${pct(-p.skill_floor)} behind a plain daily profile of recent air`) +
+      `, train a fresh model on the last ${days(p.challenger_train_days)} and let it apply for the job.`],
     ["Make it earn the job", `Both sit the same exam, ${days(p.holdout_days)} of air neither has seen. The newcomer has to win by ${pct(p.promotion_margin)} rather than squeak past, or it is thrown away.`],
   ];
   document.getElementById("steps").innerHTML = steps
@@ -1439,7 +1460,8 @@ function renderMethod(m) {
     .join("");
 
   specRows(document.getElementById("model-spec"), [
-    ["estimator", code(`${m.estimator}(alpha=${m.alpha})`)],
+    ["estimator", code(m.alpha_tuned ? m.estimator : `${m.estimator}(alpha=${m.alpha})`),
+      m.alpha_tuned ? "the Ridge penalty is chosen again at every fit, by cross-validation that keeps time in order" : ""],
     ["features", m.features.map(code).join(" ")],
     ["target", code(m.target), "µg/m³"],
     ["horizon",
@@ -1466,6 +1488,8 @@ function renderMethod(m) {
     ["challenger training", code(days(p.challenger_train_days)), "recent history a challenger learns from"],
     ["holdout", code(days(p.holdout_days)), "judged on this, excluded from both"],
     ["retrain trigger", code(`error ÷ baseline > ${p.perf_drift_threshold}`), `${pct(p.perf_drift_threshold - 1)} worse`],
+    ...(p.skill_floor == null ? [] : [["second retrain trigger", code(`skill < ${p.skill_floor}`),
+      `${pct(-p.skill_floor)} behind a daily profile, which no promotion can reset`]]),
     ["PSI significant", code(`> ${p.psi_threshold}`), `stable below ${b.stable}, moderate ${b.stable} to ${b.significant}`],
     ["promotion margin", code(`> ${pct(p.promotion_margin)}`), "or the challenger is rejected"],
   ]);

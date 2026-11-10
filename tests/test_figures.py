@@ -108,3 +108,12 @@ def test_an_interval_is_unbound_until_keyed_or_declared():
 
 def test_a_declaration_is_not_checked():
     assert figures.check_text("+21.9% [−6.9, +32.3]<!--nofig: printed only-->", {}) == []
+
+
+def test_the_first_shipped_figures_are_kept_beside_the_current_ones(committed):
+    """The pages quote what they said before 2026-11-10 next to what they say now,
+    so both sets have to be in the file the pages are checked against."""
+    for city in figures.CITY_SLUGS.values():
+        assert f"{city}.acted" in committed
+        assert f"{figures.FIRST}{city}.acted" in committed
+    assert committed["first.delhi.acted"] != committed["delhi.acted"]

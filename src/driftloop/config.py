@@ -89,9 +89,10 @@ class LoopConfig:
     # its own regularisation. Tuning per fit makes the setting adjust with the
     # data, which is what the rest of the loop already claims to do.
     #
-    # Ships off, and that is not a recommendation. Every published number was
-    # produced at the default, so leaving it off is what keeps them reproducible;
-    # `scripts/rebaseline.py` turns it on and publishes both side by side.
+    # Off in a bare LoopConfig and on in every shipped profile (`SHIPPED` below,
+    # docs/DECISIONS.md D5). The figures published before 2026-11-10 were produced
+    # with it off, and the sweeps that measured the five mechanisms still pin it
+    # off (`FIRST_SHIPPED`), so they keep describing the loop they were run on.
     # Ridge only: the tree's hyper-parameters come from `model_params`.
     tune_alpha: bool = False
 
@@ -127,7 +128,8 @@ class LoopConfig:
     # Johannesburg on 80%. Nothing sits in between, so an absolute floor is a
     # per-city knob and the cities stop being comparable.
     #
-    # None disables it. See docs/DECISIONS.md D1 for why it ships off.
+    # None disables it. Every shipped profile sets it to -0.5 (`SHIPPED` below),
+    # the one setting the sweep found to harm no city; docs/DECISIONS.md D1.
     skill_floor: float | None = None
     # The third trigger, and the only one that does not wait to be told the
     # model is failing: re-sit the promotion exam when the serving champion's
@@ -205,6 +207,20 @@ class LoopConfig:
 
     experiment_name: str = "drift-loop-synthetic"
     registered_model_name: str = "pm25-ridge"
+
+
+# What every monitored city and the live schedule run with, on top of the bare
+# LoopConfig above: the Ridge penalty chosen at each fit (D5) and the second,
+# model-independent retrain trigger at its cautious setting (D1). Both were
+# measured first and adopted on 2026-11-10; `scripts/rebaseline.py` is the
+# replay that compared the two configurations city by city.
+SHIPPED: dict = {"tune_alpha": True, "skill_floor": -0.5}
+
+# The loop as it first shipped: the library-default penalty and the ratio as the
+# only retrain trigger. The ablation and the five mechanism sweeps were measured
+# against this loop and pin it, so re-running one reproduces its own published
+# table instead of quietly answering a different question.
+FIRST_SHIPPED: dict = {"tune_alpha": False, "skill_floor": None}
 
 
 # How far ahead the model predicts. At 7 the weather features are the forecast
@@ -377,6 +393,7 @@ PROFILES: dict[str, Profile] = {
         loop=LoopConfig(
             experiment_name="drift-loop-openmeteo",
             registered_model_name="pm25-ridge-krakow",
+            **SHIPPED,
         ),
         db_filename="mlflow_openmeteo.db",
         meta_filename="run_meta_openmeteo.json",
@@ -397,6 +414,7 @@ PROFILES: dict[str, Profile] = {
         loop=LoopConfig(
             experiment_name="drift-loop-openmeteo-delhi",
             registered_model_name="pm25-ridge-delhi",
+            **SHIPPED,
         ),
         db_filename="mlflow_openmeteo_delhi.db",
         meta_filename="run_meta_openmeteo_delhi.json",
@@ -416,6 +434,7 @@ PROFILES: dict[str, Profile] = {
         loop=LoopConfig(
             experiment_name="drift-loop-openmeteo-la",
             registered_model_name="pm25-ridge-la",
+            **SHIPPED,
         ),
         db_filename="mlflow_openmeteo_la.db",
         meta_filename="run_meta_openmeteo_la.json",
@@ -435,6 +454,7 @@ PROFILES: dict[str, Profile] = {
         loop=LoopConfig(
             experiment_name="drift-loop-openmeteo-santiago",
             registered_model_name="pm25-ridge-santiago",
+            **SHIPPED,
         ),
         db_filename="mlflow_openmeteo_santiago.db",
         meta_filename="run_meta_openmeteo_santiago.json",
@@ -454,6 +474,7 @@ PROFILES: dict[str, Profile] = {
         loop=LoopConfig(
             experiment_name="drift-loop-openmeteo-joburg",
             registered_model_name="pm25-ridge-joburg",
+            **SHIPPED,
         ),
         db_filename="mlflow_openmeteo_joburg.db",
         meta_filename="run_meta_openmeteo_joburg.json",
@@ -471,6 +492,7 @@ PROFILES: dict[str, Profile] = {
         loop=LoopConfig(
             experiment_name="drift-loop-openmeteo-melbourne",
             registered_model_name="pm25-ridge-melbourne",
+            **SHIPPED,
         ),
         db_filename="mlflow_openmeteo_melbourne.db",
         meta_filename="run_meta_openmeteo_melbourne.json",
@@ -499,6 +521,7 @@ PROFILES: dict[str, Profile] = {
         loop=LoopConfig(
             experiment_name="drift-loop-scheduled",
             registered_model_name="pm25-ridge-scheduled",
+            **SHIPPED,
         ),
         db_filename="mlflow_scheduled.db",
         meta_filename="run_meta_scheduled.json",

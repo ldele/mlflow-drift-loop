@@ -35,7 +35,7 @@ from mlflow.tracking import MlflowClient
 
 from driftloop import retrospect, stats, tracking
 from driftloop.config import CITY_CLI_NAMES as CITIES
-from driftloop.config import PROFILES, Profile
+from driftloop.config import FIRST_SHIPPED, PROFILES, Profile
 from driftloop.data import OpenMeteoSource
 from driftloop.loop import bootstrap_champion, run_simulation
 
@@ -48,6 +48,7 @@ def run_arm(profile: Profile, source: OpenMeteoSource, holdout: int) -> tuple[di
     """One full replay at one exam length, scored the way the published numbers are."""
     cfg = replace(
         profile.loop,
+        **FIRST_SHIPPED,
         holdout_days=holdout,
         experiment_name=f"holdout-{holdout}",
         registered_model_name=f"{profile.loop.registered_model_name}-h{holdout}",

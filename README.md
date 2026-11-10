@@ -19,53 +19,60 @@ week through a full year, from 2025 into 2026.
 
 ## What it found
 
-Five findings, each with the interval that decides whether to believe it. Every
-percentage is a 95% moving-block bootstrap over autocorrelated weekly windows —
+Every percentage below compares the loop with the same first model never retrained,
+week by week, and carries a 95% interval from a moving-block bootstrap over
+autocorrelated weekly windows —
 [why that and not an ordinary one](docs/evaluation.md#what-the-intervals-cost-this-page).
 
-1. **Retraining pays where the air really changed**, and by much less than it
-   first appears. Delhi runs **+49.4% [+34, +62]**<!--fig:delhi.acted--> better week by week. But four
-   fifths of that was the shipped model being under-regularised and linear. Tune
-   it properly, put a tuned tree against it, and the premium falls to
-   **+9.7% [+8.0, +26.0]**<!--fig:ablation.delhi.gbm_tuned--> — a fifth of the size, still clear of zero.
+1. **Retraining pays where the air really changes.** Delhi runs
+   **+22.8% [+11.8, +36.4]**<!--fig:delhi.acted--> better with the loop than without it,
+   Santiago **+17.5% [+8.6, +37.2]**<!--fig:santiago.acted--> and Johannesburg
+   **+9.7% [+4.6, +14.0]**<!--fig:joburg.acted-->. Melbourne's
+   +5.6% [+2.0, +6.6]<!--fig:melbourne.acted--> clears zero too, on air that stays near the
+   WHO guideline all year, and is the one to read with care: its error over the
+   whole replay barely moves.
 
-2. **And it costs where the air did not — for the model that ships.** Los Angeles
-   is the control, and week by week the loop leaves it
-   **−13.4% [−37, −4]**<!--fig:la.acted--> behind never retraining. That rests on a single
-   promotion, won on an exam margin of +21.9% [−6.9, +32.3]<!--nofig: recorded in the docstring of scripts/sweep_promotion_confidence.py; no output holds a per-promotion exam interval-->,
-   and it does not survive a better model: under the tuned tree it reads
-   −6.9% [−13.2, +2.8]<!--fig:ablation.la.gbm_tuned-->, which is not distinguishable from zero. Where the
-   seasonal swing is small, the gate has almost no signal to select on.
+2. **In two cities it does nothing measurable.** Los Angeles is the control, with
+   the smallest seasonal swing of the six, and reads
+   −3.5% [−25.6, +3.0]<!--fig:la.acted-->. Kraków reads
+   +5.7% [−14.8, +26.8]<!--fig:krakow.acted-->. Both intervals cover zero.
 
-3. **The retrain alarm goes deaf.** It grades the model against its own past, and
-   every promotion resets that bar upward. Kraków ratchets so high that its last
-   30<!--fig:floor.krakow.off.silence--> weeks cannot fire at any error; Los Angeles is silent for
-   35<!--fig:floor.la.off.silence--> runs out of 36<!--fig:la.weeks-->. A second, model-independent trigger helps
-   one city: at its cautious setting it leaves five cities bit-identical and, in
-   the 25<!--fig:floor.la.-0.50.differing--> weeks it acts, improves Los Angeles by
-   **+11.8% [+2.1, +17.2]**<!--fig:floor.la.-0.50.acted--> — because what harmed that city was one
-   bad model left serving far too long.
+3. **The first headline was twice this size, and a default setting was why.**
+   This page used to lead with Delhi at +49.4% [+33.7, +61.8]<!--fig:first.delhi.acted--> and
+   with retraining *costing* Los Angeles −13.4% [−36.9, −3.8]<!--fig:first.la.acted-->. The
+   model's regularisation strength was a library default nobody had chosen, and
+   21.6<!--fig:ablation.delhi.alpha_points--> of Delhi's points were that default: a
+   badly set model leaves more for a retrain to recover. The loop now chooses the
+   setting itself at every fit. Delhi's result halved and Los Angeles's cost
+   disappeared. [HISTORY.md](docs/HISTORY.md) keeps every earlier figure and what
+   corrected it.
 
-4. **Five fixes were built and measured. None pays, and one is harmful.** They
-   fail for one reason, and it took all five to see it: the loop retries until a
-   challenger passes, so raising any bar buys more attempts and a luckier winner
-   rather than fewer bad promotions.
+4. **The retrain alarm goes deaf, so it now has a backstop.** The alarm grades the
+   model against its own error at training time, and every promotion resets that
+   bar upward. Left alone it silenced Kraków for
+   30<!--fig:rebaseline.krakow.shipped.silence--> weeks and Los Angeles for
+   35<!--fig:rebaseline.la.shipped.silence--> of its 36<!--fig:la.weeks-->. A second alarm,
+   which asks how the model compares with a plain daily profile of recent air and
+   which no promotion can move, brings those silences down to
+   22<!--fig:rebaseline.krakow.fixed.silence--> weeks and
+   16<!--fig:rebaseline.la.fixed.silence-->.
 
-5. **A seven-day exam certifies a model for about five weeks.** Across
-   25<!--fig:gate.short.n--> short-serving promotions it delivers on its promise:
-   +12.4%<!--fig:gate.short.exam--> promised, **+9.8% [+6.4, +14.0]**<!--fig:gate.short.delivered--> delivered.
-   Beyond twenty weeks it reverses — though that group is 3<!--fig:gate.long.n--> promotions, and
-   is reported as three.
+5. **Four more fixes were built and measured. None pays, and one is harmful.**
+   They fail for one reason, and it took all of them to see it: the loop retries
+   until a challenger passes, so raising any bar buys more attempts and a luckier
+   winner, not fewer bad promotions.
 
-**Two of the six cities show no measurable effect at all** once intervals are
-attached: Kraków and Melbourne. Both were previously reported here as small
-positive results, and neither is distinguishable from nothing.
+6. **A seven-day exam certifies a model for about a month.** Across
+   28<!--fig:gate.short.n--> promotions that served under twenty weeks it promised
+   +12.7%<!--fig:gate.short.exam--> and delivered
+   **+8.0% [+5.1, +11.0]**<!--fig:gate.short.delivered-->, with
+   2<!--fig:gate.short.harmful--> of them leaving their city worse off. The
+   2<!--fig:gate.long.n--> models that served longer both ended up worse than the model
+   they replaced, and two is a direction, not a measurement.
 
-The model is weak, and that belongs up front rather than in a footnote. Guessing
-an hour's pollution from a week-old weather forecast is hard. What is worth
-looking at is the machinery around the model, which
-[the ablation](docs/evaluation.md#is-the-finding-about-the-world-or-about-a-linear-model)
-confirms would be unchanged if you dropped in something far better.
+The model is weak, and that belongs up front, not in a footnote. Guessing an
+hour's pollution from a week-old weather forecast is hard. What is worth looking
+at is the machinery around the model.
 
 ## The loop
 
@@ -75,7 +82,7 @@ One run a week, four steps:
 |---|---|---|
 | **1. Mark its homework** | check the last 14 days of forecasts against the PM2.5 recorded for those days | a model's estimate, not a station ([why](docs/methodology.md#the-prediction-task)) |
 | **2. Look for trouble, two ways** | has the weather stopped looking like what the model learned from, and separately, is the model's error rising? | two signals, on purpose |
-| **3. Train a rival** | error is 1.25× what it used to be, so train a fresh model on the last 180 days | only if step 2 says so |
+| **3. Train a rival** | error is 1.25× what it used to be, or the model has fallen 50% behind a plain daily profile, so train a fresh model on the last 180 days | only if step 2 says so |
 | **4. Make it earn the job** | both sit the same exam, a week of air neither has seen | the newcomer wins by 5% or it is thrown away |
 
 Why two signals and not one? The first watches only the weather coming in, so it
@@ -91,68 +98,74 @@ that stops before the exam, the incumbent was trained long before it, and both
 are marked on the same unseen week. Details in
 [methodology.md](docs/methodology.md).
 
-## Five fixes, and why four of them fail
-
-Each failure named the next thing to try, so five fixes were built. Every one was
-replayed across all six cities against the shipped loop, week by week, with
-intervals.
-
-| the fix | what it changes | what it did |
-|---|---|---|
-| a second retrain trigger | when the loop notices | helps the one deaf city, nothing elsewhere |
-| a longer exam | how much evidence one exam has | nothing measurable anywhere |
-| a re-certification schedule | how often the exam is sat | bounds staleness, buys no accuracy |
-| a confidence-aware gate | how hard one exam is to pass | **actively harmful** |
-| rollback | whether the result can be undone | no harm, and no proof of benefit |
-
-The trigger that helps fires when skill against a plain 30-day daily profile
-drops below a floor, which nothing about promoting a model can move. Set high
-enough, it wakes Kraków too: at `skill < 0` the longest silence there falls from
-30<!--fig:floor.krakow.off.silence--> weeks to 5<!--fig:floor.krakow.+0.00.silence-->. It then costs Kraków accuracy in the weeks it
-acts, clearest at `skill < −0.25`: **−24.0% [−39.4, −5.5]**<!--fig:floor.krakow.-0.25.acted-->. Only the
-cautious `skill < −0.5` harms no city here. It still ships switched off, and
-whether it should is open ([D1](docs/DECISIONS.md)).
-
-The other four fail for the reason finding 4 gives. Underneath all five is one
-measurement limit: Los Angeles's single promotion was rolled back when re-judged
-at 14 days and kept when re-judged at 21 or 28 — the same decision, three
-windows, opposite answers. A fortnight of hourly air cannot resolve the
-difference the loop is asking about. The workings are in
-[evaluation.md](docs/evaluation.md), and what was decided on top of them in
-[DECISIONS.md](docs/DECISIONS.md).
-
 ## Six cities that disagree
 
 Each city trains a model on a clean season, then runs week by week into the
 season that ruins it. Every setting is identical across all six, so where two
 cities behave differently, it is their air that differs and not their tuning.
 
-| | how bad it gets (µg/m³) | weeks | retrains | shipped | across the replay | week by week |
-|---|---|---|---|---|---|---|
-| **Delhi** | 42 → 127, crop burning after the monsoon | 39<!--fig:delhi.weeks--> | 9<!--fig:delhi.retrains--> | 8<!--fig:delhi.promotions--> | +43.7% [+29, +64]<!--fig:delhi.replay--> | **+49.4% [+34, +62]**<!--fig:delhi.acted--> |
-| **Santiago** | 18 → 94, winter smog trapped in a bowl | 21<!--fig:santiago.weeks--> | 13<!--fig:santiago.retrains--> | 7<!--fig:santiago.promotions--> | +16.8% [−0, +42]<!--fig:santiago.replay--> | **+17.3% [+9, +37]**<!--fig:santiago.acted--> |
-| **Kraków** | 8 → 57, coal heating in a valley | 48<!--fig:krakow.weeks--> | 14<!--fig:krakow.retrains--> | 7<!--fig:krakow.promotions--> | +0.2% [−57, +36]<!--fig:krakow.replay--> | +6.5% [−15, +28]<!--fig:krakow.acted--> |
-| **Johannesburg** | 23 → 87, winter coal smoke | 19<!--fig:joburg.weeks--> | 11<!--fig:joburg.retrains--> | 3<!--fig:joburg.promotions--> | −0.0% [−0, +21]<!--fig:joburg.replay--> | **+14.9% [+9, +21]**<!--fig:joburg.acted--> |
-| **Melbourne** | 5 → 15, winter wood heaters | 30<!--fig:melbourne.weeks--> | 8<!--fig:melbourne.retrains--> | 4<!--fig:melbourne.promotions--> | +0.1% [−3, +7]<!--fig:melbourne.replay--> | +1.2% [−1, +3]<!--fig:melbourne.acted--> |
-| **Los Angeles** | 15 → 29, a mild winter bump | 36<!--fig:la.weeks--> | 1<!--fig:la.retrains--> | 1<!--fig:la.promotions--> | −7.9% [−29, +0]<!--fig:la.replay--> | **−13.4% [−37, −4]**<!--fig:la.acted--> |
+| | how bad it gets (µg/m³) | weeks | retrains | shipped | across the replay | week by week | week by week, as first published |
+|---|---|---|---|---|---|---|---|
+| **Delhi** | 42 → 127, crop burning after the monsoon | 39<!--fig:delhi.weeks--> | 8<!--fig:delhi.retrains--> | 6<!--fig:delhi.promotions--> | +17.9% [+9.7, +42.5]<!--fig:delhi.replay--> | **+22.8% [+11.8, +36.4]**<!--fig:delhi.acted--> | +49.4% [+33.7, +61.8]<!--fig:first.delhi.acted--> |
+| **Santiago** | 18 → 94, winter smog trapped in a bowl | 21<!--fig:santiago.weeks--> | 13<!--fig:santiago.retrains--> | 7<!--fig:santiago.promotions--> | +16.9% [+0.0, +42.5]<!--fig:santiago.replay--> | **+17.5% [+8.6, +37.2]**<!--fig:santiago.acted--> | +17.3% [+9.0, +37.0]<!--fig:first.santiago.acted--> |
+| **Johannesburg** | 23 → 87, winter coal smoke | 19<!--fig:joburg.weeks--> | 12<!--fig:joburg.retrains--> | 3<!--fig:joburg.promotions--> | +0.0% [−0.0, +14.2]<!--fig:joburg.replay--> | **+9.7% [+4.6, +14.0]**<!--fig:joburg.acted--> | +14.9% [+8.7, +21.4]<!--fig:first.joburg.acted--> |
+| **Melbourne** | 5 → 15, winter wood heaters | 30<!--fig:melbourne.weeks--> | 9<!--fig:melbourne.retrains--> | 4<!--fig:melbourne.promotions--> | +0.9% [−2.8, +9.2]<!--fig:melbourne.replay--> | **+5.6% [+2.0, +6.6]**<!--fig:melbourne.acted--> | +1.2% [−0.6, +3.0]<!--fig:first.melbourne.acted--> |
+| **Kraków** | 8 → 57, coal heating in a valley | 48<!--fig:krakow.weeks--> | 21<!--fig:krakow.retrains--> | 7<!--fig:krakow.promotions--> | −0.2% [−57.0, +35.0]<!--fig:krakow.replay--> | +5.7% [−14.8, +26.8]<!--fig:krakow.acted--> | +6.5% [−15.3, +27.5]<!--fig:first.krakow.acted--> |
+| **Los Angeles** | 15 → 29, a mild winter bump | 36<!--fig:la.weeks--> | 7<!--fig:la.retrains--> | 5<!--fig:la.promotions--> | −3.0% [−27.0, +6.2]<!--fig:la.replay--> | −3.5% [−25.6, +3.0]<!--fig:la.acted--> | −13.4% [−36.9, −3.8]<!--fig:first.la.acted--> |
 
-Bold where the interval excludes zero. The two columns disagree, and the second
-is the one to trust: "across the replay" compares median error against never
-retraining without holding the week fixed, so where both are dominated by the
-same seasonal swing it mostly measures the season. "Week by week" compares the
-two models on the same window, over the weeks a retrained model was serving.
+Bold where the interval excludes zero. "Across the replay" and "week by week"
+disagree, and the second is the one to trust: the first compares median error
+against never retraining without holding the week fixed, so where both are
+dominated by the same seasonal swing it mostly measures the season. "Week by
+week" compares the two models on the same window, over the weeks a retrained
+model was serving.
+
+The last column is what this table said until 2026-11-10, under the loop as it
+first shipped: a default regularisation setting and one retrain alarm. The two
+columns are not a before and after of the same model, and Melbourne shows why
+that matters. Each premium is measured against that configuration's own first
+model, so a first model that generalises worse raises the premium without the
+loop serving better forecasts.
 
 The intervals are wide because a long replay of a persistent process is far less
 informative than its length suggests. Kraków's 47<!--fig:krakow.acted.n--> weekly comparisons
-carry about 5.5<!--fig:krakow.acted.n_eff--> independent observations, and Los Angeles's
-35<!--fig:la.acted.n--> about 2.9<!--fig:la.acted.n_eff-->.
+carry about 5.4<!--fig:krakow.acted.n_eff--> independent observations, and Los Angeles's
+35<!--fig:la.acted.n--> about 3.3<!--fig:la.acted.n_eff-->.
 
-[evaluation.md](docs/evaluation.md) has the city-by-city detail, the model against
-four "do nothing clever" baselines, the gate calibration in full, and a
-controlled experiment showing that each alarm responds to its own cause and
-ignores the other. How the headline got here, including the full year of data
-that reversed its sign and the ablation that cut it to a fifth, is in
-[HISTORY.md](docs/HISTORY.md).
+## Five fixes, and why four of them fail
+
+Each failure named the next thing to try, so five fixes were built. Every one was
+replayed across all six cities against the loop as it first shipped, week by
+week, with intervals. One was kept. The other four have not been re-run on the
+loop as it ships now.
+
+| the fix | what it changes | what it did |
+|---|---|---|
+| a second retrain alarm | when the loop notices | helps the one deaf city, nothing elsewhere: **kept** |
+| a longer exam | how much evidence one exam has | nothing measurable anywhere |
+| a re-certification schedule | how often the exam is sat | bounds staleness, buys no accuracy |
+| a confidence-aware gate | how hard one exam is to pass | **actively harmful** |
+| rollback | whether the result can be undone | no harm, and no proof of benefit |
+
+The alarm that was kept fires when the model falls too far behind a plain 30-day
+daily profile, which nothing about promoting a model can move. How far is the
+whole question. Set to fire as soon as the model is merely worse than the
+profile, it wakes Kraków, whose longest silence falls from
+30<!--fig:floor.krakow.off.silence--> weeks to 5<!--fig:floor.krakow.+0.00.silence-->, and then costs it
+accuracy in the weeks it acts, clearest one notch down:
+**−24.0% [−39.4, −5.5]**<!--fig:floor.krakow.-0.25.acted-->. Only the cautious setting, 50% behind
+the profile, harmed no city in that sweep. It changed nothing in five and
+improved Los Angeles by **+11.8% [+2.1, +17.2]**<!--fig:floor.la.-0.50.acted--> over the
+25<!--fig:floor.la.-0.50.differing--> weeks it acted. That is the setting that now ships
+([D1](docs/DECISIONS.md)).
+
+The other four fail for the reason finding 5 gives. Underneath all of them is one
+measurement limit: Los Angeles's single promotion under the first loop was rolled
+back when re-judged at 14 days and kept when re-judged at 21 or 28 — the same
+decision, three windows, opposite answers. A fortnight of hourly air cannot
+resolve the difference the loop is asking about. The workings are in
+[evaluation.md](docs/evaluation.md), and what was decided on top of them in
+[DECISIONS.md](docs/DECISIONS.md).
 
 ## Serving the champion
 
@@ -168,7 +181,7 @@ docker build -t drift-serve --build-arg CITY=delhi .
 docker run -p 8000:8000 drift-serve
 ```
 
-Kraków serves the model left standing after 14 retrains, and `/model` reports the
+Kraków serves the model left standing after 21 retrains, and `/model` reports the
 window it was trained on, so you can see how stale the model answering you is.
 
 Nothing polls, and nothing calls `/reload` for you: a new model is picked up when
@@ -226,12 +239,12 @@ tests/            data contract, drift math, no-leak guards, baseline fairness,
 - **[evaluation.md](docs/evaluation.md)** — whether it works: per-city results,
   the baselines, the controlled experiment, and the limitations.
 - **[DECISIONS.md](docs/DECISIONS.md)** — the calls made on top of the findings,
-  with the evidence and the date. Two are open: whether the skill floor should
-  still ship switched off now that the evidence has reversed (D1), and whether
-  the shipped `alpha` should stay a library default (D5).
+  with the evidence and the date. The two that stood open from August were taken
+  on 2026-11-10: the second retrain alarm ships switched on (D1), and the loop
+  chooses its own regularisation at every fit (D5).
 - **[HISTORY.md](docs/HISTORY.md)** — how every number above changed, and what
   the correction was each time. The first headline was measured four flattering
-  ways at once, and the claim ended at about a fifth of where it started.
+  ways at once, and the claim ended at under half of where it started.
 - **[stats.py](src/driftloop/stats.py)** — how much to believe it: why the weekly
   windows are not independent observations, why that needs a block bootstrap
   rather than an ordinary one, and the two places the bootstrap has to admit it

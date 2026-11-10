@@ -18,6 +18,11 @@ from pathlib import Path
 
 from driftloop import figures
 
+# The findings quote "−" and city names carry accents, neither of which cp1252
+# can encode: without this the list of contradictions dies on its first minus.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
 

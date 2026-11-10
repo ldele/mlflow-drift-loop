@@ -6,11 +6,32 @@ top of them, which are a different kind of thing and were previously mixed in.
 
 ---
 
-## D1. The skill floor stays switched off, and the evidence now argues the other way
+## D1. The skill floor ships switched on, at −0.5
 
-**Date:** 2026-08-11
-**Status:** open, and left that way by whoever wrote this
-**Affects:** `LoopConfig.skill_floor`, currently `None`
+**Date:** 2026-08-11, decided 2026-11-10
+**Status:** decided: on, at `skill < −0.5`. Open for three months before that, and
+the reasoning below is kept as it was written while it was.
+**Affects:** `LoopConfig.skill_floor`, set to −0.5 by `config.SHIPPED` in all six
+city profiles and the live schedule. A bare `LoopConfig` still has it off.
+
+### Decided 2026-11-10
+
+**Switched on, by the project's owner, together with D5.** The entry below ends
+by saying that flipping a shipped default belongs to whoever owns the project.
+This is that call.
+
+What it was taken on. The sweep: at −0.5 five cities are unchanged to the last
+digit and Los Angeles improves by +11.8% [+2.1, +17.2]<!--fig:floor.la.-0.50.acted--> over the weeks
+the floor acted. The side-by-side replay: with the floor on and the penalty
+tuned, the longest stretch in which the loop could not fire falls from
+35<!--fig:rebaseline.la.shipped.silence--> weeks to 16<!--fig:rebaseline.la.fixed.silence--> in Los Angeles and from
+30<!--fig:rebaseline.krakow.shipped.silence--> to 22<!--fig:rebaseline.krakow.fixed.silence--> in Kraków.
+
+What it was not taken on. "What would settle it", below, asks for a seventh and
+an eighth city chosen before the floor is swept on them. They were never run. The
+floor ships on six cities picked for contrast, one helped and five untouched, and
+that gap is listed in [evaluation.md](evaluation.md#limitations). A city harmed at
+−0.5 is the evidence that would reverse this.
 
 ### The choice
 
@@ -35,7 +56,7 @@ At the cautious floor, `skill < −0.5`:
 
 - Five cities are **bit-identical** to the trigger left alone. Not close, the
   same error every week.
-- Los Angeles acts in 25<!--fig:floor.la.-0.50.differing--> of 35<!--fig:la.acted.n--> weeks and improves by **+11.78% [+2.09, +17.17]**<!--fig:floor.la.-0.50.acted-->.
+- Los Angeles acts in 25<!--fig:floor.la.-0.50.differing--> of 35<!--fig:first.la.acted.n--> weeks and improves by **+11.78% [+2.09, +17.17]**<!--fig:floor.la.-0.50.acted-->.
 
 Los Angeles is the city the ratchet leaves deafest, silent for 35 of 36 runs, and
 the one where retraining otherwise measurably hurts.
@@ -76,7 +97,7 @@ decision's weight further toward the resolution below: two cities chosen before
 the floor is swept on them settle it in a way that re-reading the same eighteen
 arms cannot.
 
-### Decision
+### Decision, as it stood until 2026-11-10
 
 **No change.** The default stays `None`, the knob stays in the code, and the
 evidence for turning it on is written down where the next person will find it.
@@ -344,11 +365,32 @@ loop, which is a fair conclusion for a project about a loop to reach.
 
 ---
 
-## D5. The shipped alpha is a library default that costs accuracy and inflates a headline
+## D5. The loop chooses its own alpha at every fit
 
-**Date:** 2026-08-14
-**Status:** open, and left that way by whoever wrote this
-**Affects:** the `alpha=1.0` default in `model.build_pipeline` and `model.train`
+**Date:** 2026-08-14, decided 2026-11-10
+**Status:** decided: tuned per fit. Open for three months before that, and the
+reasoning below is kept as it was written while it was.
+**Affects:** `LoopConfig.tune_alpha`, set by `config.SHIPPED` in all six city
+profiles and the live schedule. `alpha=1.0` remains what a bare `LoopConfig` fits
+at, and the ablation and the five mechanism sweeps pin it (`config.FIRST_SHIPPED`)
+so that each still reproduces its own published table.
+
+### Decided 2026-11-10
+
+**Tuned at every fit, by the project's owner, together with D1.** "What would
+settle it", below, asks what the six-city table is for. The answer taken is the
+second one: it is read as a measurement of what retraining is worth, so it is
+measured on a model whose setting somebody chose.
+
+What changed. Every city was replayed under the new configuration, and the
+headline moved as the side-by-side run of 2026-09-22 said it would: Delhi from
++49.4% [+33.7, +61.8]<!--fig:first.delhi.acted--> to +22.8% [+11.8, +36.4]<!--fig:delhi.acted-->, Los Angeles from
+−13.4% [−36.9, −3.8]<!--fig:first.la.acted--> to −3.5% [−25.6, +3.0]<!--fig:la.acted-->. The earlier figures stay on
+the pages beside the new ones.
+
+What was not re-measured. The ablation and the five mechanism sweeps describe the
+loop as first shipped. Re-running them on the tuned loop is a separate piece of
+work, and until it is done their verdicts are about the first loop.
 
 ### The choice
 
@@ -403,7 +445,7 @@ And the honest framing does not require the change. What the ablation
 establishes is *reported*: the premium is decomposed, the default is named as
 the largest term, and the surviving effect is stated at +9.7%.
 
-### Decision
+### Decision, as it stood until 2026-11-10
 
 **No change, and this one is genuinely open.** The default stays at 1.0 and the
 cost of that is now written down in three places rather than implied by a flat

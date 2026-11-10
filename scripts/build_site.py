@@ -647,10 +647,49 @@ def sweep_block() -> dict | None:
 
 
 ABLATION_LABEL = {
-    "ridge": "Ridge, as shipped",
+    "ridge": "Ridge, as first shipped",
     "ridge_tuned": "Ridge, tuned",
     "gbm_tuned": "Gradient boosting, tuned",
 }
+
+
+def _rebaseline_premiums(arm: str) -> dict[str, float]:
+    """Each city's premium under one arm of the committed re-baseline."""
+    path = REPO_ROOT / "outputs" / "rebaseline.csv"
+    if not path.exists():
+        return {}
+    rows = pd.read_csv(path)
+    rows = rows[rows["arm"] == arm]
+    return dict(zip(rows["city"], rows["premium"].astype(float), strict=True))
+
+
+def first_shipped_premiums() -> dict[str, float]:
+    """Each city's premium under the loop as first shipped, from the re-baseline."""
+    return _rebaseline_premiums("shipped")
+
+
+def rebaseline_check(profiles: list[dict]) -> list[dict]:
+    """Does this build still measure what the committed re-baseline says the loop does?
+
+    `outputs/rebaseline.csv` is what the docs quote for the old loop against the
+    new, and it is a snapshot. Its `fixed` arm is the configuration every profile
+    now ships, so the premium this build just measured for a city has to match
+    it; where it does not, the loop has moved and the snapshot wants re-running.
+    """
+    fixed = _rebaseline_premiums("fixed")
+    out = []
+    for p in profiles:
+        live = (p.get("stats") or {}).get("retrain_acted")
+        snap = fixed.get(p["label"])
+        if live is None or snap is None:
+            continue
+        out.append({
+            "city": p["label"],
+            "rebaseline": round(snap, 1),
+            "page": round(float(live), 1),
+            "passed": abs(round(snap, 1) - round(float(live), 1)) <= 0.1,
+        })
+    return out
 
 
 def ablation_block(profiles: list[dict]) -> dict | None:
@@ -707,13 +746,12 @@ def ablation_block(profiles: list[dict]) -> dict | None:
                 "weeks": row["shared_weeks"],
             }
 
-    # What this build measured for the same cities, to check the snapshot
-    # against. Rounded to one decimal because that is the precision the rest of
-    # the page publishes, so anything closer than that is not a disagreement.
-    published = {
-        p["label"]: (p.get("stats") or {}).get("retrain_acted")
-        for p in profiles
-    }
+    # What the untouched arm has to reproduce. The ablation ran on the loop as it
+    # first shipped, and the profiles have since taken the tuned penalty and the
+    # skill floor, so today's page is no longer the right comparison: the
+    # re-baseline's own first-shipped arm is, replayed by a different script over
+    # the same windows. Rounded to one decimal, the precision the page publishes.
+    published = first_shipped_premiums()
 
     cities = []
     for city, rows in df.groupby("city", sort=False):
@@ -725,8 +763,8 @@ def ablation_block(profiles: list[dict]) -> dict | None:
         # just the verdict -- it is 0.20 µg/m³ in Delhi and 0.02 in Los Angeles,
         # and a check that passes by 0.02 should look like one on the page.
         margin = float(by_kind["ridge_tuned"]["median_rmse"] - by_kind["gbm_tuned"]["median_rmse"])
-        # Check two: the untouched arm still reproduces what this build just
-        # published for the same city, or the snapshot has gone stale.
+        # Check two: the untouched arm still reproduces the first-shipped premium
+        # the re-baseline measured for the same city, or one snapshot has gone stale.
         shipped = round(float(by_kind["ridge"]["premium"]), 1)
         live = published.get(city)
         faithful = None if live is None else {
@@ -829,6 +867,7 @@ def method_block() -> dict:
             "perf_drift_threshold": cfg.perf_drift_threshold,
             "psi_threshold": cfg.psi_threshold,
             "promotion_margin": cfg.promotion_margin,
+            "skill_floor": cfg.skill_floor,
         }
 
     located = [PROFILES[k].location for k in DISPLAY_ORDER if PROFILES[k].location]
@@ -847,6 +886,8 @@ def method_block() -> dict:
     return {
         "estimator": " → ".join(type(step).__name__ for _, step in pipeline.steps),
         "alpha": float(pipeline.named_steps["ridge"].alpha),
+        # Where the loop picks the penalty at each fit there is no one value to print.
+        "alpha_tuned": bool(shown[0].tune_alpha),
         "features": list(FEATURES),
         # The subset PSI is computed over, and the subset the charts colour.
         # Split out so the page cannot invent a drift series for a feature the
@@ -885,6 +926,7 @@ def build() -> Path:
         "sweep": sweep_block(),
         "guides": guides_block(),
         "ablation": ablation_block(profiles),
+        "rebaseline_check": rebaseline_check(profiles),
         "schedule": schedule_block(),
         "profiles": profiles,
     }

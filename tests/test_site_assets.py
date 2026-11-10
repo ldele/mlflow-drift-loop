@@ -166,8 +166,9 @@ def test_the_committed_ablation_still_matches_the_loop_it_describes() -> None:
     rather than re-running it. Change a loop threshold and every other number on
     the page moves while these do not.
 
-    ``build_site`` re-derives the untouched Ridge arm's premium and compares it
-    against the premium it measured for the same city on the same run; the page
+    The ablation ran on the loop as it first shipped. ``build_site`` compares its
+    untouched Ridge arm against the first-shipped premium the re-baseline measured
+    for the same city, a second script replaying the same windows; the page
     refuses to draw the charts where they disagree. This fails the build instead,
     so the disagreement is caught before it is published rather than after.
     """
@@ -216,3 +217,29 @@ def test_every_chart_carries_a_reading() -> None:
             f"{page}: {n_calls} charts, {n_guided} with a guide. "
             "Every chartCard call needs a `guide:` in its options object."
         )
+
+
+def test_the_page_still_measures_what_the_committed_rebaseline_says() -> None:
+    """The loop the page replays is the one the docs' side-by-side table describes.
+
+    ``outputs/rebaseline.csv`` is committed, and its `fixed` arm is the
+    configuration every profile ships. The docs quote it for the old loop against
+    the new, so a change to the loop that moves the page's premiums has to move
+    that file too. ``build_site`` records both for every city.
+    """
+    import json
+
+    payload = SITE / "data.json"
+    if not payload.is_file():
+        pytest.skip("site/data.json not built")
+
+    checks = json.loads(payload.read_text(encoding="utf-8")).get("rebaseline_check")
+    if not checks:
+        pytest.skip("outputs/rebaseline.csv not built")
+
+    stale = [
+        f"{c['city']}: rebaseline says {c['rebaseline']:+.1f}%, the page says {c['page']:+.1f}%"
+        for c in checks
+        if not c["passed"]
+    ]
+    assert not stale, "re-run scripts/rebaseline.py -- " + "; ".join(stale)

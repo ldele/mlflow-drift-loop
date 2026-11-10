@@ -1,0 +1,346 @@
+{
+  "generated_from": "committed MLflow backends + data_cache parquet",
+  "seed": 20260811,
+  "resamples": 10000,
+  "alpha": 0.05,
+  "cities": [
+    {
+      "key": "openmeteo_delhi",
+      "label": "Delhi",
+      "weeks": 39,
+      "retrains": 9,
+      "promotions": 8,
+      "calibrated": 8,
+      "acted_windows": 38,
+      "point": {
+        "across_replay": 43.71951169585564,
+        "when_it_acted": 49.35073214649171,
+        "win_rate": 92.10526315789474
+      },
+      "interval": {
+        "across_replay": {
+          "point": 43.71951169585564,
+          "lo": 28.68065000456028,
+          "hi": 64.24212320257485,
+          "n": 39,
+          "n_effective": 10.4,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": true
+        },
+        "when_it_acted": {
+          "point": 49.35073214649171,
+          "lo": 33.73775030331881,
+          "hi": 61.806661621533365,
+          "n": 38,
+          "n_effective": 10.4,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": true
+        },
+        "win_rate": {
+          "point": 92.10526315789474,
+          "lo": 81.57894736842105,
+          "hi": 100.0,
+          "n": 38,
+          "n_effective": 10.4,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": true
+        }
+      }
+    },
+    {
+      "key": "openmeteo_santiago",
+      "label": "Santiago",
+      "weeks": 21,
+      "retrains": 13,
+      "promotions": 7,
+      "calibrated": 7,
+      "acted_windows": 16,
+      "point": {
+        "across_replay": 16.831993906187027,
+        "when_it_acted": 17.32362818550195,
+        "win_rate": 100.0
+      },
+      "interval": {
+        "across_replay": {
+          "point": 16.831993906187027,
+          "lo": -0.0001935835990396484,
+          "hi": 42.48812939129891,
+          "n": 21,
+          "n_effective": 1.7,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": false
+        },
+        "when_it_acted": {
+          "point": 17.32362818550195,
+          "lo": 8.976053486883096,
+          "hi": 37.049988765508246,
+          "n": 16,
+          "n_effective": 2.3,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": true
+        },
+        "win_rate": {
+          "point": 100.0,
+          "lo": 100.0,
+          "hi": 100.0,
+          "n": 16,
+          "n_effective": 2.3,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": true
+        }
+      }
+    },
+    {
+      "key": "openmeteo",
+      "label": "Krak\u00f3w",
+      "weeks": 48,
+      "retrains": 14,
+      "promotions": 7,
+      "calibrated": 7,
+      "acted_windows": 47,
+      "point": {
+        "across_replay": 0.1781404835646927,
+        "when_it_acted": 6.489200196208134,
+        "win_rate": 72.3404255319149
+      },
+      "interval": {
+        "across_replay": {
+          "point": 0.1781404835646927,
+          "lo": -57.156432683744704,
+          "hi": 35.54608845835402,
+          "n": 48,
+          "n_effective": 5.4,
+          "block_length": 4,
+          "resamples": 10000,
+          "excludes_zero": false
+        },
+        "when_it_acted": {
+          "point": 6.489200196208134,
+          "lo": -15.273551187812373,
+          "hi": 27.51927934031858,
+          "n": 47,
+          "n_effective": 5.5,
+          "block_length": 4,
+          "resamples": 10000,
+          "excludes_zero": false
+        },
+        "win_rate": {
+          "point": 72.3404255319149,
+          "lo": 48.93617021276596,
+          "hi": 93.61702127659575,
+          "n": 47,
+          "n_effective": 5.5,
+          "block_length": 4,
+          "resamples": 10000,
+          "excludes_zero": true
+        }
+      }
+    },
+    {
+      "key": "openmeteo_joburg",
+      "label": "Johannesburg",
+      "weeks": 19,
+      "retrains": 11,
+      "promotions": 3,
+      "calibrated": 2,
+      "acted_windows": 6,
+      "point": {
+        "across_replay": -6.549031392744098e-05,
+        "when_it_acted": 14.918097849276979,
+        "win_rate": 100.0
+      },
+      "interval": {
+        "across_replay": {
+          "point": -6.549031392744098e-05,
+          "lo": -6.549031392744098e-05,
+          "hi": 21.277689819788748,
+          "n": 19,
+          "n_effective": 5.7,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": false
+        },
+        "when_it_acted": {
+          "point": 14.918097849276979,
+          "lo": 8.67638615529942,
+          "hi": 21.42971563614411,
+          "n": 6,
+          "n_effective": 5.1,
+          "block_length": 2,
+          "resamples": 10000,
+          "excludes_zero": true
+        },
+        "win_rate": {
+          "point": 100.0,
+          "lo": 100.0,
+          "hi": 100.0,
+          "n": 6,
+          "n_effective": 5.1,
+          "block_length": 2,
+          "resamples": 10000,
+          "excludes_zero": true
+        }
+      }
+    },
+    {
+      "key": "openmeteo_melbourne",
+      "label": "Melbourne",
+      "weeks": 30,
+      "retrains": 8,
+      "promotions": 4,
+      "calibrated": 3,
+      "acted_windows": 27,
+      "point": {
+        "across_replay": 0.1225823262186343,
+        "when_it_acted": 1.2176408071504663,
+        "win_rate": 70.37037037037037
+      },
+      "interval": {
+        "across_replay": {
+          "point": 0.1225823262186343,
+          "lo": -3.0862982017208607,
+          "hi": 6.54505407571394,
+          "n": 30,
+          "n_effective": 8.7,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": false
+        },
+        "when_it_acted": {
+          "point": 1.2176408071504663,
+          "lo": -0.6022336879815127,
+          "hi": 3.0413691215009364,
+          "n": 27,
+          "n_effective": 7.9,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": false
+        },
+        "win_rate": {
+          "point": 70.37037037037037,
+          "lo": 48.148148148148145,
+          "hi": 85.18518518518519,
+          "n": 27,
+          "n_effective": 7.9,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": true
+        }
+      }
+    },
+    {
+      "key": "openmeteo_la",
+      "label": "Los Angeles",
+      "weeks": 36,
+      "retrains": 1,
+      "promotions": 1,
+      "calibrated": 1,
+      "acted_windows": 35,
+      "point": {
+        "across_replay": -7.862449067892507,
+        "when_it_acted": -13.356274809024104,
+        "win_rate": 28.57142857142857
+      },
+      "interval": {
+        "across_replay": {
+          "point": -7.862449067892507,
+          "lo": -29.066898009082767,
+          "hi": 0.4202993315228887,
+          "n": 36,
+          "n_effective": 3.6,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": false
+        },
+        "when_it_acted": {
+          "point": -13.356274809024104,
+          "lo": -36.87817298010459,
+          "hi": -3.8143659763939297,
+          "n": 35,
+          "n_effective": 2.9,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": true
+        },
+        "win_rate": {
+          "point": 28.57142857142857,
+          "lo": 11.428571428571429,
+          "hi": 48.57142857142857,
+          "n": 35,
+          "n_effective": 2.9,
+          "block_length": 3,
+          "resamples": 10000,
+          "excludes_zero": true
+        }
+      }
+    }
+  ],
+  "gate": {
+    "summary": {
+      "short": {
+        "n": 25,
+        "exam": 0.12424556903030283,
+        "delivered": 0.09777895757908722,
+        "harmful": 0
+      },
+      "long": {
+        "n": 3,
+        "exam": 0.14375904919506652,
+        "delivered": -0.06131137972406875,
+        "harmful": 3
+      }
+    },
+    "interval": {
+      "short": {
+        "exam": {
+          "point": 12.424556903030284,
+          "lo": 9.176314919284623,
+          "hi": 16.922983291423012,
+          "n": 25,
+          "n_effective": 29.0,
+          "block_length": 1,
+          "resamples": 10000,
+          "excludes_zero": true
+        },
+        "delivered": {
+          "point": 9.777895757908723,
+          "lo": 6.368564995809984,
+          "hi": 14.040521268640301,
+          "n": 25,
+          "n_effective": 26.4,
+          "block_length": 1,
+          "resamples": 10000,
+          "excludes_zero": true
+        }
+      },
+      "long": {
+        "exam": {
+          "point": 14.375904919506652,
+          "lo": -Infinity,
+          "hi": Infinity,
+          "n": 3,
+          "n_effective": 3.0,
+          "block_length": 0,
+          "resamples": 0,
+          "excludes_zero": false
+        },
+        "delivered": {
+          "point": -6.131137972406876,
+          "lo": -Infinity,
+          "hi": Infinity,
+          "n": 3,
+          "n_effective": 3.0,
+          "block_length": 0,
+          "resamples": 0,
+          "excludes_zero": false
+        }
+      }
+    }
+  }
+}

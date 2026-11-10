@@ -146,7 +146,8 @@
           tracks it” has a duller twin — “a line cannot bend, and refitting is how you fake it”.
           Those predict the same charts. Telling them apart needs a model that <em>can</em> bend,
           tried as hard as the line was, on the same two cities: Delhi, where retraining pays most,
-          and Los Angeles, where it costs.
+          and Los Angeles, where it first appeared to cost. This experiment was run on the loop
+          as it first shipped, and it is the reason the loop was changed.
         </p>
         <div class="charts" id="ablation-charts"></div>
         <p class="why" id="ablation-note"></p>
@@ -180,23 +181,24 @@
             comparison. Because retrains fire in the dirty season, each new model inherits a higher
             bar than the one it replaced, and the bar ratchets upward — a staircase you can watch in
             “when it retrains, and against what bar”. Once it has ratcheted to the seasonal peak the
-            alarm cannot fire again, whatever the model does. Kraków spends its last 30 weeks that
-            way, serving a 210-day-old model while the trigger reports it as healthier than it has
-            ever been.
+            alarm cannot fire again, whatever the model does. Left alone, that silenced Kraków
+            for 30 weeks and Los Angeles for 35 of its 36. So a second alarm now runs beside it:
+            how the model compares with a plain daily profile of recent air, a yardstick that
+            promoting a model cannot move. With both, the longest silences fall to 22 weeks and 16.
+            The staircase is still there; it now has a backstop.
           </p>
           <p class="why">
-            <strong>Five fixes were built, and none of them pays.</strong> Each failure named the
-            next thing to try, and every one was replayed across all six cities against the shipped
-            loop, week by week, with intervals attached. A second alarm — skill against a plain
-            daily profile, a yardstick that promoting a model cannot move — takes Kraków's longest
-            silence from 30 weeks to 5 and helps the one city that had gone deaf, and nothing else;
-            it is built, and still ships switched off. A longer exam does nothing measurable
+            <strong>Five fixes were built, and one was kept.</strong> Each failure named the
+            next thing to try, and every one was replayed across all six cities against the loop as
+            it first shipped, week by week, with intervals attached. The second alarm above is the
+            one that stayed: at its cautious setting it changed nothing in five cities and helped
+            the one that had gone deaf. A longer exam does nothing measurable
             anywhere. Re-examining the model on a schedule bounds how stale it can get and buys no
             accuracy. Making the exam harder to pass is <em>worse</em> than leaving it alone.
             Letting the loop undo a promotion does no harm and proves nothing.
           </p>
           <p class="why">
-            <strong>They fail for one reason, and it took all five to see it.</strong> The loop
+            <strong>The other four fail for one reason, and it took all five to see it.</strong> The loop
             keeps training rivals and holding exams until one passes, so whichever model gets the
             job is the one that got lucky on the day. Making the exam harder does not mean fewer
             bad hires; it means more attempts, and a winner that got luckier still. Nothing about

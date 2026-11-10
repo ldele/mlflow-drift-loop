@@ -57,7 +57,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from driftloop import retrospect, stats, tracking
 from driftloop.config import CITY_CLI_NAMES as CITIES
-from driftloop.config import PROFILES, Profile
+from driftloop.config import FIRST_SHIPPED, PROFILES, Profile
 from driftloop.data import OpenMeteoSource
 from driftloop.loop import bootstrap_champion, run_simulation
 from driftloop.benchmark import tune_alpha, tune_gbm
@@ -100,18 +100,23 @@ def run_arm(profile: Profile, source: OpenMeteoSource, kind: str,
             params: dict | None = None, label: str | None = None, **overrides) -> dict:
     """One full replay with one model class, scored the way the published numbers are.
 
-    ``overrides`` sets any other ``LoopConfig`` field for this arm. It is how
-    `scripts/rebaseline.py` replays these cities with `tune_alpha` and the skill
-    floor switched on. The ablation passes none, so its own arms are unchanged.
+    Every arm starts from the loop as it first shipped (`FIRST_SHIPPED`), which is
+    the loop this ablation was designed against. ``overrides`` sets any other
+    ``LoopConfig`` field on top: it is how `scripts/rebaseline.py` replays these
+    cities with `tune_alpha` and the skill floor switched on. The ablation passes
+    none, so its own arms are unchanged by what the profiles ship today.
     """
     label = label or kind
     cfg = replace(
         profile.loop,
-        model_kind=kind,
-        model_params=params,
-        experiment_name=f"ablate-{label}",
-        registered_model_name=f"{profile.loop.registered_model_name}-{label}",
-        **overrides,
+        **{
+            **FIRST_SHIPPED,
+            "model_kind": kind,
+            "model_params": params,
+            "experiment_name": f"ablate-{label}",
+            "registered_model_name": f"{profile.loop.registered_model_name}-{label}",
+            **overrides,
+        },
     )
     db = f"mlflow_ablate_{profile.key}_{label}.db"
 

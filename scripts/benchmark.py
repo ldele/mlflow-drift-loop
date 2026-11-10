@@ -22,7 +22,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from driftloop.benchmark import fit_pooled, predictor_columns, score_windows, tune_alpha
+from driftloop.benchmark import (
+    ALPHA_GRID,
+    LOOP_ALPHA_GRID,
+    fit_pooled,
+    predictor_columns,
+    score_windows,
+    tune_alpha,
+)
 from driftloop.config import CITY_CLI_NAMES, PROFILES, Profile
 from driftloop.data import OpenMeteoSource
 
@@ -76,19 +83,26 @@ def benchmark_city(profile: Profile, pooled=None) -> dict | None:
     windows = [(stamp - offset, stamp) for stamp in sim["as_of"]]
 
     lead = location.forecast_lead_days
+    # Over the grid the loop itself tunes on where it tunes, so the penalty reported
+    # as best is the one the bootstrap champion was fitted at.
+    sweep = tune_alpha(train, grid=LOOP_ALPHA_GRID if cfg.tune_alpha else ALPHA_GRID)
+    # "Never retrained" has to be the champion the loop really started from, so it
+    # takes the same penalty: the tuned one where the loop tunes, the default where
+    # it does not. Scoring a default-penalty model here would credit retraining
+    # with the gain that tuning the first fit already made.
     columns = predictor_columns(
-        timeline, train, lead_days=lead, pooled=pooled, city=profile.key
+        timeline, train, lead_days=lead, pooled=pooled, city=profile.key,
+        alpha=sweep.best if cfg.tune_alpha else sweep.shipped,
     )
     scored = score_windows(
         columns, windows, served_rmse=sim["champion_rmse"].tolist(), lead_days=lead
     )
-    sweep = tune_alpha(train)
 
     print(f"\n=== {location.name} ===")
     print(f"  train {plan.champion_train_start.date()} -> {plan.champion_train_end.date()}"
           f" ({len(train)} rows) · {len(windows)} monitoring windows of {cfg.monitor_days}d")
-    print(f"  alpha: shipped {sweep.shipped:g}, best {sweep.best:g} on {sweep.n_splits}-fold "
-          f"forward CV (shipped costs {sweep.penalty_pct:+.1f}%)")
+    print(f"  alpha: library default {sweep.shipped:g}, best {sweep.best:g} on "
+          f"{sweep.n_splits}-fold forward CV (the default costs {sweep.penalty_pct:+.1f}%)")
     print(f"\n  {'predictor':<18} {'median RMSE':>12}   notes")
     for s in scored:
         flag = "  [sees past PM2.5]" if s.uses_past_target else ""

@@ -1,4 +1,4 @@
-"""Replay all six cities on the loop as it should have been configured.
+"""Replay all six cities on the loop as first shipped and on the loop as it ships now.
 
     python scripts/rebaseline.py            # all six cities, both arms
     python scripts/rebaseline.py --city la

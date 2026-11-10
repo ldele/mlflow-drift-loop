@@ -3,6 +3,56 @@
 Whether it works, and where it does not. For how it works, see
 [methodology.md](methodology.md).
 
+## The loop as it ships now
+
+Two settings changed on 2026-11-10, and every city was replayed again under them.
+
+- **The model's regularisation strength is chosen at every fit**, by
+  cross-validation that keeps time in order. It had been a library default
+  nobody chose ([D5](DECISIONS.md)).
+- **A second retrain alarm runs beside the first.** It fires when the model falls
+  50% behind a plain daily profile of recent air, a comparison no promotion can
+  reset ([D1](DECISIONS.md)).
+
+What retraining is worth under that loop, week by week against the same first
+model never retrained, with what this page reported before the change beside it:
+
+| | retrains | shipped | across the replay | week by week | week by week, as first shipped |
+|---|---|---|---|---|---|
+| **Delhi** | 8<!--fig:delhi.retrains--> | 6<!--fig:delhi.promotions--> | +17.9% [+9.7, +42.5]<!--fig:delhi.replay--> | **+22.8% [+11.8, +36.4]**<!--fig:delhi.acted--> | +49.4% [+33.7, +61.8]<!--fig:first.delhi.acted--> |
+| **Santiago** | 13<!--fig:santiago.retrains--> | 7<!--fig:santiago.promotions--> | +16.9% [+0.0, +42.5]<!--fig:santiago.replay--> | **+17.5% [+8.6, +37.2]**<!--fig:santiago.acted--> | +17.3% [+9.0, +37.0]<!--fig:first.santiago.acted--> |
+| **Johannesburg** | 12<!--fig:joburg.retrains--> | 3<!--fig:joburg.promotions--> | +0.0% [−0.0, +14.2]<!--fig:joburg.replay--> | **+9.7% [+4.6, +14.0]**<!--fig:joburg.acted--> | +14.9% [+8.7, +21.4]<!--fig:first.joburg.acted--> |
+| **Melbourne** | 9<!--fig:melbourne.retrains--> | 4<!--fig:melbourne.promotions--> | +0.9% [−2.8, +9.2]<!--fig:melbourne.replay--> | **+5.6% [+2.0, +6.6]**<!--fig:melbourne.acted--> | +1.2% [−0.6, +3.0]<!--fig:first.melbourne.acted--> |
+| **Kraków** | 21<!--fig:krakow.retrains--> | 7<!--fig:krakow.promotions--> | −0.2% [−57.0, +35.0]<!--fig:krakow.replay--> | +5.7% [−14.8, +26.8]<!--fig:krakow.acted--> | +6.5% [−15.3, +27.5]<!--fig:first.krakow.acted--> |
+| **Los Angeles** | 7<!--fig:la.retrains--> | 5<!--fig:la.promotions--> | −3.0% [−27.0, +6.2]<!--fig:la.replay--> | −3.5% [−25.6, +3.0]<!--fig:la.acted--> | −13.4% [−36.9, −3.8]<!--fig:first.la.acted--> |
+
+Bold where the interval excludes zero. Four cities show a gain, Kraków and Los
+Angeles show nothing measurable, and no city shows a harm. The replay reproduces
+the `fixed` arm of the [side-by-side run](#the-loop-as-it-ships-now-against-the-loop-as-it-first-shipped)
+to the decimal, which is also where the two configurations are compared in full
+and where Melbourne's move from nothing to a small gain is read with caution.
+
+The promotion exam, re-scored under the same loop: across
+28<!--fig:gate.short.n--> promotions that served under twenty weeks it promised
++12.7% [+10.2, +15.5]<!--fig:gate.short.exam--> and delivered
++8.0% [+5.1, +11.0]<!--fig:gate.short.delivered-->, and 2<!--fig:gate.short.harmful--> of them left
+their city worse off. Under the first loop it was 25<!--fig:first.gate.short.n-->
+promotions and none harmful, so "no short-serving promotion ever hurt" is a
+sentence this page can no longer write. The 2<!--fig:gate.long.n--> models that served
+twenty weeks or more both ended up worse than the model they replaced.
+
+### How to read the rest of this page
+
+**Everything from here to the side-by-side run was measured on the loop as it
+first shipped**, and its figures are that loop's. That covers the city-by-city
+detail, the baselines, the trigger and gate analyses, the five mechanism sweeps
+and the model ablation. It is kept, with every figure still checked against the
+outputs, for two reasons. It is the reasoning that led to the change. And the
+sweeps and the ablation have not been re-run on the loop that ships now, so
+their verdicts are verdicts about the first loop: whether a stricter gate is
+still harmful, or a longer exam still inert, once the model is tuned and a
+second alarm is running is not known.
+
 ## Six cities that disagree
 
 ![All six cities side by side](images/compare.png)
@@ -15,12 +65,12 @@ season that ruins it, and then out the other side.
 
 | | span | PM2.5 swing | model error, start → worst | weeks | retrains | shipped |
 |---|---|---|---|---|---|---|
-| **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 33.4 → 99.0 | 39<!--fig:delhi.weeks--> | 9<!--fig:delhi.retrains--> | 8<!--fig:delhi.promotions--> |
-| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.2 → 68.3 | 21<!--fig:santiago.weeks--> | 13<!--fig:santiago.retrains--> | 7<!--fig:santiago.promotions--> |
-| **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 48<!--fig:krakow.weeks--> | 14<!--fig:krakow.retrains--> | 7<!--fig:krakow.promotions--> |
-| **Johannesburg** | Nov 25 → Jul 26 | 23 → 87, Highveld coal smoke | 12.0 → 82.3 | 19<!--fig:joburg.weeks--> | 11<!--fig:joburg.retrains--> | 3<!--fig:joburg.promotions--> |
-| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.8 → 15.0 | 30<!--fig:melbourne.weeks--> | 8<!--fig:melbourne.retrains--> | 4<!--fig:melbourne.promotions--> |
-| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 16.4 → 20.8 | 36<!--fig:la.weeks--> | 1<!--fig:la.retrains--> | 1<!--fig:la.promotions--> |
+| **Delhi** | May 25 → Jul 26 | 42 → 127, post-monsoon burning | 33.4 → 99.0 | 39<!--fig:first.delhi.weeks--> | 9<!--fig:first.delhi.retrains--> | 8<!--fig:first.delhi.promotions--> |
+| **Santiago** | Oct 25 → Jul 26 | 18 → 94, winter inversion in a basin | 6.2 → 68.3 | 21<!--fig:first.santiago.weeks--> | 13<!--fig:first.santiago.retrains--> | 7<!--fig:first.santiago.promotions--> |
+| **Kraków** | May 25 → Jul 26 | 8 → 57, winter smog in a basin | 5.1 → 54.5 | 48<!--fig:first.krakow.weeks--> | 14<!--fig:first.krakow.retrains--> | 7<!--fig:first.krakow.promotions--> |
+| **Johannesburg** | Nov 25 → Jul 26 | 23 → 87, Highveld coal smoke | 12.0 → 82.3 | 19<!--fig:first.joburg.weeks--> | 11<!--fig:first.joburg.retrains--> | 3<!--fig:first.joburg.promotions--> |
+| **Melbourne** | Sep 25 → Jul 26 | 5 → 15, winter wood heaters | 3.8 → 15.0 | 30<!--fig:first.melbourne.weeks--> | 8<!--fig:first.melbourne.retrains--> | 4<!--fig:first.melbourne.promotions--> |
+| **Los Angeles** | Sep 25 → Jul 26 | 15 → 29, a mild winter bump | 16.4 → 20.8 | 36<!--fig:first.la.weeks--> | 1<!--fig:first.la.retrains--> | 1<!--fig:first.la.promotions--> |
 
 **Retrains and shipped are different numbers, and the gap is the gate doing its
 job.** Johannesburg trains eleven challengers and promotes three; the other eight
@@ -31,12 +81,12 @@ What retraining was worth, with the interval on every figure:
 
 | | across the replay | week by week | won |
 |---|---|---|---|
-| **Delhi** | +43.7% [+28.7, +64.2]<!--fig:delhi.replay--> | **+49.4% [+33.7, +61.8]**<!--fig:delhi.acted--> | 92% [79, 97]<!--fig:delhi.won--> of 38<!--fig:delhi.acted.n--> |
-| **Santiago** | +16.8% [−0.0, +42.5]<!--fig:santiago.replay--> | **+17.3% [+9.0, +37.0]**<!--fig:santiago.acted--> | 100% [81, 100]<!--fig:santiago.won--> of 16<!--fig:santiago.acted.n--> |
-| **Kraków** | +0.2% [−57.2, +35.5]<!--fig:krakow.replay--> | +6.5% [−15.3, +27.5]<!--fig:krakow.acted--> | 72% [58, 83]<!--fig:krakow.won--> of 47<!--fig:krakow.acted.n--> |
-| **Johannesburg** | −0.0% [−0.0, +21.3]<!--fig:joburg.replay--> | **+14.9% [+8.7, +21.4]**<!--fig:joburg.acted--> | 100% [61, 100]<!--fig:joburg.won--> of 6<!--fig:joburg.acted.n--> |
-| **Melbourne** | +0.1% [−3.1, +6.5]<!--fig:melbourne.replay--> | +1.2% [−0.6, +3.0]<!--fig:melbourne.acted--> | 70% [52, 84]<!--fig:melbourne.won--> of 27<!--fig:melbourne.acted.n--> |
-| **Los Angeles** | −7.9% [−29.1, +0.4]<!--fig:la.replay--> | **−13.4% [−36.9, −3.8]**<!--fig:la.acted--> | 29% [16, 45]<!--fig:la.won--> of 35<!--fig:la.acted.n--> |
+| **Delhi** | +43.7% [+28.7, +64.2]<!--fig:first.delhi.replay--> | **+49.4% [+33.7, +61.8]**<!--fig:first.delhi.acted--> | 92% [79, 97]<!--fig:first.delhi.won--> of 38<!--fig:first.delhi.acted.n--> |
+| **Santiago** | +16.8% [−0.0, +42.5]<!--fig:first.santiago.replay--> | **+17.3% [+9.0, +37.0]**<!--fig:first.santiago.acted--> | 100% [81, 100]<!--fig:first.santiago.won--> of 16<!--fig:first.santiago.acted.n--> |
+| **Kraków** | +0.2% [−57.2, +35.5]<!--fig:first.krakow.replay--> | +6.5% [−15.3, +27.5]<!--fig:first.krakow.acted--> | 72% [58, 83]<!--fig:first.krakow.won--> of 47<!--fig:first.krakow.acted.n--> |
+| **Johannesburg** | −0.0% [−0.0, +21.3]<!--fig:first.joburg.replay--> | **+14.9% [+8.7, +21.4]**<!--fig:first.joburg.acted--> | 100% [61, 100]<!--fig:first.joburg.won--> of 6<!--fig:first.joburg.acted.n--> |
+| **Melbourne** | +0.1% [−3.1, +6.5]<!--fig:first.melbourne.replay--> | +1.2% [−0.6, +3.0]<!--fig:first.melbourne.acted--> | 70% [52, 84]<!--fig:first.melbourne.won--> of 27<!--fig:first.melbourne.acted.n--> |
+| **Los Angeles** | −7.9% [−29.1, +0.4]<!--fig:first.la.replay--> | **−13.4% [−36.9, −3.8]**<!--fig:first.la.acted--> | 29% [16, 45]<!--fig:first.la.won--> of 35<!--fig:first.la.acted.n--> |
 
 95% moving-block-bootstrap intervals, regenerated by
 [`scripts/uncertainty.py`](../scripts/uncertainty.py). Bolded where the interval
@@ -131,16 +181,16 @@ uncomfortable table on this page, and it explains every interval above it.
 
 **Two of the six results do not survive.**
 
-- Kraków's +6.5%<!--fig:krakow.acted--> is not distinguishable from zero, at [−15.3, +27.5]<!--fig:krakow.acted-->. It was
+- Kraków's +6.5%<!--fig:first.krakow.acted--> is not distinguishable from zero, at [−15.3, +27.5]<!--fig:first.krakow.acted-->. It was
   never described as large, but it was described as a positive result and
   reported alongside a 72% win rate, which reads as a weak effect rather than as
   no measurable effect.
-- Melbourne's +1.2%<!--fig:melbourne.acted--> is not distinguishable from zero, at [−0.6, +3.0]<!--fig:melbourne.acted-->. Small,
+- Melbourne's +1.2%<!--fig:first.melbourne.acted--> is not distinguishable from zero, at [−0.6, +3.0]<!--fig:first.melbourne.acted-->. Small,
   positive and worth nothing, as the site's own commentary nearly said.
 
 Four survive, including the one that matters most. Delhi's premium is large
-and holds at every block length. Santiago's and Johannesburg's are real. And **Los Angeles's −13.4%<!--fig:la.acted-->
-[−36.9, −3.8]<!--fig:la.acted--> excludes zero**, which upgrades the control from an anecdote to a
+and holds at every block length. Santiago's and Johannesburg's are real. And **Los Angeles's −13.4%<!--fig:first.la.acted-->
+[−36.9, −3.8]<!--fig:first.la.acted--> excludes zero**, which upgrades the control from an anecdote to a
 result: retraining that city measurably *hurts* it. The claim that retraining
 pays where the world moved and costs where it did not now rests on intervals at
 both ends rather than on point estimates at both ends.
@@ -153,12 +203,12 @@ several block lengths, where `L=1` redraws single weeks:
 
 | | L=1 | L=2 | L=3 | L=4 | L=6 | L=8 |
 |---|---|---|---|---|---|---|
-| **Delhi** | [+41, +57]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+35, +58]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+34, +62]<!--fig:delhi.acted--> | [+27, +62]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+20, +63]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+18, +63]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
-| **Santiago** | [+10, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+9, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+9, +37]<!--fig:santiago.acted--> | [+9, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+9, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+10, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
-| **Kraków** | [+4, +18]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+3, +25]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+3, +27]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−15, +28]<!--fig:krakow.acted--> | [−49, +28]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−49, +28]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
-| **Johannesburg** | [+9, +21]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+9, +21]<!--fig:joburg.acted--> | [+9, +21]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | — | — | — |
-| **Melbourne** | [+0, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−1, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−1, +3]<!--fig:melbourne.acted--> | [−1, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−1, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−1, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
-| **Los Angeles** | [−23, −4]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−25, −4]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−37, −4]<!--fig:la.acted--> | [−39, +1]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−39, +1]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−39, −4]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
+| **Delhi** | [+41, +57]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+35, +58]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+34, +62]<!--fig:first.delhi.acted--> | [+27, +62]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+20, +63]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+18, +63]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
+| **Santiago** | [+10, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+9, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+9, +37]<!--fig:first.santiago.acted--> | [+9, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+9, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+10, +37]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
+| **Kraków** | [+4, +18]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+3, +25]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+3, +27]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−15, +28]<!--fig:first.krakow.acted--> | [−49, +28]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−49, +28]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
+| **Johannesburg** | [+9, +21]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [+9, +21]<!--fig:first.joburg.acted--> | [+9, +21]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | — | — | — |
+| **Melbourne** | [+0, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−1, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−1, +3]<!--fig:first.melbourne.acted--> | [−1, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−1, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−1, +3]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
+| **Los Angeles** | [−23, −4]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−25, −4]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−37, −4]<!--fig:first.la.acted--> | [−39, +1]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−39, +1]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> | [−39, −4]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> |
 
 **Kraków changes its answer.** At `L=1` the interval is [+4, +18]<!--nofig: printed by scripts/uncertainty.py with its sensitivity flag, not written to outputs/--> and excludes
 zero; from `L=4` it does not. Kraków is also the most autocorrelated series in
@@ -174,10 +224,10 @@ Johannesburg and Melbourne say the same thing at every setting.
 
 Santiago and Johannesburg won *every* window they acted on. Every bootstrap
 resample therefore also wins every window, and the interval collapses to
-[100, 100]<!--fig:santiago.won.bootstrap-->. That is not certainty. It is the percentile bootstrap being unable
+[100, 100]<!--fig:first.santiago.won.bootstrap-->. That is not certainty. It is the percentile bootstrap being unable
 to represent uncertainty at a boundary. Win rates are therefore reported with a
 Wilson interval, which handles the boundary properly: 16 of 16 becomes
-[81, 100]<!--fig:santiago.won-->, and 6 of 6 becomes [61, 100]<!--fig:joburg.won-->. Wilson assumes independent trials,
+[81, 100]<!--fig:first.santiago.won-->, and 6 of 6 becomes [61, 100]<!--fig:first.joburg.won-->. Wilson assumes independent trials,
 which these are not, so it is if anything still too narrow. Both flaws point the
 same way, and a 100% win rate here should be read as "at least this good"
 rather than as "always".
@@ -224,7 +274,7 @@ It bites the positive claims instead, and they are few enough to name:
 Two findings are not weakened by any of this. The confidence gate's harm is five
 arms of eighteen, all in the same direction and concentrated in the two cities
 the mechanism predicts, which is well clear of what chance produces. And the
-large city effects, Delhi's +49.4%<!--fig:delhi.acted--> and Santiago's +17.3%<!--fig:santiago.acted-->, sit nowhere near the
+large city effects, Delhi's +49.4%<!--fig:first.delhi.acted--> and Santiago's +17.3%<!--fig:first.santiago.acted-->, sit nowhere near the
 boundary, so no defensible correction reaches them. Johannesburg rests on six
 acted windows and is the weakest of the surviving city results, for reasons of
 sample size rather than multiplicity.
@@ -247,7 +297,7 @@ regenerated.
 
 Los Angeles moved most. It now fires one retrain in 36 weeks rather than three in
 37, because two of the three fired inside the window that has been dropped, and
-its paired result falls from −2.8% to −13.4%<!--fig:la.acted-->. That is the control city getting
+its paired result falls from −2.8% to −13.4%<!--fig:first.la.acted-->. That is the control city getting
 more clearly negative, which is the direction the correction should push a city
 whose retraining never paid. `tests/test_loop.py` asserts the gap for every
 shipped profile, so a new city cannot reintroduce it.
@@ -288,7 +338,7 @@ Widening `challenger_train_days` from 45 to 180 fixed it:
 | Kraków, retraining worth | −29.6% | +0.2% |
 | Kraków, median served error | 22.70 | **17.49** |
 
-The paired reading tells the same story more quietly, +4.5% against +49.4%<!--fig:delhi.acted--> in
+The paired reading tells the same story more quietly, +4.5% against +49.4%<!--fig:first.delhi.acted--> in
 Delhi: even on the weeks a 45-day challenger was serving it barely helped, and
 across the replay it did real damage.
 
@@ -640,8 +690,8 @@ rebuilding every registered version from its logged coefficients.
 
 | promotions that served | n | exam promised | delivered | harmful |
 |---|---|---|---|---|
-| under 20 weeks | 25<!--fig:gate.short.n--> | +12.4% [+9.2, +16.9]<!--fig:gate.short.exam--> | **+9.8% [+6.4, +14.0]**<!--fig:gate.short.delivered--> | 0<!--fig:gate.short.harmful--> / 25<!--fig:gate.short.n--> [0%, 13%]<!--fig:gate.short.harmful_rate--> |
-| 20 weeks or more | 3<!--fig:gate.long.n--> | +14.4%<!--fig:gate.long.exam-->, unbounded | **−6.1%**<!--fig:gate.long.delivered-->: −8.0%, −6.7%, −3.6% | 3<!--fig:gate.long.harmful--> / 3<!--fig:gate.long.n--> [44%, 100%]<!--fig:gate.long.harmful_rate--> |
+| under 20 weeks | 25<!--fig:first.gate.short.n--> | +12.4% [+9.2, +16.9]<!--fig:first.gate.short.exam--> | **+9.8% [+6.4, +14.0]**<!--fig:first.gate.short.delivered--> | 0<!--fig:first.gate.short.harmful--> / 25<!--fig:first.gate.short.n--> [0%, 13%]<!--fig:first.gate.short.harmful_rate--> |
+| 20 weeks or more | 3<!--fig:first.gate.long.n--> | +14.4%<!--fig:first.gate.long.exam-->, unbounded | **−6.1%**<!--fig:first.gate.long.delivered-->: −8.0%, −6.7%, −3.6% | 3<!--fig:first.gate.long.harmful--> / 3<!--fig:first.gate.long.n--> [44%, 100%]<!--fig:first.gate.long.harmful_rate--> |
 
 The gate is honest and well calibrated over the horizon it tests, and not one
 short-serving promotion left its city worse off. But every model that ended up serving
@@ -655,7 +705,7 @@ resampling three numbers tells you about those three numbers, so the delivered
 margins are listed individually instead. What they support and what they do not:
 
 - Supported. All three are negative, none is near zero, and they cluster
-  tightly between −3.6% and −8.0%. Wilson on 3 of 3 harmful gives [44%, 100%]<!--fig:gate.long.harmful_rate-->,
+  tightly between −3.6% and −8.0%. Wilson on 3 of 3 harmful gives [44%, 100%]<!--fig:first.gate.long.harmful_rate-->,
   so even at the pessimistic end most long-serving promotions are harmful. The
   *direction* of the finding is solid.
 - Not supported: any specific magnitude. "−6.1%" is the mean of three
@@ -903,7 +953,7 @@ margin in 24-hour blocks, over the 28 shipped promotions:
 - **11 of 28 have an exam interval reaching below the 5% margin they were
   required to clear. 6 of 28 reach below zero.**
 - Mean promised +12.6%, mean delivered +8.1%.
-- Los Angeles's single promotion, which produces its entire −13.4%<!--fig:la.acted--> retraining
+- Los Angeles's single promotion, which produces its entire −13.4%<!--fig:first.la.acted--> retraining
   result, scored **+21.9% on an interval of [−6.9, +32.3]**<!--nofig: recorded in the docstring of scripts/sweep_promotion_confidence.py; no output file holds a per-promotion exam interval--> and delivered
   **−6.7%**.
 
@@ -986,7 +1036,7 @@ the number of attempts in the decision, or a rule that stops making them.
 
 Before running this, the effect was estimated by taking the 28 shipped
 promotions, marking the 11 whose interval failed, and reasoning that removing
-them would take Los Angeles from −13.4%<!--fig:la.acted--> toward zero. It does not: Los Angeles
+them would take Los Angeles from −13.4%<!--fig:first.la.acted--> toward zero. It does not: Los Angeles
 lands at −10.3% and −12.9%.
 
 The estimate was made against a *fixed* history, and blocking a promotion changes
@@ -1236,12 +1286,15 @@ And this is two cities. The decomposition above is a strong claim resting on
 Delhi, and the sensible next step is the same one the rest of this page keeps
 arriving at: run it on the other four.
 
-## The loop as it should have been configured
+## The loop as it ships now, against the loop as it first shipped
 
 Run 2026-09-22 with `python scripts/rebaseline.py`, and it is the next step the
 section above keeps asking for, taken through the loop rather than beside it. It
-sits next to the published figures and replaces none of them, which is the habit
-[HISTORY.md](HISTORY.md) exists to keep.
+was written to sit next to the published figures and replace none of them, which
+is the habit [HISTORY.md](HISTORY.md) exists to keep. On 2026-11-10 its `fixed`
+arm became the configuration every profile ships, and the text below is left as
+it was written before that decision: "shipped" in it means the loop as first
+shipped.
 
 Two arms per city, identical but for the two decisions this project has measured
 and not taken: the Ridge penalty chosen at every fit by forward-chaining CV over
@@ -1250,7 +1303,7 @@ the window being fitted (D5), and the model-independent skill floor at −0.5 (D
 **The shipped arm reproduces all six published premiums to the decimal**, so the
 harness is measuring what this page measured.
 
-| | premium, shipped | premium, fixed | median served RMSE | fires | longest silence |
+| | premium, first shipped | premium, as it ships now | median served RMSE | fires | longest silence |
 |---|---|---|---|---|---|
 | **Delhi** | +49.4% [+33.7, +61.8]<!--fig:rebaseline.delhi.shipped--> | **+22.8% [+11.8, +36.4]**<!--fig:rebaseline.delhi.fixed--> | 40.44<!--fig:rebaseline.delhi.shipped.rmse--> → 40.11<!--fig:rebaseline.delhi.fixed.rmse--> | 9<!--fig:rebaseline.delhi.shipped.fires--> → 8<!--fig:rebaseline.delhi.fixed.fires--> of 39 | 21w<!--fig:rebaseline.delhi.shipped.silence--> → 21w<!--fig:rebaseline.delhi.fixed.silence--> |
 | **Santiago** | +17.3% [+9.0, +37.0]<!--fig:rebaseline.santiago.shipped--> | +17.5% [+8.6, +37.1]<!--fig:rebaseline.santiago.fixed--> | 24.54<!--fig:rebaseline.santiago.shipped.rmse--> → 24.55<!--fig:rebaseline.santiago.fixed.rmse--> | 13<!--fig:rebaseline.santiago.shipped.fires--> → 13<!--fig:rebaseline.santiago.fixed.fires--> of 21 | 3w<!--fig:rebaseline.santiago.shipped.silence--> → 3w<!--fig:rebaseline.santiago.fixed.silence--> |
@@ -1326,7 +1379,7 @@ it has nothing to work with, and it is the reason those rows are read as
 behaviour rather than as premiums.
 
 **What this does not settle.** D1 and D5 are decisions, and this is evidence for
-them rather than a substitute for taking them. One replay per city, six cities
+them rather than a substitute for taking them. Both were taken on 2026-11-10. One replay per city, six cities
 chosen for contrast, no multiple-comparisons correction, and the two arms do not
 share a control. The tuning grid had to be widened before any of it could be
 believed: a 180-day challenger window optimises at alpha 3000, past
@@ -1335,12 +1388,23 @@ the published grid is left exactly as it was.
 
 ## Limitations
 
-- **Two of the six city results are not distinguishable from zero.** Kraków's
-  week-by-week premium is +6.5% [−15.3, +27.5]<!--fig:krakow.acted--> and Melbourne's is +1.2%<!--fig:melbourne.acted-->
-  [−0.6, +3.0]<!--fig:melbourne.acted-->. Both were previously reported as small positive findings. They
-  are not findings. The four that survive are Delhi, Santiago, Johannesburg and
-  Los Angeles. The last of those is a negative result, which is the one the
-  argument most needs.
+- **Two of the six city results are not distinguishable from zero.** Under the
+  loop as it ships, Kraków's week-by-week premium is +5.7% [−14.8, +26.8]<!--fig:krakow.acted--> and
+  Los Angeles's is −3.5% [−25.6, +3.0]<!--fig:la.acted-->. Under the loop as first shipped the
+  two were Kraków and Melbourne, and Los Angeles was a measured harm. That harm
+  did not survive the change of configuration, which leaves this project without
+  the negative result its first argument leaned on.
+- **Most of this page describes a loop that no longer ships.** The five mechanism
+  sweeps, the ablation, and the trigger and gate analyses were measured on the
+  loop as first shipped and have not been re-run. Their verdicts may not carry
+  over to a loop with a tuned penalty and a second alarm.
+- **The second alarm was adopted without the test written for it.** D1's settling
+  condition was a seventh and an eighth city, chosen before the floor was swept
+  on them. Those cities were never run. The alarm ships on the evidence of six
+  cities picked for contrast, in which it helped one and changed nothing in five.
+- **The pooled baseline is fitted at the default penalty** while each city's own
+  model is now tuned at every fit, which tilts "one model or six" a little
+  against the pooled model.
 - **The model-class confound was real, and this bullet said otherwise until
   2026-09-22.** It read "the premium survives the change of model class
   regardless", which was the 2026-08-12 reading from an arm that ran a
@@ -1349,7 +1413,7 @@ the published grid is left exactly as it was.
   conclusion was withdrawn
   [above](#is-the-finding-about-the-world-or-about-a-linear-model) on 2026-08-16
   and this list was not updated with it. What the tuned comparison found:
-  Delhi's +49.4%<!--fig:delhi.acted--> is 21.6 points<!--fig:ablation.delhi.alpha_points--> of shipped `alpha`, 18.0 points<!--fig:ablation.delhi.linearity_points--> of linearity and
+  Delhi's +49.4%<!--fig:first.delhi.acted--> is 21.6 points<!--fig:ablation.delhi.alpha_points--> of shipped `alpha`, 18.0 points<!--fig:ablation.delhi.linearity_points--> of linearity and
   +9.7%<!--fig:ablation.delhi.gbm_tuned--> left over, and the re-baseline through the loop puts the surviving
   premium at +22.8% [+11.8, +36.4]<!--fig:rebaseline.delhi.fixed-->. The confound is measured, not closed: the
   decomposition rests on Delhi and Los Angeles.
@@ -1364,12 +1428,13 @@ the published grid is left exactly as it was.
   still near zero or negative in several. Predicting an hour's PM2.5 from a
   week-old weather forecast is hard, and the page should be read with
   that in mind: the loop is the demonstration, not the model.
-- The retrain trigger ratchets, and it is shipped that way on purpose. The bar
-  is reset by every promotion and mostly rises, so after the seasonal peak the
-  trigger cannot fire at all. A fix exists in the code (`LoopConfig.skill_floor`)
-  and is switched off, because replaying all six cities with it on changes
-  nothing at a cautious setting and makes two of them worse at an aggressive
-  one. See
+- The retrain trigger still ratchets. The bar is reset by every promotion and
+  mostly rises, so after the seasonal peak that trigger cannot fire at all. Since
+  2026-11-10 a second trigger (`LoopConfig.skill_floor`, at −0.5) runs beside it
+  as a backstop, and the longest silences fall from 30<!--fig:rebaseline.krakow.shipped.silence--> weeks to
+  22<!--fig:rebaseline.krakow.fixed.silence--> in Kraków and from 35<!--fig:rebaseline.la.shipped.silence--> to 16<!--fig:rebaseline.la.fixed.silence--> in Los Angeles. The fault
+  is compensated for, not removed: deleting the ratio trigger was tried and is
+  worse. See
   [Fixing it](#fixing-the-trigger-one-fix-is-impossible-the-other-pays-in-one-city).
 - **Five mechanisms have been built against the loop's two faults and none of
   them pays.** A second retrain trigger, a longer exam, a re-certification

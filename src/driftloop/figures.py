@@ -70,9 +70,17 @@ def _rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def _uncertainty(data: dict, figures: dict[str, float]) -> None:
+# The intervals as they stood under the loop as first shipped, frozen on 2026-11-10
+# when the profiles took the tuned penalty and the skill floor. Keyed under
+# ``first.`` so a page can quote the old figure beside the new one and have both
+# checked; the mechanism sweeps were measured against that loop and cite it.
+FIRST_SHIPPED_FILE = "uncertainty_first_shipped.json"
+FIRST = "first."
+
+
+def _uncertainty(data: dict, figures: dict[str, float], prefix: str = "") -> None:
     for city in data["cities"]:
-        slug = CITY_SLUGS[city["label"]]
+        slug = prefix + CITY_SLUGS[city["label"]]
         figures[f"{slug}.weeks"] = city["weeks"]
         figures[f"{slug}.retrains"] = city["retrains"]
         figures[f"{slug}.promotions"] = city["promotions"]
@@ -93,17 +101,17 @@ def _uncertainty(data: dict, figures: dict[str, float]) -> None:
     gate = data["gate"]
     for length in ("short", "long"):
         summary = gate["summary"][length]
-        figures[f"gate.{length}.n"] = summary["n"]
-        figures[f"gate.{length}.harmful"] = summary["harmful"]
+        figures[f"{prefix}gate.{length}.n"] = summary["n"]
+        figures[f"{prefix}gate.{length}.harmful"] = summary["harmful"]
         # The share that came out harmful, with Wilson's interval as the win rates
         # carry it: the one claim a group of three can support.
         lo, hi = stats.wilson_interval(summary["harmful"], summary["n"])
-        _put(figures, f"gate.{length}.harmful_rate", 100 * summary["harmful"] / summary["n"], lo, hi)
+        _put(figures, f"{prefix}gate.{length}.harmful_rate", 100 * summary["harmful"] / summary["n"], lo, hi)
         for part in ("exam", "delivered"):
             block = gate["interval"][length][part]
             # An interval over three promotions is infinite, and not a figure.
             bounded = abs(block["lo"]) != float("inf")
-            _put(figures, f"gate.{length}.{part}", block["point"],
+            _put(figures, f"{prefix}gate.{length}.{part}", block["point"],
                  block["lo"] if bounded else None, block["hi"] if bounded else None)
 
 
@@ -200,6 +208,9 @@ def collect(outputs: Path) -> dict[str, float]:
     """
     figures: dict[str, float] = {}
     _uncertainty(json.loads((outputs / "uncertainty.json").read_text(encoding="utf-8")), figures)
+    _uncertainty(
+        json.loads((outputs / FIRST_SHIPPED_FILE).read_text(encoding="utf-8")), figures, FIRST
+    )
     _ablation(_rows(outputs / "model_ablation.csv"), figures)
     _ablation_paired(
         json.loads((outputs / "model_ablation_series.json").read_text(encoding="utf-8")), figures

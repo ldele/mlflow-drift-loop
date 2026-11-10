@@ -125,8 +125,8 @@ GUIDES: dict[str, Guide] = {
         ),
         next=(
             "Nothing about promoting a model can move this number, which is exactly the property the "
-            "retrain trigger lacks. A trigger watching this instead was built, measured, and ships "
-            "switched off."
+            "retrain trigger lacks. A second trigger watching this was built, measured, and now runs "
+            "beside the first."
         ),
     ),
     "decay": Guide(
@@ -340,7 +340,7 @@ GUIDES: dict[str, Guide] = {
     ),
     "alpha_sweep": Guide(
         read=(
-            "Cross-validated error against the Ridge penalty, with the shipped setting marked. The "
+            "Cross-validated error against the Ridge penalty, with the library default marked. The "
             "curve is usually flat-bottomed over a wide range, which is the useful part: it says how "
             "much the exact value matters, not just which value wins."
         ),
@@ -352,9 +352,9 @@ GUIDES: dict[str, Guide] = {
         moves=(
             ("a flat bottom",
              "the penalty is not critical. Pick anything in the flat region and move on"),
-            ("the shipped marker sits off the minimum",
-             "the default is costing accuracy. It does here, and the ablation prices it: most of the "
-             "headline retraining premium was this"),
+            ("the default marker sits off the minimum",
+             "the default would cost accuracy. It did here until the loop began choosing the penalty "
+             "at every fit, and the ablation prices it: most of the first headline premium was this"),
             ("the optimum at an end of the swept range",
              "the grid is truncating the answer rather than containing it. Extend it and re-run"),
         ),
@@ -583,7 +583,8 @@ GUIDES: dict[str, Guide] = {
     ),
     "ablation": Guide(
         read=(
-            "What retraining was worth in each city, under the model that ships and under two tuned "
+            "What retraining was worth in each city, under the model as it first shipped and under two "
+            "tuned "
             "properly on the same protocol. The error bars are the point of the chart rather than "
             "decoration on it: a bar crossing the zero line means retraining cannot be shown to have "
             "paid at all."
