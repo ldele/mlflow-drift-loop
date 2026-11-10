@@ -19,8 +19,10 @@ week through a full year, from 2025 into 2026.
 
 ## What it found
 
-Every percentage below compares the loop with the same first model never retrained,
-week by week, and carries a 95% interval from a moving-block bootstrap over
+These are findings about the loop. The six cities are where it was tested, picked
+because they disagree with one another. Every percentage below compares the loop
+with the same first model never retrained, week by week, and carries a 95%
+interval from a moving-block bootstrap over
 autocorrelated weekly windows —
 [why that and not an ordinary one](docs/evaluation.md#what-the-intervals-cost-this-page).
 
@@ -30,7 +32,9 @@ autocorrelated weekly windows —
    **+9.7% [+4.6, +14.0]**<!--fig:joburg.acted-->. Melbourne's
    +5.6% [+2.0, +6.6]<!--fig:melbourne.acted--> clears zero too, on air that stays near the
    WHO guideline all year, and is the one to read with care: its error over the
-   whole replay barely moves.
+   whole replay barely moves. The gain is not an artefact of a straight-line
+   model needing a refit: under a tree model tuned the same way Delhi still reads
+   +13.4% [+8.0, +27.0]<!--fig:ablation.delhi.gbm_tuned-->.
 
 2. **In two cities it does nothing measurable.** Los Angeles is the control, with
    the smallest seasonal swing of the six, and reads
@@ -41,7 +45,7 @@ autocorrelated weekly windows —
    This page used to lead with Delhi at +49.4% [+33.7, +61.8]<!--fig:first.delhi.acted--> and
    with retraining *costing* Los Angeles −13.4% [−36.9, −3.8]<!--fig:first.la.acted-->. The
    model's regularisation strength was a library default nobody had chosen, and
-   21.6<!--fig:ablation.delhi.alpha_points--> of Delhi's points were that default: a
+   21.6<!--fig:first.ablation.delhi.alpha_points--> of Delhi's points were that default: a
    badly set model leaves more for a retrain to recover. The loop now chooses the
    setting itself at every fit. Delhi's result halved and Los Angeles's cost
    disappeared. [HISTORY.md](docs/HISTORY.md) keeps every earlier figure and what
@@ -55,12 +59,14 @@ autocorrelated weekly windows —
    which asks how the model compares with a plain daily profile of recent air and
    which no promotion can move, brings those silences down to
    22<!--fig:rebaseline.krakow.fixed.silence--> weeks and
-   16<!--fig:rebaseline.la.fixed.silence-->.
+   16<!--fig:rebaseline.la.fixed.silence-->. It is kept for that. It is not shown to
+   make the forecasts better.
 
-5. **Four more fixes were built and measured. None pays, and one is harmful.**
-   They fail for one reason, and it took all of them to see it: the loop retries
-   until a challenger passes, so raising any bar buys more attempts and a luckier
-   winner, not fewer bad promotions.
+5. **No rule about when to retrain, or how hard to judge, made the forecasts
+   better.** Five fixes were built and replayed on two differently set loops. On
+   the loop that ships none shows a gain in two cities at any setting. One of
+   them, a stricter exam, did harm on the first loop, and the harm did not
+   repeat on this one.
 
 6. **A seven-day exam certifies a model for about a month.** Across
    28<!--fig:gate.short.n--> promotions that served under twenty weeks it promised
@@ -132,40 +138,45 @@ informative than its length suggests. Kraków's 47<!--fig:krakow.acted.n--> week
 carry about 5.4<!--fig:krakow.acted.n_eff--> independent observations, and Los Angeles's
 35<!--fig:la.acted.n--> about 3.3<!--fig:la.acted.n_eff-->.
 
-## Five fixes, and why four of them fail
+## Five fixes, measured on two loops
 
 Each failure named the next thing to try, so five fixes were built. Every one was
-replayed across all six cities against the loop as it first shipped, week by
-week, with intervals. One was kept. The other four have not been re-run on the
-loop as it ships now.
+replayed across all six cities twice: on the loop as it first shipped, and again
+on the loop as it ships, with the expected results
+[written down first](docs/registrations/2026-11-10-fixes-on-the-loop-as-shipped.md).
+A setting counts only where it clears zero, in the same direction, in two cities.
 
-| the fix | what it changes | what it did |
-|---|---|---|
-| a second retrain alarm | when the loop notices | helps the one deaf city, nothing elsewhere: **kept** |
-| a longer exam | how much evidence one exam has | nothing measurable anywhere |
-| a re-certification schedule | how often the exam is sat | bounds staleness, buys no accuracy |
-| a confidence-aware gate | how hard one exam is to pass | **actively harmful** |
-| rollback | whether the result can be undone | no harm, and no proof of benefit |
+| the fix | what it changes | on the first loop | on the loop as it ships |
+|---|---|---|---|
+| a second retrain alarm | when the loop notices | a gain or a harm, depending on the setting | no accuracy effect in two cities; shorter silences: **kept** |
+| a longer exam | how much evidence one exam has | nothing | nothing |
+| a re-certification schedule | how often the exam is sat | nothing | nothing |
+| a confidence-aware gate | how hard one exam is to pass | **harmful** in two cities | nothing; a harm in one city |
+| rollback | whether the result can be undone | nothing | nothing |
 
 The alarm that was kept fires when the model falls too far behind a plain 30-day
-daily profile, which nothing about promoting a model can move. How far is the
-whole question. Set to fire as soon as the model is merely worse than the
-profile, it wakes Kraków, whose longest silence falls from
-30<!--fig:floor.krakow.off.silence--> weeks to 5<!--fig:floor.krakow.+0.00.silence-->, and then costs it
-accuracy in the weeks it acts, clearest one notch down:
-**−24.0% [−39.4, −5.5]**<!--fig:floor.krakow.-0.25.acted-->. Only the cautious setting, 50% behind
-the profile, harmed no city in that sweep. It changed nothing in five and
-improved Los Angeles by **+11.8% [+2.1, +17.2]**<!--fig:floor.la.-0.50.acted--> over the
-25<!--fig:floor.la.-0.50.differing--> weeks it acted. That is the setting that now ships
-([D1](docs/DECISIONS.md)).
+daily profile, which nothing about promoting a model can move. It is kept for what
+it does to the loop's silences. Its case on accuracy is weaker than when it was
+adopted: switched on by itself on the tuned loop it improves Los Angeles by
++6.6% [−1.1, +9.3]<!--fig:floor.la.-0.50.acted-->, where the first loop showed
++11.8% [+2.1, +17.2]<!--fig:first.floor.la.-0.50.acted-->, and it changes nothing in four
+other cities. One notch more aggressive it costs Kraków
+**−20.1% [−47.5, −5.5]**<!--fig:floor.krakow.-0.25.acted--> in the weeks it acts. Whether it
+should stay on is open again ([D1](docs/DECISIONS.md)).
 
-The other four fail for the reason finding 5 gives. Underneath all of them is one
-measurement limit: Los Angeles's single promotion under the first loop was rolled
-back when re-judged at 14 days and kept when re-judged at 21 or 28 — the same
-decision, three windows, opposite answers. A fortnight of hourly air cannot
-resolve the difference the loop is asking about. The workings are in
-[evaluation.md](docs/evaluation.md), and what was decided on top of them in
-[DECISIONS.md](docs/DECISIONS.md).
+The stricter exam is the result that changed most. On the first loop it cost two
+cities accuracy, and the account given was that a loop which retries until a
+challenger passes promotes its luckiest attempt, so a higher bar only buys a
+luckier winner. On the tuned loop the harm shows in one city, and the evidence
+behind that account splits three cities each way. What holds on both loops is
+plainer: the exam promises more than its winners deliver (finding 6), and nothing
+tried here closes that gap.
+
+"Nothing" in the table means not detectable. A city's year of weekly windows holds
+about 2 to 10 independent observations, so a fix worth a few percent would not
+show in either run. The workings are in
+[evaluation.md](docs/evaluation.md#the-five-fixes-and-the-model-ablation-on-the-loop-as-it-ships),
+and what was decided on top of them in [DECISIONS.md](docs/DECISIONS.md).
 
 ## Serving the champion
 
@@ -200,8 +211,9 @@ python scripts/benchmark.py                 # baselines + alpha sweep
 python scripts/uncertainty.py               # every headline, with its confidence interval
 python scripts/ablate_model.py              # is the finding about the world or the model class?
 python scripts/uncertainty.py --sensitivity # ... and how much the block length moves it
-python scripts/sweep_skill_floor.py         # does waking the retrain trigger help? (in one city)
+python scripts/sweep_skill_floor.py         # one of five fix sweeps; --loop first replays the loop as first shipped
 python scripts/sweep_holdout.py             # does a longer promotion exam help? (no)
+python scripts/score_fixes.py               # read all five sweeps on both loops under one rule
 python scripts/figures.py                   # -> outputs/figures.json, and which pages it contradicts
 python scripts/build_site.py                # -> site/data.json
 
@@ -221,8 +233,8 @@ as the main file, Python 3.12.
 src/driftloop/    config, data sources, drift math, model, loop, retrospect, stats,
                   benchmark, serving, figures
 scripts/          run_openmeteo · benchmark · uncertainty · ablate_model · rebaseline ·
-                  figures · build_site · run_scheduled · sweep_knobs · sweep_skill_floor ·
-                  sweep_holdout · serve
+                  figures · build_site · run_scheduled · sweep_knobs · five fix sweeps ·
+                  score_fixes · serve
 site/             committed shell (index.html + app.js, compare.html + compare.js,
                   shared.css) + generated data.json
 dashboard/        Streamlit app and shared chart theme

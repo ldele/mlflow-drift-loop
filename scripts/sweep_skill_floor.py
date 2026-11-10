@@ -52,6 +52,12 @@ from driftloop.loop import bootstrap_champion, run_simulation
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
 
+# Which loop the arms are built on. Empty means the city profiles as they ship.
+# `--loop first` fills it with the loop as it first shipped, the one the tables
+# published before 2026-11-10 were measured on, and files the outputs under
+# outputs/first_shipped/ so neither run overwrites the other.
+LOOP_BASE: dict = {}
+
 COLUMNS = [
     "city", "floor", "runs", "retrains", "promotions", "longest_silence",
     "median_rmse", "median_skill", "worst_skill", "paired", "across", "win_rate",
@@ -95,7 +101,8 @@ def run_arm(profile: Profile, source: OpenMeteoSource, floor: float | None) -> d
     slug = _slug(floor)
     cfg = replace(
         profile.loop,
-        tune_alpha=FIRST_SHIPPED["tune_alpha"],
+        # Everything the chosen loop fixes except the floor, which is this sweep's arm.
+        **{k: v for k, v in LOOP_BASE.items() if k != "skill_floor"},
         skill_floor=floor,
         experiment_name=f"skill-floor-{slug}",
         registered_model_name=f"{profile.loop.registered_model_name}-floor-{slug}",
@@ -210,10 +217,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--city", choices=[*CITIES, "all"], default="all")
     parser.add_argument(
+        "--loop", choices=["shipped", "first"], default="shipped",
+        help="the loop the arms are built on: as it ships now, or as it first shipped",
+    )
+    parser.add_argument(
         "--floors", default="0,-0.25,-0.5",
         help="comma-separated skill floors to try alongside 'off' (default: 0,-0.25,-0.5)",
     )
     args = parser.parse_args()
+    if args.loop == "first":
+        LOOP_BASE.update(FIRST_SHIPPED)
+    out_dir = OUTPUTS / "first_shipped" if args.loop == "first" else OUTPUTS
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     floors: list[float | None] = [None, *(float(f) for f in args.floors.split(","))]
     keys = list(CITIES) if args.city == "all" else [args.city]
@@ -265,15 +280,15 @@ def main() -> None:
             # Written before the temp directory is torn down, so a cleanup that
             # cannot remove a locked file still leaves the results behind. An
             # hour of replays should not be lost to an unlink.
-            OUTPUTS.mkdir(exist_ok=True)
-            out = OUTPUTS / "skill_floor_sweep.csv"
+            out_dir.mkdir(exist_ok=True)
+            out = out_dir / "skill_floor_sweep.csv"
             pd.DataFrame(rows).reindex(columns=COLUMNS).to_csv(out, index=False)
             # The per-window error series behind every figure above. Each arm is
             # a full replay costing minutes, so re-deriving a statistic from
             # them should not mean running the whole sweep a second time. It
             # already did once, when the median of paired ratios turned out to
             # be dominated by ties.
-            series = OUTPUTS / "skill_floor_series.json"
+            series = out_dir / "skill_floor_series.json"
             series.write_text(
                 json.dumps(
                     [

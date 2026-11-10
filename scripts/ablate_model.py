@@ -60,11 +60,17 @@ from driftloop.config import CITY_CLI_NAMES as CITIES
 from driftloop.config import FIRST_SHIPPED, PROFILES, Profile
 from driftloop.data import OpenMeteoSource
 from driftloop.loop import bootstrap_champion, run_simulation
-from driftloop.benchmark import tune_alpha, tune_gbm
+from driftloop.benchmark import ALPHA_GRID, LOOP_ALPHA_GRID, tune_alpha, tune_gbm
 from driftloop.model import GBM, RIDGE
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
+
+# Which loop the arms are built on. Empty means the city profiles as they ship.
+# `--loop first` fills it with the loop as it first shipped, the one the tables
+# published before 2026-11-10 were measured on, and files the outputs under
+# outputs/first_shipped/ so neither run overwrites the other.
+LOOP_BASE: dict = {}
 DEFAULT_CITIES = ["delhi", "la"]
 
 
@@ -85,7 +91,9 @@ def tune_both(profile: Profile, source: OpenMeteoSource) -> dict:
     are about to be tested against.
     """
     window = source.get_data(profile.replay.champion_train_start, profile.replay.champion_train_end)
-    alpha = tune_alpha(window)
+    # The grid the loop under test tunes over: the published one for the first loop,
+    # the wider one the shipped loop uses at every fit.
+    alpha = tune_alpha(window, grid=ALPHA_GRID if LOOP_BASE else LOOP_ALPHA_GRID)
     gbm = tune_gbm(window)
     return {
         "rows": len(window),
@@ -100,17 +108,16 @@ def run_arm(profile: Profile, source: OpenMeteoSource, kind: str,
             params: dict | None = None, label: str | None = None, **overrides) -> dict:
     """One full replay with one model class, scored the way the published numbers are.
 
-    Every arm starts from the loop as it first shipped (`FIRST_SHIPPED`), which is
-    the loop this ablation was designed against. ``overrides`` sets any other
-    ``LoopConfig`` field on top: it is how `scripts/rebaseline.py` replays these
-    cities with `tune_alpha` and the skill floor switched on. The ablation passes
-    none, so its own arms are unchanged by what the profiles ship today.
+    Every arm starts from the loop `--loop` chose: the city profile as it ships,
+    or with `FIRST_SHIPPED` laid over it. ``overrides`` sets any other
+    ``LoopConfig`` field on top, which is how `scripts/rebaseline.py` builds each
+    of its arms explicitly.
     """
     label = label or kind
     cfg = replace(
         profile.loop,
         **{
-            **FIRST_SHIPPED,
+            **LOOP_BASE,
             "model_kind": kind,
             "model_params": params,
             "experiment_name": f"ablate-{label}",
@@ -228,7 +235,15 @@ def compare_kinds(arms: list[dict]) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--city", choices=[*CITIES, "all"], default=None)
+    parser.add_argument(
+        "--loop", choices=["shipped", "first"], default="shipped",
+        help="the loop the arms are built on: as it ships now, or as it first shipped",
+    )
     args = parser.parse_args()
+    if args.loop == "first":
+        LOOP_BASE.update(FIRST_SHIPPED)
+    out_dir = OUTPUTS / "first_shipped" if args.loop == "first" else OUTPUTS
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     keys = list(CITIES) if args.city == "all" else [args.city] if args.city else DEFAULT_CITIES
 
@@ -276,10 +291,15 @@ def main() -> None:
                     (RIDGE, {"alpha": alpha_sweep.best}, "ridge_tuned"),
                     (GBM, gbm_sweep.best, "gbm_tuned"),
                 ):
-                    arm = run_arm(profile, source, kind, params, label)
+                    # A tuned-once arm keeps its one penalty: without this the shipped
+                    # loop would tune it again at every fit and the arm would be the
+                    # reference arm under another name.
+                    fixed = {"tune_alpha": False} if label == "ridge_tuned" else {}
+                    arm = run_arm(profile, source, kind, params, label, **fixed)
                     arm["cv_rmse"] = round(
                         gbm_sweep.best_rmse if label == "gbm_tuned"
-                        else tuning["alpha_best_rmse"] if label == "ridge_tuned"
+                        # On the shipped loop the reference arm is tuned too.
+                        else tuning["alpha_best_rmse"] if label == "ridge_tuned" or not LOOP_BASE
                         else tuning["alpha_shipped_rmse"], 3
                     )
                     arms.append(arm)
@@ -334,11 +354,11 @@ def main() -> None:
                           flush=True)
                 rows.extend(arms)
 
-            OUTPUTS.mkdir(exist_ok=True)
+            out_dir.mkdir(exist_ok=True)
             frame = pd.DataFrame([{k: v for k, v in r.items() if not k.startswith("_")}
                                   for r in rows])
-            frame.to_csv(OUTPUTS / "model_ablation.csv", index=False)
-            (OUTPUTS / "model_ablation_series.json").write_text(
+            frame.to_csv(out_dir / "model_ablation.csv", index=False)
+            (out_dir / "model_ablation_series.json").write_text(
                 json.dumps(
                     {"arms": [{"city": r["city"], "kind": r["kind"], "as_of": r["_as_of"],
                                "champion_rmse": r["_champion_rmse"]} for r in rows],
@@ -347,7 +367,7 @@ def main() -> None:
                 ),
                 encoding="utf-8",
             )
-            print(f"\nwrote {OUTPUTS / 'model_ablation.csv'}")
+            print(f"\nwrote {out_dir / 'model_ablation.csv'}")
         finally:
             tracking.REPO_ROOT = original_root
 

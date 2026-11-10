@@ -61,6 +61,12 @@ from driftloop.loop import bootstrap_champion, run_simulation
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
 
+# Which loop the arms are built on. Empty means the city profiles as they ship.
+# `--loop first` fills it with the loop as it first shipped, the one the tables
+# published before 2026-11-10 were measured on, and files the outputs under
+# outputs/first_shipped/ so neither run overwrites the other.
+LOOP_BASE: dict = {}
+
 COLUMNS = [
     "city", "confidence", "runs", "retrains", "promotions",
     # How many challengers cleared the point estimate and were stopped by the
@@ -85,7 +91,7 @@ def run_arm(profile: Profile, source: OpenMeteoSource, confidence: float | None)
     slug = _slug(confidence)
     cfg = replace(
         profile.loop,
-        **FIRST_SHIPPED,
+        **LOOP_BASE,
         promotion_confidence=confidence,
         experiment_name=f"gate-{slug}",
         registered_model_name=f"{profile.loop.registered_model_name}-gate-{slug}",
@@ -200,10 +206,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--city", choices=[*CITIES, "all"], default="all")
     parser.add_argument(
+        "--loop", choices=["shipped", "first"], default="shipped",
+        help="the loop the arms are built on: as it ships now, or as it first shipped",
+    )
+    parser.add_argument(
         "--confidences", default="0.8,0.9,0.95",
         help="comma-separated one-sided confidences to try alongside 'off'",
     )
     args = parser.parse_args()
+    if args.loop == "first":
+        LOOP_BASE.update(FIRST_SHIPPED)
+    out_dir = OUTPUTS / "first_shipped" if args.loop == "first" else OUTPUTS
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     confidences: list[float | None] = [None, *(float(c) for c in args.confidences.split(","))]
     keys = list(CITIES) if args.city == "all" else [args.city]
@@ -247,10 +261,10 @@ def main() -> None:
                         flush=True,
                     )
                 rows.extend(city_rows)
-            OUTPUTS.mkdir(exist_ok=True)
-            out = OUTPUTS / "promotion_confidence_sweep.csv"
+            out_dir.mkdir(exist_ok=True)
+            out = out_dir / "promotion_confidence_sweep.csv"
             pd.DataFrame(rows).reindex(columns=COLUMNS).to_csv(out, index=False)
-            series = OUTPUTS / "promotion_confidence_series.json"
+            series = out_dir / "promotion_confidence_series.json"
             series.write_text(
                 json.dumps(
                     [

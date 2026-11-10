@@ -583,8 +583,7 @@ GUIDES: dict[str, Guide] = {
     ),
     "ablation": Guide(
         read=(
-            "What retraining was worth in each city, under the model as it first shipped and under two "
-            "tuned "
+            "What retraining was worth in each city, under the model that ships and under two tuned "
             "properly on the same protocol. The error bars are the point of the chart rather than "
             "decoration on it: a bar crossing the zero line means retraining cannot be shown to have "
             "paid at all."

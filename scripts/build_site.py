@@ -647,7 +647,7 @@ def sweep_block() -> dict | None:
 
 
 ABLATION_LABEL = {
-    "ridge": "Ridge, as first shipped",
+    "ridge": "Ridge, as shipped",
     "ridge_tuned": "Ridge, tuned",
     "gbm_tuned": "Gradient boosting, tuned",
 }
@@ -661,11 +661,6 @@ def _rebaseline_premiums(arm: str) -> dict[str, float]:
     rows = pd.read_csv(path)
     rows = rows[rows["arm"] == arm]
     return dict(zip(rows["city"], rows["premium"].astype(float), strict=True))
-
-
-def first_shipped_premiums() -> dict[str, float]:
-    """Each city's premium under the loop as first shipped, from the re-baseline."""
-    return _rebaseline_premiums("shipped")
 
 
 def rebaseline_check(profiles: list[dict]) -> list[dict]:
@@ -746,12 +741,14 @@ def ablation_block(profiles: list[dict]) -> dict | None:
                 "weeks": row["shared_weeks"],
             }
 
-    # What the untouched arm has to reproduce. The ablation ran on the loop as it
-    # first shipped, and the profiles have since taken the tuned penalty and the
-    # skill floor, so today's page is no longer the right comparison: the
-    # re-baseline's own first-shipped arm is, replayed by a different script over
-    # the same windows. Rounded to one decimal, the precision the page publishes.
-    published = first_shipped_premiums()
+    # What this build measured for the same cities, to check the snapshot
+    # against. The ablation was re-run on the loop as it ships on 2026-11-10, so
+    # its untouched arm is that loop and has to reproduce this page. Rounded to
+    # one decimal because that is the precision the rest of the page publishes.
+    published = {
+        p["label"]: (p.get("stats") or {}).get("retrain_acted")
+        for p in profiles
+    }
 
     cities = []
     for city, rows in df.groupby("city", sort=False):
@@ -763,8 +760,8 @@ def ablation_block(profiles: list[dict]) -> dict | None:
         # just the verdict -- it is 0.20 µg/m³ in Delhi and 0.02 in Los Angeles,
         # and a check that passes by 0.02 should look like one on the page.
         margin = float(by_kind["ridge_tuned"]["median_rmse"] - by_kind["gbm_tuned"]["median_rmse"])
-        # Check two: the untouched arm still reproduces the first-shipped premium
-        # the re-baseline measured for the same city, or one snapshot has gone stale.
+        # Check two: the untouched arm still reproduces what this build just
+        # published for the same city, or the snapshot has gone stale.
         shipped = round(float(by_kind["ridge"]["premium"]), 1)
         live = published.get(city)
         faithful = None if live is None else {

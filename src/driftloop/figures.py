@@ -70,11 +70,11 @@ def _rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-# The intervals as they stood under the loop as first shipped, frozen on 2026-11-10
-# when the profiles took the tuned penalty and the skill floor. Keyed under
-# ``first.`` so a page can quote the old figure beside the new one and have both
-# checked; the mechanism sweeps were measured against that loop and cite it.
-FIRST_SHIPPED_FILE = "uncertainty_first_shipped.json"
+# The outputs of the loop as it first shipped live in their own folder, and their
+# figures are keyed under ``first.`` so a page can quote an old figure beside the
+# new one and have both checked. The intervals and the model ablation there are
+# committed; the sweeps are re-made with each script's ``--loop first``.
+FIRST_DIR = "first_shipped"
 FIRST = "first."
 
 
@@ -200,17 +200,10 @@ def _rebaseline(rows: list[dict[str, str]], figures: dict[str, float]) -> None:
         figures[f"{key}.silence"] = int(row["longest_silence"])
 
 
-def collect(outputs: Path) -> dict[str, float]:
-    """Every keyed figure, read from the output files that hold it.
-
-    Raises FileNotFoundError when an output is missing: a partial set would
-    write a figures file that silently drops the keys prose still cites.
-    """
+def _loop(outputs: Path) -> dict[str, float]:
+    """Every figure one loop's outputs hold, under its bare key."""
     figures: dict[str, float] = {}
     _uncertainty(json.loads((outputs / "uncertainty.json").read_text(encoding="utf-8")), figures)
-    _uncertainty(
-        json.loads((outputs / FIRST_SHIPPED_FILE).read_text(encoding="utf-8")), figures, FIRST
-    )
     _ablation(_rows(outputs / "model_ablation.csv"), figures)
     _ablation_paired(
         json.loads((outputs / "model_ablation_series.json").read_text(encoding="utf-8")), figures
@@ -218,6 +211,20 @@ def collect(outputs: Path) -> dict[str, float]:
     _holdout(_rows(outputs / "holdout_sweep.csv"), figures)
     for name, prefix, arm in SWEEPS:
         _sweep(_rows(outputs / name), prefix, arm, figures)
+    return figures
+
+
+def collect(outputs: Path) -> dict[str, float]:
+    """Every keyed figure, read from the output files that hold it.
+
+    The loop as it ships under bare keys, the loop as first shipped under
+    ``first.``, and the re-baseline, which holds both, under its own.
+
+    Raises FileNotFoundError when an output is missing: a partial set would
+    write a figures file that silently drops the keys prose still cites.
+    """
+    figures = _loop(outputs)
+    figures.update({FIRST + key: value for key, value in _loop(outputs / FIRST_DIR).items()})
     _rebaseline(_rows(outputs / "rebaseline.csv"), figures)
     return {
         key: value if isinstance(value, int) else round(float(value), 4)

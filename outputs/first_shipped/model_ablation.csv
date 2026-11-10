@@ -1,0 +1,7 @@
+city,kind,runs,retrains,promotions,median_rmse,acted_windows,premium,premium_lo,premium_hi,premium_real,cv_rmse
+Delhi,ridge,39,9,8,40.44,38,49.35,33.74,61.81,True,31.634
+Delhi,ridge_tuned,39,8,8,40.11,37,27.73,14.99,40.59,True,28.265
+Delhi,gbm_tuned,39,7,5,39.91,37,9.74,7.97,25.96,True,27.902
+Los Angeles,ridge,36,1,1,10.91,35,-13.36,-36.88,-3.81,True,8.175
+Los Angeles,ridge_tuned,36,1,1,10.76,35,-12.78,-33.58,-3.28,True,8.006
+Los Angeles,gbm_tuned,36,1,1,10.74,35,-6.93,-13.2,2.83,False,7.86

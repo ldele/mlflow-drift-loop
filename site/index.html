@@ -146,8 +146,7 @@
           tracks it” has a duller twin — “a line cannot bend, and refitting is how you fake it”.
           Those predict the same charts. Telling them apart needs a model that <em>can</em> bend,
           tried as hard as the line was, on the same two cities: Delhi, where retraining pays most,
-          and Los Angeles, where it first appeared to cost. This experiment was run on the loop
-          as it first shipped, and it is the reason the loop was changed.
+          and Los Angeles, the control where it shows nothing.
         </p>
         <div class="charts" id="ablation-charts"></div>
         <p class="why" id="ablation-note"></p>
@@ -188,28 +187,23 @@
             The staircase is still there; it now has a backstop.
           </p>
           <p class="why">
-            <strong>Five fixes were built, and one was kept.</strong> Each failure named the
-            next thing to try, and every one was replayed across all six cities against the loop as
-            it first shipped, week by week, with intervals attached. The second alarm above is the
-            one that stayed: at its cautious setting it changed nothing in five cities and helped
-            the one that had gone deaf. A longer exam does nothing measurable
-            anywhere. Re-examining the model on a schedule bounds how stale it can get and buys no
-            accuracy. Making the exam harder to pass is <em>worse</em> than leaving it alone.
-            Letting the loop undo a promotion does no harm and proves nothing.
+            <strong>Five fixes were built, and none of them makes the forecasts better.</strong>
+            Each was replayed across all six cities twice: on the loop as it first shipped, and
+            again on this one, with the expected results written down beforehand. The second
+            alarm above is the one that stayed, for the silences it shortens. A longer exam does
+            nothing measurable. Re-examining the model on a schedule trains more models and buys
+            no accuracy. Letting the loop undo a promotion does no harm and shows no gain.
           </p>
           <p class="why">
-            <strong>The other four fail for one reason, and it took all five to see it.</strong> The loop
-            keeps training rivals and holding exams until one passes, so whichever model gets the
-            job is the one that got lucky on the day. Making the exam harder does not mean fewer
-            bad hires; it means more attempts, and a winner that got luckier still. Nothing about
-            when the loop looks, how strictly it marks, or whether it can change its mind
-            afterwards can fix that.
-            Underneath all five is the same limit: a week of hourly air is not enough
-            to tell two of these models apart. Los Angeles is the proof. Its one promotion was
-            made on a margin that could just as easily have been zero, and re-judging the same
-            decision a fortnight later reverses it, then reverses it back a week after that. That
-            is a limit of the problem rather than a bug in the machinery, and finding it is what
-            building all five was for.
+            <strong>One result did not survive the second run.</strong> On the first loop, making
+            the exam harder to pass made two cities worse. The explanation offered was that a loop
+            which keeps holding exams until a rival passes ends up hiring whoever got lucky on the
+            day, so a harder exam only buys a luckier winner. On this loop the harm shows in one
+            city of six, which is within what chance produces across this many comparisons. What
+            holds on both is simpler: winners deliver less than their exam promised, and nothing
+            tried here closes that gap. A year of weekly checks in one city holds only a handful
+            of independent observations, so a fix worth a few percent would not show up in either
+            run.
           </p>
         </section>
 

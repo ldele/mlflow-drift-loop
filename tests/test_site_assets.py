@@ -166,11 +166,10 @@ def test_the_committed_ablation_still_matches_the_loop_it_describes() -> None:
     rather than re-running it. Change a loop threshold and every other number on
     the page moves while these do not.
 
-    The ablation ran on the loop as it first shipped. ``build_site`` compares its
-    untouched Ridge arm against the first-shipped premium the re-baseline measured
-    for the same city, a second script replaying the same windows; the page
-    refuses to draw the charts where they disagree. This fails the build instead,
-    so the disagreement is caught before it is published rather than after.
+    ``build_site`` compares the ablation's untouched Ridge arm, which is the loop
+    as it ships, against the premium it measured for the same city on the same
+    run; the page refuses to draw the charts where they disagree. This fails the
+    build instead, so the disagreement is caught before it is published.
     """
     import json
 

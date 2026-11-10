@@ -190,7 +190,7 @@ Every city wants heavier regularisation than 1.0:
 
 The curve is nearly flat, which is why 1.0 survived for so long a sweep that
 disagreed with it everywhere. Judged by accuracy it looked harmless; judged by
-the headline it supplied 21.6<!--fig:ablation.delhi.alpha_points--> of Delhi's first 49.4<!--fig:first.delhi.acted--> points
+the headline it supplied 21.6<!--fig:first.ablation.delhi.alpha_points--> of Delhi's first 49.4<!--fig:first.delhi.acted--> points
 ([DECISIONS.md](DECISIONS.md), D5). On Kraków's window, α = 1000 shrinks each coefficient by 15%
 (temperature) to 49% (surface pressure), and costs 3.6%. **If shrinking every
 slope most of the way to zero costs between 0.1% and 12% of error, the

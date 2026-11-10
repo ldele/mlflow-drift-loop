@@ -64,6 +64,12 @@ from driftloop.loop import bootstrap_champion, run_simulation
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
 
+# Which loop the arms are built on. Empty means the city profiles as they ship.
+# `--loop first` fills it with the loop as it first shipped, the one the tables
+# published before 2026-11-10 were measured on, and files the outputs under
+# outputs/first_shipped/ so neither run overwrites the other.
+LOOP_BASE: dict = {}
+
 COLUMNS = [
     "city", "cadence", "runs",
     # Cost. A schedule that fires regardless of drift trains models nobody
@@ -116,7 +122,7 @@ def run_arm(profile: Profile, source: OpenMeteoSource, cadence: int | None) -> d
     slug = _slug(cadence)
     cfg = replace(
         profile.loop,
-        **FIRST_SHIPPED,
+        **LOOP_BASE,
         recertify_days=cadence,
         experiment_name=f"recertify-{slug}",
         registered_model_name=f"{profile.loop.registered_model_name}-recert-{slug}",
@@ -249,10 +255,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--city", choices=[*CITIES, "all"], default="all")
     parser.add_argument(
+        "--loop", choices=["shipped", "first"], default="shipped",
+        help="the loop the arms are built on: as it ships now, or as it first shipped",
+    )
+    parser.add_argument(
         "--cadences", default="14,28,35,56",
         help="comma-separated re-certification cadences in days, alongside 'off'",
     )
     args = parser.parse_args()
+    if args.loop == "first":
+        LOOP_BASE.update(FIRST_SHIPPED)
+    out_dir = OUTPUTS / "first_shipped" if args.loop == "first" else OUTPUTS
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     cadences: list[int | None] = [None, *(int(c) for c in args.cadences.split(","))]
     keys = list(CITIES) if args.city == "all" else [args.city]
@@ -306,13 +320,13 @@ def main() -> None:
                 rows.extend(city_rows)
             # Written before the temp directory is torn down, so a cleanup that
             # cannot remove a locked file still leaves the results behind.
-            OUTPUTS.mkdir(exist_ok=True)
-            out = OUTPUTS / "recertify_sweep.csv"
+            out_dir.mkdir(exist_ok=True)
+            out = out_dir / "recertify_sweep.csv"
             pd.DataFrame(rows).reindex(columns=COLUMNS).to_csv(out, index=False)
             # The per-window error series behind every figure above. Each arm is
             # a full replay costing minutes, so re-deriving a statistic from
             # them should not mean running the whole sweep a second time.
-            series = OUTPUTS / "recertify_series.json"
+            series = out_dir / "recertify_series.json"
             series.write_text(
                 json.dumps(
                     [

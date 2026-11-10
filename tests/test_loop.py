@@ -725,9 +725,11 @@ def test_first_shipped_is_what_a_bare_config_does():
     "ablate_model.py", "sweep_holdout.py", "sweep_probation.py",
     "sweep_promotion_confidence.py", "sweep_recertify.py", "sweep_skill_floor.py",
 ])
-def test_the_published_sweeps_pin_the_loop_they_were_measured_on(script):
-    """Each builds its arms from a city profile, and the profiles now ship different
-    settings from the ones these experiments ran under. Without the pin a re-run
-    would overwrite a published table with the answer to another question."""
+def test_every_experiment_can_still_replay_the_loop_as_first_shipped(script):
+    """Each builds its arms from a city profile, and the profiles ship different
+    settings from the ones the first tables were measured under. `--loop first`
+    lays `FIRST_SHIPPED` over the profile and files the outputs apart, so the
+    first loop's tables stay reproducible beside the current ones."""
     source = (Path(__file__).resolve().parents[1] / "scripts" / script).read_text(encoding="utf-8")
-    assert "FIRST_SHIPPED" in source, f"{script} no longer pins the first-shipped loop"
+    assert "LOOP_BASE.update(FIRST_SHIPPED)" in source, f"{script} cannot replay the first loop"
+    assert '"first_shipped"' in source, f"{script} would overwrite the current outputs"

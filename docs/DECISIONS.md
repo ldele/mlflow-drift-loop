@@ -9,8 +9,9 @@ top of them, which are a different kind of thing and were previously mixed in.
 ## D1. The skill floor ships switched on, at −0.5
 
 **Date:** 2026-08-11, decided 2026-11-10
-**Status:** decided: on, at `skill < −0.5`. Open for three months before that, and
-the reasoning below is kept as it was written while it was.
+**Status:** on, at `skill < −0.5`, and reopened the day it was decided: the accuracy
+gain it was adopted on did not repeat on the loop it now runs in. The reasoning
+below is kept as it was written.
 **Affects:** `LoopConfig.skill_floor`, set to −0.5 by `config.SHIPPED` in all six
 city profiles and the live schedule. A bare `LoopConfig` still has it off.
 
@@ -21,7 +22,7 @@ by saying that flipping a shipped default belongs to whoever owns the project.
 This is that call.
 
 What it was taken on. The sweep: at −0.5 five cities are unchanged to the last
-digit and Los Angeles improves by +11.8% [+2.1, +17.2]<!--fig:floor.la.-0.50.acted--> over the weeks
+digit and Los Angeles improves by +11.8% [+2.1, +17.2]<!--fig:first.floor.la.-0.50.acted--> over the weeks
 the floor acted. The side-by-side replay: with the floor on and the penalty
 tuned, the longest stretch in which the loop could not fire falls from
 35<!--fig:rebaseline.la.shipped.silence--> weeks to 16<!--fig:rebaseline.la.fixed.silence--> in Los Angeles and from
@@ -32,6 +33,25 @@ an eighth city chosen before the floor is swept on them. They were never run. Th
 floor ships on six cities picked for contrast, one helped and five untouched, and
 that gap is listed in [evaluation.md](evaluation.md#limitations). A city harmed at
 −0.5 is the evidence that would reverse this.
+
+### Reopened 2026-11-10, by the re-run on the loop as it ships
+
+The decision above was taken on two things, and one of them did not hold. The
+re-run switched the alarm on by itself, on a loop that already tunes its model,
+with the prediction written first that it would still improve Los Angeles. It
+reads +6.6% [−1.1, +9.3]<!--fig:floor.la.-0.50.acted--> over the 22<!--fig:floor.la.-0.50.differing--> weeks it changed the
+serving model. The interval covers zero, and the prediction failed.
+
+The other thing held. With the alarm off, the tuned loop cannot fire for
+35<!--fig:floor.la.off.silence--> of Los Angeles's 36<!--fig:la.weeks--> weeks or for 30<!--fig:floor.krakow.off.silence--> of Kraków's 48<!--fig:krakow.weeks-->;
+with it on, the longest silences are 16<!--fig:floor.la.-0.50.silence--> and 22<!--fig:floor.krakow.-0.50.silence-->. It changes the serving model
+in no other city, bar one week in Kraków.
+
+So the alarm is a bound on how long the loop can go deaf, and it is not shown to
+improve accuracy. Keeping it on is defensible as the first and not as the second.
+The setting was not changed by the analysis that found this, because whether a
+staleness bound alone is worth a shipped default is the owner's call. The seventh
+and eighth city would still settle the accuracy question either way.
 
 ### The choice
 
@@ -56,7 +76,7 @@ At the cautious floor, `skill < −0.5`:
 
 - Five cities are **bit-identical** to the trigger left alone. Not close, the
   same error every week.
-- Los Angeles acts in 25<!--fig:floor.la.-0.50.differing--> of 35<!--fig:first.la.acted.n--> weeks and improves by **+11.78% [+2.09, +17.17]**<!--fig:floor.la.-0.50.acted-->.
+- Los Angeles acts in 25<!--fig:first.floor.la.-0.50.differing--> of 35<!--fig:first.la.acted.n--> weeks and improves by **+11.78% [+2.09, +17.17]**<!--fig:first.floor.la.-0.50.acted-->.
 
 Los Angeles is the city the ratchet leaves deafest, silent for 35 of 36 runs, and
 the one where retraining otherwise measurably hurts.
@@ -72,13 +92,13 @@ longer a close call in the direction it was assumed to fall.
 
 Three things, none decisive alone.
 
-The whole-replay figure for Los Angeles is **+2.49% [+0.00, +15.01]**<!--fig:floor.la.-0.50.all-->, which
+The whole-replay figure for Los Angeles is **+2.49% [+0.00, +15.01]**<!--fig:first.floor.la.-0.50.all-->, which
 touches zero. The acted-week effect is established; the effect on the replay as a
 whole is not, because ten of the 35 weeks are ties and they pull the median in.
 
 "Cannot harm any city" is a statement about six cities picked for contrast, not
 about cities in general. A seventh could behave like Kraków does at
-`skill < −0.25`, where the floor costs **−23.98% [−39.40, −5.48]**<!--fig:floor.krakow.-0.25.acted--> in the weeks
+`skill < −0.25`, where the floor costs **−23.98% [−39.40, −5.48]**<!--fig:first.floor.krakow.-0.25.acted--> in the weeks
 it acts. The gap between a floor that is inert and a floor that is destructive is
 one setting wide.
 
@@ -122,6 +142,13 @@ inherited one.
 **Date:** 2026-08-13
 **Status:** settled
 **Affects:** `LoopConfig.recertify_days`, currently `None`
+
+### Re-run on the loop as it ships, 2026-11-10
+
+No change. Replayed on the tuned loop with the second alarm on, no cadence clears
+zero in two cities. One arm does in one city, Los Angeles at 35 days, at
++17.0% [+8.3, +21.9]<!--fig:recertify.la.35d.acted--> over 9 weeks. Every cadence trains more models than the
+loop does without it.
 
 ### The choice
 
@@ -219,6 +246,16 @@ first one in this project pointed at the gate rather than at the trigger.
 **Status:** settled
 **Affects:** `LoopConfig.promotion_confidence`, currently `None`
 
+### Re-run on the loop as it ships, 2026-11-10
+
+Still off, and for a weaker reason than the one below. On the first loop the gate
+cost Kraków and Delhi accuracy. On the loop as it ships the only city clear of
+zero is Santiago, at −2.5% [−3.4, −1.0]<!--fig:confidence.santiago.0.95.acted-->, and the gap between what the exam
+promised and what the winner delivered widens in three cities and narrows in
+three. The gate is not shown to harm the current loop and not shown to help it.
+"What this rules out", below, was argued from the first loop and stands as an
+account of that loop.
+
 ### The choice
 
 The gate compares two RMSEs on one seven-day window of autocorrelated hourly
@@ -293,6 +330,11 @@ and because a decision that can be undone does not need to be right first time.
 **Status:** settled
 **Affects:** `LoopConfig.probation_days`, currently `None`
 
+### Re-run on the loop as it ships, 2026-11-10
+
+No change. None of the 5 intervals the sweep produced clears zero in either
+direction, and 7 of the 55 promotions it judged were rolled back.
+
 ### The choice
 
 D3 established that the loop's promotions are selected by a retry procedure and
@@ -310,7 +352,7 @@ Full detail in
 [evaluation.md](evaluation.md#making-the-promotion-reversible-and-why-that-does-not-rescue-it-either).
 
 **It does no harm.** Of 18 city-by-window arms, one has an interval clear of
-zero and it is positive (Kraków +1.5% [+0.8, +2.0]<!--fig:probation.krakow.21d.acted--> at 21 days). The confidence
+zero and it is positive (Kraków +1.5% [+0.8, +2.0]<!--fig:first.probation.krakow.21d.acted--> at 21 days). The confidence
 gate produced five harmful arms and no positive ones. On that comparison alone
 this is the best-behaved mechanism of the five.
 
@@ -388,9 +430,10 @@ headline moved as the side-by-side run of 2026-09-22 said it would: Delhi from
 −13.4% [−36.9, −3.8]<!--fig:first.la.acted--> to −3.5% [−25.6, +3.0]<!--fig:la.acted-->. The earlier figures stay on
 the pages beside the new ones.
 
-What was not re-measured. The ablation and the five mechanism sweeps describe the
-loop as first shipped. Re-running them on the tuned loop is a separate piece of
-work, and until it is done their verdicts are about the first loop.
+What was re-measured afterwards. The ablation and the five mechanism sweeps were re-run on
+the tuned loop the same day, with predictions written first; the results are in
+[evaluation.md](evaluation.md#the-five-fixes-and-the-model-ablation-on-the-loop-as-it-ships).
+Under a tuned tree Delhi's premium is +13.4% [+8.0, +27.0]<!--fig:ablation.delhi.gbm_tuned-->, still clear of zero.
 
 ### The choice
 

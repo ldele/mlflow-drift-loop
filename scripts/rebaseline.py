@@ -67,7 +67,7 @@ from ablate_model import CITIES, run_arm  # noqa: E402
 
 from driftloop import tracking  # noqa: E402
 from driftloop.benchmark import LOOP_ALPHA_GRID  # noqa: E402
-from driftloop.config import PROFILES  # noqa: E402
+from driftloop.config import FIRST_SHIPPED, PROFILES  # noqa: E402
 from driftloop.data import OpenMeteoSource  # noqa: E402
 from driftloop.model import RIDGE  # noqa: E402
 
@@ -84,7 +84,7 @@ OUTPUTS = REPO_ROOT / "outputs"
 #: behave the same, the ratcheting trigger is carrying nothing and the honest fix
 #: is deleting it.
 ARMS: tuple[tuple[str, dict], ...] = (
-    ("shipped", {}),
+    ("shipped", dict(FIRST_SHIPPED)),
     ("fixed", {"tune_alpha": True, "skill_floor": -0.5}),
     ("floor_only", {"tune_alpha": True, "skill_floor": -0.5, "perf_drift_threshold": float("inf")}),
 )

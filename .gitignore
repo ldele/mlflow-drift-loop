@@ -41,11 +41,16 @@ outputs/*
 !outputs/rebaseline.csv
 !outputs/rebaseline.json
 
-# The six-city intervals and the gate calibration as they stood under the loop as
-# first shipped, frozen on 2026-11-10 when the profiles took the tuned penalty and
-# the skill floor. No script regenerates it at today's settings, and the docs
-# still quote those figures beside the new ones (keys under `first.`).
-!outputs/uncertainty_first_shipped.json
+# The loop as it first shipped, in its own folder: the six-city intervals and the
+# model ablation as they stood before 2026-11-10, when the profiles took the tuned
+# penalty and the skill floor. The docs still quote those figures beside the new
+# ones (keys under `first.`). The sweeps there are not committed, like the sweeps
+# beside them; `--loop first` on each script re-makes them.
+!outputs/first_shipped/
+outputs/first_shipped/*
+!outputs/first_shipped/uncertainty.json
+!outputs/first_shipped/model_ablation.csv
+!outputs/first_shipped/model_ablation_series.json
 
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and

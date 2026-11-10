@@ -41,17 +41,166 @@ promotions and none harmful, so "no short-serving promotion ever hurt" is a
 sentence this page can no longer write. The 2<!--fig:gate.long.n--> models that served
 twenty weeks or more both ended up worse than the model they replaced.
 
-### How to read the rest of this page
+## The five fixes and the model ablation, on the loop as it ships
 
-**Everything from here to the side-by-side run was measured on the loop as it
-first shipped**, and its figures are that loop's. That covers the city-by-city
-detail, the baselines, the trigger and gate analyses, the five mechanism sweeps
-and the model ablation. It is kept, with every figure still checked against the
-outputs, for two reasons. It is the reasoning that led to the change. And the
-sweeps and the ablation have not been re-run on the loop that ships now, so
-their verdicts are verdicts about the first loop: whether a stricter gate is
-still harmful, or a longer exam still inert, once the model is tuned and a
-second alarm is running is not known.
+Run on 2026-11-10: each sweep script at its default `--loop shipped`,
+`scripts/ablate_model.py`, and `scripts/score_fixes.py` to read them all under one rule. Ten
+predictions, that rule, and what each outcome would decide were written before any replay,
+in [the registration](registrations/2026-11-10-fixes-on-the-loop-as-shipped.md). The file was
+not committed before the runs, so its own date is the only evidence of that order.
+
+The question is about the method more than about the cities. The first run concluded that no
+rule about when the loop retrains, or how hard it judges, can repair it, and that one such
+rule does harm. It reached that on a loop whose model sat at a default penalty. A badly set
+model leaves more for any retrain to recover, so every fix that changes which retrains happen
+was being measured against an inflated stake.
+
+The instrument held. In all five sweeps the arm that is the shipped loop reproduces the six
+published premiums to one decimal, 30 checks of 30, and the ablation's shipped arm matches
+them to two.
+
+### Which verdicts repeated
+
+The rule was fixed before the run: a setting counts for or against a fix only where its
+interval clears zero, in the same direction, in two cities. Both runs are read under it
+here, so the first run is held to the stricter standard as well.
+
+| the fix | on the loop as first shipped | on the loop as it ships |
+|---|---|---|
+| second retrain alarm | harmful one notch above the cautious setting (Kraków, Delhi), a gain at the most aggressive (Los Angeles, Santiago), one city at the cautious one | no setting reaches two cities |
+| longer exam | nothing: 0 of 18 intervals clear zero | nothing: 0 of 18 |
+| re-certification | nothing: 3 of 11 clear zero, each in a single city | nothing: 1 of 12 |
+| confidence-aware gate | harmful at 0.90 and 0.95 (Kraków, Delhi) | nothing: Santiago alone |
+| rollback | nothing: 1 of 7 | nothing: 0 of 5 |
+
+Across the five sweeps the first loop produced 55 intervals, 15 of them clear of zero. The
+loop as it ships produced 59, and 6 are.
+
+**No fix improves accuracy on the loop that ships.** Four mechanisms that change when an exam
+is sat or how it is judged, and a fifth that adds an alarm, were replayed on two differently
+set loops. On this one no setting of any of them meets the rule on the positive side. On the
+first loop one did, the second alarm at its most aggressive setting, and that did not repeat:
+Santiago's share of it now reads +3.0% [−0.0, +6.5]<!--fig:floor.santiago.+0.00.acted-->.
+
+**The harm did not repeat.** On the first loop the confidence-aware gate at 0.95 cost Kraków
+−2.8% [−3.8, −1.8]<!--fig:first.confidence.krakow.0.95.acted--> and Delhi
+−3.9% [−6.0, −0.7]<!--fig:first.confidence.delhi.0.95.acted-->. On the loop as it ships those
+read −2.1% [−4.0, +3.9]<!--fig:confidence.krakow.0.95.acted--> and
++0.4% [−0.9, +1.5]<!--fig:confidence.delhi.0.95.acted-->, and the only city clear of zero is
+Santiago, at −2.5% [−3.4, −1.0]<!--fig:confidence.santiago.0.95.acted-->.
+
+The first run explained that harm as a property of any procedure that retries: a harder exam
+buys more attempts, and whichever challenger finally passes did so on a rarer piece of luck.
+Its evidence was the gap between what the exam promised and what the winner delivered, which
+widened under the strict gate in four of six cities. On the loop as it ships it widens in
+three and narrows in three. So the explanation remains a fair account of the first loop and
+is not demonstrated on this one. What both loops do show is the over-promise itself: winners
+that served under twenty weeks delivered +9.8%<!--fig:first.gate.short.delivered--> against a
+promised +12.4%<!--fig:first.gate.short.exam--> on the first loop, and
++8.0%<!--fig:gate.short.delivered--> against +12.7%<!--fig:gate.short.exam--> on this one.
+
+**The accuracy gain the second alarm was adopted on did not repeat.** This sweep switches
+the alarm on by itself, on a loop that already tunes its model, which the side-by-side run
+could not do. At the shipped setting it improves Los Angeles by
++6.6% [−1.1, +9.3]<!--fig:floor.la.-0.50.acted--> over the 22<!--fig:floor.la.-0.50.differing--> weeks
+it changed the serving model, against +11.8% [+2.1, +17.2]<!--fig:first.floor.la.-0.50.acted--> on
+the first loop. The interval now reaches below zero.
+
+What the alarm does without any statistics is bound how long the loop can go deaf. With it
+off, the tuned loop cannot fire for 35<!--fig:floor.la.off.silence--> of Los Angeles's
+36<!--fig:la.weeks--> weeks and for 30<!--fig:floor.krakow.off.silence--> of Kraków's
+48<!--fig:krakow.weeks-->. With it on those silences are 16<!--fig:floor.la.-0.50.silence--> and
+22<!--fig:floor.krakow.-0.50.silence-->, and nothing changes in the other four cities. So the
+alarm is a bound on silence, shown on both loops, and an accuracy gain shown on one. The
+decision to ship it was taken on both, and [D1](DECISIONS.md) now records it as reopened.
+
+One notch more aggressive it still costs: Kraków loses
+−20.1% [−47.5, −5.5]<!--fig:floor.krakow.-0.25.acted--> in the weeks the alarm acts, against
+−24.0% [−39.4, −5.5]<!--fig:first.floor.krakow.-0.25.acted--> before.
+
+### The ten predictions
+
+| # | predicted | what happened |
+|---|---|---|
+| P1 | the alarm at −0.5 improves Los Angeles by itself | **failed**: the interval covers zero |
+| P2 | at −0.5 it harms no city | held: one week differs in Kraków, none elsewhere but Los Angeles |
+| P3 | the aggressive settings still cost a city | held: Kraków at −0.25 |
+| P4 | a longer exam changes nothing measurable | held: 0 of 18 |
+| P5 | re-certification trains more and buys no accuracy | held: one city clears zero, Los Angeles at 35 days, +17.0% [+8.3, +21.9]<!--fig:recertify.la.35d.acted--> over 9 weeks |
+| P6 | the confidence-aware gate is still harmful | held as worded, **not under the two-city rule** |
+| P7 | the stricter gate still widens the promised-to-delivered gap | not failed, and not supported: wider in three cities, narrower in three |
+| P8 | rollback does no harm and shows no gain | held: 0 of 5 |
+| P9 | Delhi's premium survives a tuned tree, below the Ridge's | held |
+| P10 | Los Angeles shows no measurable effect under either tuned model | held |
+
+P6 was written as "at least two arm-and-city pairs clear zero as a harm, and none as a gain".
+Santiago at 0.90 and Santiago at 0.95 satisfy it. Those two settings blocked the same
+promotions and produced the same replay, so they are one result counted twice, and the
+prediction's wording was too weak to mean what it was meant to. The table above reads the
+gate under the two-city rule that the same registration fixed for verdicts.
+
+Seven predictions held outright. The three that did not are the three the registration
+marked as least sure, and two of them are the two the method claim rested on.
+
+### The model ablation
+
+Delhi and Los Angeles, replayed under the Ridge as it ships and under two models tuned once
+on the first training window with the same splitter and folds. The second alarm is on in
+every arm.
+
+| | Ridge, as shipped | Ridge, tuned once | tree, tuned once | median error, Ridge tuned once → tree |
+|---|---|---|---|---|
+| **Delhi** | +22.8% [+11.8, +36.4]<!--fig:ablation.delhi.ridge--> | +21.1% [+14.7, +36.7]<!--fig:ablation.delhi.ridge_tuned--> | **+13.4% [+8.0, +27.0]**<!--fig:ablation.delhi.gbm_tuned--> | 39.72<!--fig:ablation.delhi.ridge_tuned.rmse--> → 38.68<!--fig:ablation.delhi.gbm_tuned.rmse--> |
+| **Los Angeles** | −3.5% [−25.6, +3.0]<!--fig:ablation.la.ridge--> | −4.6% [−26.2, +1.7]<!--fig:ablation.la.ridge_tuned--> | −2.7% [−13.2, +5.6]<!--fig:ablation.la.gbm_tuned--> | 10.57<!--fig:ablation.la.ridge_tuned.rmse--> → 10.50<!--fig:ablation.la.gbm_tuned.rmse--> |
+
+Both validity checks pass. The shipped arm reproduces the published premiums, and the tree
+is the better model in both cities, by 1.04 µg/m³ in Delhi and by 0.07 in Los Angeles. The
+second margin is thin enough that the Los Angeles comparison should carry little weight.
+
+Delhi's premium stays clear of zero under a model that can bend, and is smaller. Week for
+week over the 37<!--fig:ablation.delhi.shared_weeks--> weeks both models retrained, the tree
+gives up 6.8 points [5.7, 10.4]<!--fig:ablation.delhi.ridge_minus_gbm--> of premium, where on
+the first loop it gave up 13.9 points [8.0, 16.7]<!--fig:first.ablation.delhi.ridge_minus_gbm-->.
+So on this loop roughly a third of what retraining earns in Delhi is a straight line being
+refitted to a season, and the rest survives the change of model. Los Angeles shows no
+measurable effect under any arm.
+
+### What the re-run says about measuring a loop
+
+A default setting in the model did more than double the headline. It also enlarged the
+effects measured on top of that model. On the tuned loop the gate's harm falls from two
+cities to one, the alarm's gain in Los Angeles roughly halves and loses its interval, the
+share of Delhi's premium that a flexible model absorbs halves, and the count of intervals
+clear of zero falls from 15 of 55 to 6 of 59. Each is one comparison on six cities, so this
+is a pattern noticed after the results and not a tested claim. As a working rule it is cheap:
+an experiment on a control loop inherits whatever is wrong with the model inside it, so the
+model is tuned before the loop is measured.
+
+### Limits of the re-run
+
+The same six cities carry both runs. Two runs agreeing shows a verdict survives a change of
+loop, and says nothing about a seventh city.
+
+The design is small. Each city carries about 2 to 10 independent observations, the intervals
+are not corrected for one another, and a percentile interval on that few units is narrower
+than its label. "Nothing" in the table means not detectable at this size. The first run's
+intervals were about 1 to 9 points wide on each side, and an effect smaller than that would
+not have been seen in either run.
+
+The two-city rule is new. It was fixed before this run and after the first, and it is
+stricter than the case-by-case reading the first run was given.
+
+The tree is tuned once and the shipped Ridge at every fit, which is why the ablation compares
+the two tuned-once arms with each other.
+
+## How to read the rest of this page
+
+Everything from here to the side-by-side run was measured on the loop as it first shipped,
+and its figures are that loop's: the city-by-city detail, the baselines, the trigger and
+gate analyses, the five sweeps and the first ablation. It is kept, with every figure still
+checked against that loop's outputs, because it is the reasoning that led to the change and
+because the section above reads its verdicts without restating its workings. Where a verdict
+below differs from the table above, the table is the current one.
 
 ## Six cities that disagree
 
@@ -262,7 +411,7 @@ those *more* credible rather than less.
 
 It bites the positive claims instead, and they are few enough to name:
 
-- **The skill floor's Los Angeles result**, +11.78% [+2.09, +17.17]<!--fig:floor.la.-0.50.acted-->, is one arm
+- **The skill floor's Los Angeles result**, +11.78% [+2.09, +17.17]<!--fig:first.floor.la.-0.50.acted-->, is one arm
   of eighteen. It is the evidence [D1](DECISIONS.md) turns on, and D1 is the
   only decision this project leaves open. Read it as suggestive rather than
   established, which is a further argument for the two-new-cities resolution
@@ -577,16 +726,16 @@ switched on" by itself.
 
 | | floor | weeks it acted | over every week | over the weeks it acted |
 |---|---|---|---|---|
-| **Kraków** | skill < 0 | 30<!--fig:floor.krakow.+0.00.differing--> of 47 | +0.00% [−11.48, +0.00]<!--fig:floor.krakow.+0.00.all--> | −10.82% [−19.47, +1.77]<!--fig:floor.krakow.+0.00.acted--> |
-| **Kraków** | skill < −0.25 | 17<!--fig:floor.krakow.-0.25.differing--> of 47 | +0.00% [−4.96, +0.00]<!--fig:floor.krakow.-0.25.all--> | **−23.98% [−39.40, −5.48]**<!--fig:floor.krakow.-0.25.acted--> |
+| **Kraków** | skill < 0 | 30<!--fig:first.floor.krakow.+0.00.differing--> of 47 | +0.00% [−11.48, +0.00]<!--fig:first.floor.krakow.+0.00.all--> | −10.82% [−19.47, +1.77]<!--fig:first.floor.krakow.+0.00.acted--> |
+| **Kraków** | skill < −0.25 | 17<!--fig:first.floor.krakow.-0.25.differing--> of 47 | +0.00% [−4.96, +0.00]<!--fig:first.floor.krakow.-0.25.all--> | **−23.98% [−39.40, −5.48]**<!--fig:first.floor.krakow.-0.25.acted--> |
 | **Kraków** | skill < −0.5 | 0 | identical | — |
-| **Delhi** | skill < 0 | 24<!--fig:floor.delhi.+0.00.differing--> of 38 | +0.00% [−6.73, +0.00]<!--fig:floor.delhi.+0.00.all--> | −5.29% [−15.14, +2.31]<!--fig:floor.delhi.+0.00.acted--> |
-| **Delhi** | skill < −0.25 | 18<!--fig:floor.delhi.-0.25.differing--> of 38 | +0.00% [−6.73, +0.00]<!--fig:floor.delhi.-0.25.all--> | **−9.05% [−15.82, −4.44]**<!--fig:floor.delhi.-0.25.acted--> |
+| **Delhi** | skill < 0 | 24<!--fig:first.floor.delhi.+0.00.differing--> of 38 | +0.00% [−6.73, +0.00]<!--fig:first.floor.delhi.+0.00.all--> | −5.29% [−15.14, +2.31]<!--fig:first.floor.delhi.+0.00.acted--> |
+| **Delhi** | skill < −0.25 | 18<!--fig:first.floor.delhi.-0.25.differing--> of 38 | +0.00% [−6.73, +0.00]<!--fig:first.floor.delhi.-0.25.all--> | **−9.05% [−15.82, −4.44]**<!--fig:first.floor.delhi.-0.25.acted--> |
 | **Delhi** | skill < −0.5 | 0 | identical | — |
-| **Santiago** | skill < 0 | 6<!--fig:floor.santiago.+0.00.differing--> of 20 | +0.00% [+0.00, +0.65]<!--fig:floor.santiago.+0.00.all--> | **+3.42% [+0.19, +6.72]**<!--fig:floor.santiago.+0.00.acted--> |
-| **Los Angeles** | skill < 0 | 31<!--fig:floor.la.+0.00.differing--> of 35 | **+11.45% [+1.04, +17.22]**<!--fig:floor.la.+0.00.all--> | **+11.78% [+2.89, +18.38]**<!--fig:floor.la.+0.00.acted--> |
-| **Los Angeles** | skill < −0.25 | 31<!--fig:floor.la.-0.25.differing--> of 35 | **+10.26% [+0.44, +16.35]**<!--fig:floor.la.-0.25.all--> | **+11.48% [+2.09, +17.29]**<!--fig:floor.la.-0.25.acted--> |
-| **Los Angeles** | skill < −0.5 | 25<!--fig:floor.la.-0.50.differing--> of 35 | +2.49% [+0.00, +15.01]<!--fig:floor.la.-0.50.all--> | **+11.78% [+2.09, +17.17]**<!--fig:floor.la.-0.50.acted--> |
+| **Santiago** | skill < 0 | 6<!--fig:first.floor.santiago.+0.00.differing--> of 20 | +0.00% [+0.00, +0.65]<!--fig:first.floor.santiago.+0.00.all--> | **+3.42% [+0.19, +6.72]**<!--fig:first.floor.santiago.+0.00.acted--> |
+| **Los Angeles** | skill < 0 | 31<!--fig:first.floor.la.+0.00.differing--> of 35 | **+11.45% [+1.04, +17.22]**<!--fig:first.floor.la.+0.00.all--> | **+11.78% [+2.89, +18.38]**<!--fig:first.floor.la.+0.00.acted--> |
+| **Los Angeles** | skill < −0.25 | 31<!--fig:first.floor.la.-0.25.differing--> of 35 | **+10.26% [+0.44, +16.35]**<!--fig:first.floor.la.-0.25.all--> | **+11.48% [+2.09, +17.29]**<!--fig:first.floor.la.-0.25.acted--> |
+| **Los Angeles** | skill < −0.5 | 25<!--fig:first.floor.la.-0.50.differing--> of 35 | +2.49% [+0.00, +15.01]<!--fig:first.floor.la.-0.50.all--> | **+11.78% [+2.09, +17.17]**<!--fig:first.floor.la.-0.50.acted--> |
 
 Johannesburg and Melbourne are absent because no floor ever changed a single
 week in either. Bold marks the intervals that clear zero.
@@ -602,13 +751,13 @@ Neither of those appeared anywhere in the median table, which reads 18.55 agains
 `skill < −0.5` is the interesting row. It changes nothing whatsoever in five
 cities: the error series are identical week for week, not merely close. In Los
 Angeles it acts in 25 of 35 weeks and improves them by
-**+11.78% [+2.09, +17.17]**<!--fig:floor.la.-0.50.acted-->.
+**+11.78% [+2.09, +17.17]**<!--fig:first.floor.la.-0.50.acted-->.
 
 A floor that cannot harm any city here and measurably helps the one the ratchet
 leaves deafest is a case for shipping it on, not off.
 
 Two honest limits before anyone acts on that. Over all 35 weeks rather than the
-25 it acts in, Los Angeles reads +2.49% [+0.00, +15.01]<!--fig:floor.la.-0.50.all-->, which touches zero, so
+25 it acts in, Los Angeles reads +2.49% [+0.00, +15.01]<!--fig:first.floor.la.-0.50.all-->, which touches zero, so
 the whole-replay effect is not established even though the acted-week effect is.
 And "cannot harm any city here" is a statement about six cities chosen for
 contrast, not about cities in general: a seventh city could behave like Kraków at
@@ -793,12 +942,12 @@ runs they share:
 
 | | 10 days | 14 days | 21 days |
 |---|---|---|---|
-| **Kraków** | +0.96% [−2.06, +8.58]<!--fig:holdout.krakow.10d.all--> | −0.14% [−1.11, +0.23]<!--fig:holdout.krakow.14d.all--> | −0.27% [−2.42, +0.37]<!--fig:holdout.krakow.21d.all--> |
-| **Delhi** | −0.17% [−2.06, +0.29]<!--fig:holdout.delhi.10d.all--> | −0.48% [−1.37, +0.12]<!--fig:holdout.delhi.14d.all--> | −1.77% [−6.06, +0.35]<!--fig:holdout.delhi.21d.all--> |
-| **Santiago** | −0.12% [−0.97, +0.20]<!--fig:holdout.santiago.10d.all--> | −0.12% [−4.73, +0.00]<!--fig:holdout.santiago.14d.all--> | −3.19% [−6.72, +0.00]<!--fig:holdout.santiago.21d.all--> |
-| **Johannesburg** | 0.00% [−1.06, +0.00]<!--fig:holdout.joburg.10d.all--> | 0.00% [+0.00, +0.00]<!--fig:holdout.joburg.14d.all--> | 0.00% [−9.49, +0.00]<!--fig:holdout.joburg.21d.all--> |
-| **Melbourne** | −0.05% [−0.29, +0.02]<!--fig:holdout.melbourne.10d.all--> | −0.24% [−1.60, +0.89]<!--fig:holdout.melbourne.14d.all--> | −1.02% [−1.60, +0.60]<!--fig:holdout.melbourne.21d.all--> |
-| **Los Angeles** | +3.70% [−1.94, +14.76]<!--fig:holdout.la.10d.all--> | +3.43% [−2.55, +15.49]<!--fig:holdout.la.14d.all--> | +3.10% [−2.82, +13.53]<!--fig:holdout.la.21d.all--> |
+| **Kraków** | +0.96% [−2.06, +8.58]<!--fig:first.holdout.krakow.10d.all--> | −0.14% [−1.11, +0.23]<!--fig:first.holdout.krakow.14d.all--> | −0.27% [−2.42, +0.37]<!--fig:first.holdout.krakow.21d.all--> |
+| **Delhi** | −0.17% [−2.06, +0.29]<!--fig:first.holdout.delhi.10d.all--> | −0.48% [−1.37, +0.12]<!--fig:first.holdout.delhi.14d.all--> | −1.77% [−6.06, +0.35]<!--fig:first.holdout.delhi.21d.all--> |
+| **Santiago** | −0.12% [−0.97, +0.20]<!--fig:first.holdout.santiago.10d.all--> | −0.12% [−4.73, +0.00]<!--fig:first.holdout.santiago.14d.all--> | −3.19% [−6.72, +0.00]<!--fig:first.holdout.santiago.21d.all--> |
+| **Johannesburg** | 0.00% [−1.06, +0.00]<!--fig:first.holdout.joburg.10d.all--> | 0.00% [+0.00, +0.00]<!--fig:first.holdout.joburg.14d.all--> | 0.00% [−9.49, +0.00]<!--fig:first.holdout.joburg.21d.all--> |
+| **Melbourne** | −0.05% [−0.29, +0.02]<!--fig:first.holdout.melbourne.10d.all--> | −0.24% [−1.60, +0.89]<!--fig:first.holdout.melbourne.14d.all--> | −1.02% [−1.60, +0.60]<!--fig:first.holdout.melbourne.21d.all--> |
+| **Los Angeles** | +3.70% [−1.94, +14.76]<!--fig:first.holdout.la.10d.all--> | +3.43% [−2.55, +15.49]<!--fig:first.holdout.la.14d.all--> | +3.10% [−2.82, +13.53]<!--fig:first.holdout.la.21d.all--> |
 
 **Not one of the eighteen clears zero.** The median-error table above invites a
 reader to notice that Kraków looks 5% better at ten days and Santiago 11% worse
@@ -868,10 +1017,10 @@ by week, over the weeks each arm actually changed which model was serving:
 
 | | 14 days | 28 days | 35 days | 56 days |
 |---|---|---|---|---|
-| **Los Angeles** | **+13.8% [+2.9, +20.1]**<!--fig:recertify.la.14d.acted--> | **+6.4% [+2.1, +10.9]**<!--fig:recertify.la.28d.acted--> | +11.3% [−0.5, +18.4]<!--fig:recertify.la.35d.acted--> | +2.5% [−9.0, +9.4]<!--fig:recertify.la.56d.acted--> |
-| **Delhi** | −6.8% [−15.8, +2.3]<!--fig:recertify.delhi.14d.acted--> | (3 weeks) | **−10.8% [−18.9, −7.7]**<!--fig:recertify.delhi.35d.acted--> | unchanged |
-| **Kraków** | −4.0% [−12.4, +1.4]<!--fig:recertify.krakow.14d.acted--> | unchanged | −6.7% [−31.4, +1.1]<!--fig:recertify.krakow.35d.acted--> | unchanged |
-| **Santiago** | +2.9% [−0.6, +6.7]<!--fig:recertify.santiago.14d.acted--> | −0.1% [−0.2, +6.0]<!--fig:recertify.santiago.28d.acted--> | unchanged | unchanged |
+| **Los Angeles** | **+13.8% [+2.9, +20.1]**<!--fig:first.recertify.la.14d.acted--> | **+6.4% [+2.1, +10.9]**<!--fig:first.recertify.la.28d.acted--> | +11.3% [−0.5, +18.4]<!--fig:first.recertify.la.35d.acted--> | +2.5% [−9.0, +9.4]<!--fig:first.recertify.la.56d.acted--> |
+| **Delhi** | −6.8% [−15.8, +2.3]<!--fig:first.recertify.delhi.14d.acted--> | (3 weeks) | **−10.8% [−18.9, −7.7]**<!--fig:first.recertify.delhi.35d.acted--> | unchanged |
+| **Kraków** | −4.0% [−12.4, +1.4]<!--fig:first.recertify.krakow.14d.acted--> | unchanged | −6.7% [−31.4, +1.1]<!--fig:first.recertify.krakow.35d.acted--> | unchanged |
+| **Santiago** | +2.9% [−0.6, +6.7]<!--fig:first.recertify.santiago.14d.acted--> | −0.1% [−0.2, +6.0]<!--fig:first.recertify.santiago.28d.acted--> | unchanged | unchanged |
 | **Johannesburg** | unchanged | unchanged | unchanged | unchanged |
 | **Melbourne** | unchanged | unchanged | unchanged | unchanged |
 
@@ -889,7 +1038,7 @@ retraining figure moves from −13.4% to −3.0% at 14 days. Read this with the
 caution it deserves: Los Angeles has the fewest effective observations of any
 city in the set, and it is the least trustworthy row in the table.
 
-**It harms Delhi.** At 35 days, −10.8% [−18.9, −7.7]<!--fig:recertify.delhi.35d.acted-->, clear of zero in the wrong
+**It harms Delhi.** At 35 days, −10.8% [−18.9, −7.7]<!--fig:first.recertify.delhi.35d.acted-->, clear of zero in the wrong
 direction. Delhi promotes 13 models there against 8 on the shipped loop, and its
 median error rises from 40.4 to 45.8 µg/m³.
 
@@ -1069,7 +1218,7 @@ windows of 14, 21 and 28 days.
 
 | against the shipped loop, over the weeks it changed the serving model | 14 days | 21 days | 28 days |
 |---|---|---|---|
-| **Kraków** | unchanged | **+1.5% [+0.8, +2.0]**<!--fig:probation.krakow.21d.acted--> | +0.8% |
+| **Kraków** | unchanged | **+1.5% [+0.8, +2.0]**<!--fig:first.probation.krakow.21d.acted--> | +0.8% |
 | **Delhi** | +1.1% (2 weeks) | unchanged | unchanged |
 | **Los Angeles** | +4.0% | unchanged | unchanged |
 | **Santiago** | unchanged | +0.6% (1 week) | unchanged |
@@ -1208,12 +1357,12 @@ straight line. A flexible learner, given the choice, declines to be flexible.
 
 | | model | median RMSE | retrains | promoted | retraining premium |
 |---|---|---|---|---|---|
-| **Delhi** | Ridge, shipped | 40.44<!--fig:ablation.delhi.ridge.rmse--> | 9 | 8 | **+49.35% [+33.74, +61.81]**<!--fig:ablation.delhi.ridge--> |
-| **Delhi** | Ridge, tuned | 40.11<!--fig:ablation.delhi.ridge_tuned.rmse--> | 8 | 8 | **+27.73% [+14.99, +40.59]**<!--fig:ablation.delhi.ridge_tuned--> |
-| **Delhi** | gradient boosting, tuned | **39.91**<!--fig:ablation.delhi.gbm_tuned.rmse--> | 7 | 5 | **+9.74% [+7.97, +25.96]**<!--fig:ablation.delhi.gbm_tuned--> |
-| **Los Angeles** | Ridge, shipped | 10.91<!--fig:ablation.la.ridge.rmse--> | 1 | 1 | **−13.36% [−36.88, −3.81]**<!--fig:ablation.la.ridge--> |
-| **Los Angeles** | Ridge, tuned | 10.76<!--fig:ablation.la.ridge_tuned.rmse--> | 1 | 1 | **−12.78% [−33.58, −3.28]**<!--fig:ablation.la.ridge_tuned--> |
-| **Los Angeles** | gradient boosting, tuned | **10.74**<!--fig:ablation.la.gbm_tuned.rmse--> | 1 | 1 | −6.93% [−13.20, +2.83]<!--fig:ablation.la.gbm_tuned--> |
+| **Delhi** | Ridge, shipped | 40.44<!--fig:first.ablation.delhi.ridge.rmse--> | 9 | 8 | **+49.35% [+33.74, +61.81]**<!--fig:first.ablation.delhi.ridge--> |
+| **Delhi** | Ridge, tuned | 40.11<!--fig:first.ablation.delhi.ridge_tuned.rmse--> | 8 | 8 | **+27.73% [+14.99, +40.59]**<!--fig:first.ablation.delhi.ridge_tuned--> |
+| **Delhi** | gradient boosting, tuned | **39.91**<!--fig:first.ablation.delhi.gbm_tuned.rmse--> | 7 | 5 | **+9.74% [+7.97, +25.96]**<!--fig:first.ablation.delhi.gbm_tuned--> |
+| **Los Angeles** | Ridge, shipped | 10.91<!--fig:first.ablation.la.ridge.rmse--> | 1 | 1 | **−13.36% [−36.88, −3.81]**<!--fig:first.ablation.la.ridge--> |
+| **Los Angeles** | Ridge, tuned | 10.76<!--fig:first.ablation.la.ridge_tuned.rmse--> | 1 | 1 | **−12.78% [−33.58, −3.28]**<!--fig:first.ablation.la.ridge_tuned--> |
+| **Los Angeles** | gradient boosting, tuned | **10.74**<!--fig:first.ablation.la.gbm_tuned.rmse--> | 1 | 1 | −6.93% [−13.20, +2.83]<!--fig:first.ablation.la.gbm_tuned--> |
 
 The faithfulness check passes: the shipped arm reproduces the published figures
 to two decimals in both cities, from a replay in a throwaway backend. And the
@@ -1222,25 +1371,25 @@ model over the replay, by 0.20 µg/m³ in Delhi and 0.02 in Los Angeles. The
 designed experiment is finally available, and it does not go the way the earlier
 version of this section predicted.
 
-**Delhi's premium falls from +49.35%<!--fig:ablation.delhi.ridge--> to +9.74%<!--fig:ablation.delhi.gbm_tuned-->.** Over the 37 weeks both arms
-retrained, the paired difference is **+13.92 points [+8.01, +16.69]**<!--fig:ablation.delhi.ridge_minus_gbm-->, clear of
+**Delhi's premium falls from +49.35%<!--fig:first.ablation.delhi.ridge--> to +9.74%<!--fig:first.ablation.delhi.gbm_tuned-->.** Over the 37 weeks both arms
+retrained, the paired difference is **+13.92 points [+8.01, +16.69]**<!--fig:first.ablation.delhi.ridge_minus_gbm-->, clear of
 zero. The previous conclusion here, that retraining is worth about as much to a
 tree as to a straight line, was an artefact of an undertrained tree and is
 withdrawn.
 
-**Los Angeles's harm falls from −13.36%<!--fig:ablation.la.ridge--> to −6.93%<!--fig:ablation.la.gbm_tuned--> and stops clearing zero.** The
-paired difference over the 35 shared weeks is **−7.03 points [−15.53, −3.54]**<!--fig:ablation.la.ridge_minus_gbm-->,
+**Los Angeles's harm falls from −13.36%<!--fig:first.ablation.la.ridge--> to −6.93%<!--fig:first.ablation.la.gbm_tuned--> and stops clearing zero.** The
+paired difference over the 35 shared weeks is **−7.03 points [−15.53, −3.54]**<!--fig:first.ablation.la.ridge_minus_gbm-->,
 also clear of zero.
 
 ### Where the premium actually goes
 
 The three arms decompose it, and the decomposition is the useful part:
 
-| Delhi's +49.35%<!--fig:ablation.delhi.ridge--> | points |
+| Delhi's +49.35%<!--fig:first.ablation.delhi.ridge--> | points |
 |---|---|
-| lost by tuning `alpha`, same model class | **21.62**<!--fig:ablation.delhi.alpha_points--> |
-| lost by leaving linearity | **17.99**<!--fig:ablation.delhi.linearity_points--> |
-| **left over** | **+9.74%**<!--fig:ablation.delhi.gbm_tuned--> |
+| lost by tuning `alpha`, same model class | **21.62**<!--fig:first.ablation.delhi.alpha_points--> |
+| lost by leaving linearity | **17.99**<!--fig:first.ablation.delhi.linearity_points--> |
+| **left over** | **+9.74%**<!--fig:first.ablation.delhi.gbm_tuned--> |
 
 Less than a quarter of the headline survives contact with a well-specified
 model, and **the largest single component is not the model class at all**. It is
@@ -1254,12 +1403,12 @@ points from `alpha`, 5.85 from linearity.
 ### What this changes, and what survives
 
 **Finding 1 survives in sign and loses most of its magnitude.** Retraining still
-pays in Delhi with the best model on offer, +9.74% [+7.97, +25.96]<!--fig:ablation.delhi.gbm_tuned-->, clear of
+pays in Delhi with the best model on offer, +9.74% [+7.97, +25.96]<!--fig:first.ablation.delhi.gbm_tuned-->, clear of
 zero. It is a real effect about the world. It is roughly a fifth of what this
 page reported before the confound was tested properly.
 
 **Finding 2 no longer holds under the better model.** Los Angeles's harm is
-−6.93% [−13.20, +2.83]<!--fig:ablation.la.gbm_tuned--> with a tuned tree, which does not clear zero. "Retraining
+−6.93% [−13.20, +2.83]<!--fig:first.ablation.la.gbm_tuned--> with a tuned tree, which does not clear zero. "Retraining
 costs where the world did not move" holds for the model that ships and cannot be
 established for the best model available.
 
@@ -1394,14 +1543,19 @@ the published grid is left exactly as it was.
   two were Kraków and Melbourne, and Los Angeles was a measured harm. That harm
   did not survive the change of configuration, which leaves this project without
   the negative result its first argument leaned on.
-- **Most of this page describes a loop that no longer ships.** The five mechanism
-  sweeps, the ablation, and the trigger and gate analyses were measured on the
-  loop as first shipped and have not been re-run. Their verdicts may not carry
-  over to a loop with a tuned penalty and a second alarm.
-- **The second alarm was adopted without the test written for it.** D1's settling
-  condition was a seventh and an eighth city, chosen before the floor was swept
-  on them. Those cities were never run. The alarm ships on the evidence of six
-  cities picked for contrast, in which it helped one and changed nothing in five.
+- **Most of this page describes a loop that no longer ships.** The trigger and gate
+  analyses and the workings of the five sweeps below are the first loop's. The sweeps and the
+  ablation were re-run on the loop as it ships on 2026-11-10, and
+  [that section](#the-five-fixes-and-the-model-ablation-on-the-loop-as-it-ships) is the
+  current reading; the ratchet and gate-calibration analyses were not redone in the same
+  depth.
+- **The second alarm ships on a gain that did not repeat.** D1's settling condition was a
+  seventh and an eighth city, chosen before the floor was swept on them, and they were never
+  run. On the loop as it ships the alarm's gain in Los Angeles is
+  +6.6% [−1.1, +9.3]<!--fig:floor.la.-0.50.acted-->, which covers zero. What it is known to do is
+  shorten the loop's silences.
+- **Both runs of the five fixes use the same six cities.** A verdict that repeats across two
+  loops has not been tested on a city it was not found on.
 - **The pooled baseline is fitted at the default penalty** while each city's own
   model is now tuned at every fit, which tilts "one model or six" a little
   against the pooled model.
@@ -1413,8 +1567,8 @@ the published grid is left exactly as it was.
   conclusion was withdrawn
   [above](#is-the-finding-about-the-world-or-about-a-linear-model) on 2026-08-16
   and this list was not updated with it. What the tuned comparison found:
-  Delhi's +49.4%<!--fig:first.delhi.acted--> is 21.6 points<!--fig:ablation.delhi.alpha_points--> of shipped `alpha`, 18.0 points<!--fig:ablation.delhi.linearity_points--> of linearity and
-  +9.7%<!--fig:ablation.delhi.gbm_tuned--> left over, and the re-baseline through the loop puts the surviving
+  Delhi's +49.4%<!--fig:first.delhi.acted--> is 21.6 points<!--fig:first.ablation.delhi.alpha_points--> of shipped `alpha`, 18.0 points<!--fig:first.ablation.delhi.linearity_points--> of linearity and
+  +9.7%<!--fig:first.ablation.delhi.gbm_tuned--> left over, and the re-baseline through the loop puts the surviving
   premium at +22.8% [+11.8, +36.4]<!--fig:rebaseline.delhi.fixed-->. The confound is measured, not closed: the
   decomposition rests on Delhi and Los Angeles.
 - No multiple-comparisons correction. Six city intervals are read off one

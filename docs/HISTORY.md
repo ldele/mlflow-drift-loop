@@ -103,13 +103,25 @@ led with numbers the project had itself explained away. On 2026-11-10 the six ci
 live schedule took that configuration, and a fresh replay reproduced the September figures to the
 decimal: Delhi +22.8% [+11.8, +36.4], Los Angeles −3.5% [−25.6, +3.0] and no longer a harm,
 Melbourne up from nothing to +5.6% [+2.0, +6.6]. The ablation and the five mechanism sweeps were
-not re-run, so they still describe the first loop, and the pages say so.
+not re-run in that change. They were later the same day, and the entry on the five fixes below is what they found.
 
 Two things the same pass found. The benchmark's "never retrained" model was still being fitted at
 the default penalty, which would have credited retraining with the gain that tuning the first fit
 had already made: it read +44.2% for Delhi where the replay reads +17.9%. And the site's sentence
 that no short-serving promotion "left its city worse off" was written into the page, not counted
 from the data; under the new replay two of 28 did.
+
+**The five fixes were measured again, and two results shrank** (2026-11-10). The sweeps and the
+ablation had only ever run on the first loop. They were re-run on the loop as it ships, with ten
+predictions and a reading rule written first: a setting counts only where it clears zero, in the
+same direction, in two cities. Seven predictions held. Two results the pages had leaned on did not
+repeat. The confidence-aware gate, published as "actively harmful", cost two cities accuracy on the
+first loop and one on this one, and the evidence for why splits three cities each way. The second
+retrain alarm, switched on that same day partly for improving Los Angeles by +11.8% [+2.1, +17.2],
+improves it by +6.6% [−1.1, +9.3] on the tuned loop, an interval that covers zero. Across the five
+sweeps, intervals clear of zero fell from 15 of 55 to 6 of 59. The default penalty had inflated
+the effects measured on top of the model as well as the headline, and the README's "they fail for
+one reason" is now written as what was observed on the first loop.
 
 ## The half that should have been withdrawn
 

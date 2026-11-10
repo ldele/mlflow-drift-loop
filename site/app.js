@@ -1361,8 +1361,8 @@ function renderAblation(ablation) {
   const delhiPaired = (cities.find((c) => c.city === "Delhi") || cities[0]).paired;
   chartCard(jobs,
     "The same city, replayed under three models",
-    "What retraining was worth in each city, week by week, under the model as it first shipped and under " +
-    "two tuned properly on the same protocol. Bars are 95% intervals; one crossing the zero line " +
+    "What retraining was worth in each city, week by week, under the model that ships and under " +
+    "two tuned once on the same protocol. Bars are 95% intervals; one crossing the zero line " +
     "means retraining cannot be shown to have paid at all. If the premium were really about the " +
     "air changing, it would survive the change of model. " +
     (delhiPaired
@@ -1382,26 +1382,30 @@ function renderAblation(ablation) {
   const iv = (lo, hi) => `[${pct(lo, 1).replace("%", "")}, ${pct(hi, 1).replace("%", "")}]`;
   const delhi = cities.find((c) => c.city === "Delhi") || cities[0];
   const la = cities.find((c) => c.city === "Los Angeles");
-  const shipped = armOf(delhi, "ridge"), tunedRidge = armOf(delhi, "ridge_tuned");
-  const tree = armOf(delhi, "gbm_tuned");
+  const shipped = armOf(delhi, "ridge"), tree = armOf(delhi, "gbm_tuned");
+  const paired = delhi.paired;
 
   let note =
-    `<strong>The duller explanation was right about most of it.</strong> ` +
-    `${delhi.city} first read ${pct(shipped.premium, 1)}. That survives the change of model, but only as ` +
-    `${pct(tree.premium, 1)} ${iv(tree.lo, tree.hi)} — a fifth of the size. And the larger half ` +
-    `of what it lost is not the straight line at all: ` +
-    `${(shipped.premium - tunedRidge.premium).toFixed(1)} of the points went to <code>alpha=1.0</code>, ` +
-    `a library default nobody chose, and ${(tunedRidge.premium - tree.premium).toFixed(1)} to ` +
-    `linearity. What is left over is the air. This is the experiment that changed the loop: it now ` +
-    `chooses that setting itself at every fit, and the figures at the top of this page were ` +
-    `measured after the change.`;
+    `<strong>Part of it is the straight line, and most of it is not.</strong> ` +
+    `${delhi.city} reads ${pct(shipped.premium, 1)} under the model that ships and ` +
+    `${pct(tree.premium, 1)} ${iv(tree.lo, tree.hi)} under a tree tuned on the same protocol, ` +
+    (tree.real ? `still clear of zero.` : `which no longer clears zero.`) +
+    (paired
+      ? ` Week for week over the ${paired.weeks} weeks both models retrained, the tree gives up ` +
+        `${paired.points.toFixed(1)} points of that [${paired.lo.toFixed(1)}, ${paired.hi.toFixed(1)}].`
+      : ``) +
+    ` The first time this experiment ran, on the loop as it first shipped, it took four fifths ` +
+    `of the headline, and most of that was a default setting in the model. That is why the loop ` +
+    `now chooses the setting itself.`;
 
   if (la) {
     const laShipped = armOf(la, "ridge"), laTree = armOf(la, "gbm_tuned");
-    note +=
-      ` <strong>${la.city} loses its result entirely:</strong> ${pct(laShipped.premium, 1)} under ` +
-      `the model as first shipped, ${pct(laTree.premium, 1)} ${iv(laTree.lo, laTree.hi)} under the ` +
-      `better one, an interval that includes zero.`;
+    note += !laShipped.real && !laTree.real
+      ? ` <strong>${la.city} shows nothing measurable under either model:</strong> ` +
+        `${pct(laShipped.premium, 1)} ${iv(laShipped.lo, laShipped.hi)} and ` +
+        `${pct(laTree.premium, 1)} ${iv(laTree.lo, laTree.hi)}.`
+      : ` ${la.city} reads ${pct(laShipped.premium, 1)} ${iv(laShipped.lo, laShipped.hi)} under ` +
+        `the model that ships and ${pct(laTree.premium, 1)} ${iv(laTree.lo, laTree.hi)} under the tree.`;
   }
 
   // The check, with its margin. A verdict without its margin is how "the check
