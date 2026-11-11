@@ -1,8 +1,9 @@
 """Fail when the live loop has gone more than a week without logging a cycle.
 
 The weekly Action runs this after it has persisted its store, so a job that
-finishes green without leaving a recent cycle on record turns red instead, and
-the failure step files it as an issue.
+finishes green without leaving a recent cycle on record turns red instead. The
+daily ``heartbeat.yml`` runs it too, for the week the weekly job never starts.
+Either way the failure is filed as an issue.
 
     python scripts/check_heartbeat.py [--warn-only]
 

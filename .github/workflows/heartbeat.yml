@@ -1,0 +1,65 @@
+# The live loop's heartbeat, checked every day from outside the weekly job.
+#
+# drift-loop.yml checks its own store after each cycle, but a check inside a job
+# cannot fire when that job never starts: a dropped cron, a workflow broken at
+# parse time, a run cancelled before its first step. This workflow reads the
+# committed tracking store once a day and fails when no cycle has been logged
+# for longer than the limit in src/driftloop/heartbeat.py, then files the
+# failure on the same issue the weekly job uses.
+#
+# It only reads: no write access to the repository, no tracking-store setup, no
+# cycle. It cannot change a decision the loop takes.
+#
+# With an 8-day limit and the cycle on Monday mornings, a missed Monday is
+# reported on the Wednesday. The issue gets one comment a day until a cycle is
+# logged again.
+#
+# What it still cannot see: Actions itself being off. GitHub also disables
+# scheduled workflows in a public repository after 60 days with no activity,
+# and this one never commits, so a loop that has stopped committing for that
+# long silences both. The dead-man's switch ping at the end of drift-loop.yml
+# covers that, once its HEARTBEAT_PING_URL secret is set.
+
+name: heartbeat
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # daily 09:00 UTC, well after Monday's 06:00 cycle
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write # to file a stale store where it will be seen
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Set up environment
+        run: uv sync --python 3.12
+
+      # stdout's first line is the plain-language finding; tee keeps it for the
+      # issue body. The default shell runs with pipefail, so the check's exit
+      # status still decides the step.
+      - name: Has a cycle been logged recently?
+        run: uv run python scripts/check_heartbeat.py | tee heartbeat.txt
+
+      - name: File a stale store where it will be seen
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          finding=$(head -n 1 heartbeat.txt 2>/dev/null || true)
+          bash scripts/file_failure_issue.sh "The daily heartbeat check failed: $RUN_URL
+
+          ${finding:-The check did not get as far as reading the store; see the run log.}
+
+          No weekly cycle has been recorded recently, which means the weekly job
+          has stopped running or has stopped recording. Its own run log is under
+          the drift-loop workflow. Once it runs again, the runner catches up the
+          weeks it missed (\`scripts/run_scheduled.py\`)."

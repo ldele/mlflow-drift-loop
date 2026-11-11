@@ -13,9 +13,11 @@ finishes. When the cycle *ran* is the heartbeat; what week it looked at is not.
 
 What it can and cannot see: a cycle run by hand and one run by the weekly
 Action leave the same record, so "fresh" means "somebody ran a cycle", not "the
-cron is healthy". And a check that runs inside the weekly job cannot fire when
-that job never starts; the site recomputes the same age in the reader's browser
-for that case.
+cron is healthy". It runs in three places: inside the weekly job after each
+cycle, in a daily workflow of its own (``heartbeat.yml``) for the job that never
+starts, and in the reader's browser on the site's schedule card. A fourth
+alarm lives off GitHub: after a cycle passes this check, the weekly job pings an
+outside dead-man's switch, which alerts when the pings stop.
 """
 
 from __future__ import annotations

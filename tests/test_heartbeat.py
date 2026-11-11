@@ -145,3 +145,49 @@ def test_the_site_publishes_the_limit_the_job_fails_on():
         pytest.skip("no scheduled cycles in this build")
     assert schedule["max_silence_days"] == MAX_SILENCE_DAYS
     assert heartbeat.check(schedule["logged_at_utc"]).last_logged is not None
+
+
+def test_the_daily_check_and_the_weekly_job_file_on_one_thread():
+    """The check runs daily outside the job it watches, and both file one issue.
+
+    The issue's title is how an open thread is found again, so it lives in one
+    script; a workflow that inlined its own copy could drift and split an outage
+    across two issues.
+    """
+    import yaml
+
+    workflows = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    daily = yaml.safe_load((workflows / "heartbeat.yml").read_text(encoding="utf-8"))
+    weekly = (workflows / "drift-loop.yml").read_text(encoding="utf-8")
+    daily_text = (workflows / "heartbeat.yml").read_text(encoding="utf-8")
+
+    triggers = daily.get("on", daily.get(True))
+    assert triggers["schedule"][0]["cron"].split()[2:] == ["*", "*", "*"], "must run every day"
+    assert daily["permissions"]["contents"] == "read", "the daily check must not be able to write"
+    assert "scripts/check_heartbeat.py" in daily_text
+    for text in (daily_text, weekly):
+        assert "scripts/file_failure_issue.sh" in text
+        assert "gh issue create" not in text
+
+
+def test_the_dead_mans_switch_pings_only_after_a_recorded_fresh_cycle():
+    """The one alarm that works with GitHub off has to mean what it says.
+
+    A ping before the persist or the heartbeat would tell the outside monitor a
+    cycle was recorded when it may not have been. And the step must skip, not
+    fail, while the secret is unset, so the loop runs for anyone who has not
+    signed up to a monitor.
+    """
+    import yaml
+
+    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "drift-loop.yml"
+    steps = yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"]["cycle"]["steps"]
+    names = [s.get("name", "") for s in steps]
+    ping = names.index("Ping the dead-man's switch")
+
+    assert ping > names.index("Persist MLflow state + gathered data back to the repo")
+    assert ping > names.index("Heartbeat after the cycle")
+    assert "if" not in steps[ping], "a ping must follow success only, which is the default"
+    assert steps[ping]["env"]["HEARTBEAT_PING_URL"] == "${{ secrets.HEARTBEAT_PING_URL }}"
+    assert 'if [ -z "$HEARTBEAT_PING_URL" ]' in steps[ping]["run"]
+    assert steps[-1]["if"] == "failure()", "the issue step stays last, after the ping"
