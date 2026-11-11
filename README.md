@@ -59,8 +59,9 @@ autocorrelated weekly windows —
    which asks how the model compares with a plain daily profile of recent air and
    which no promotion can move, brings those silences down to
    22<!--fig:rebaseline.krakow.fixed.silence--> weeks and
-   16<!--fig:rebaseline.la.fixed.silence-->. It is kept for that. It is not shown to
-   make the forecasts better.
+   16<!--fig:rebaseline.la.fixed.silence-->. It is kept for that. Tried on nine cities
+   the study had never used, it shortened the silence in all five where it fired.
+   It is not shown to make the forecasts better, there or here.
 
 5. **No rule about when to retrain, or how hard to judge, made the forecasts
    better.** Five fixes were built and replayed on two differently set loops. On
@@ -165,6 +166,14 @@ other cities. One notch more aggressive it costs Kraków
 on at the cautious setting as a bound on how long the loop can go deaf, and no
 claim is made that it improves the forecasts ([D1](docs/DECISIONS.md)).
 
+That was then tested where nothing here had been tested before: on nine cities
+outside the six, with the cities, their replay windows and four predictions
+[committed before their data was fetched](docs/registrations/2026-11-10-second-alarm-on-held-out-cities.md).
+The alarm shortened the longest silence in every city where it fired. Its effect
+on accuracy had no consistent sign: +8.8% [−1.4, +11.1]<!--fig:heldout.istanbul.acted--> in
+Istanbul, −6.0% [−19.0, +9.2]<!--fig:heldout.dhaka.acted--> in Dhaka. No harm clears zero, and the
+gain once seen in Los Angeles did not turn up.
+
 The stricter exam is the result that changed most. On the first loop it cost two
 cities accuracy, and the account given was that a loop which retries until a
 challenger passes promotes its luckiest attempt, so a higher bar only buys a
@@ -215,6 +224,7 @@ python scripts/uncertainty.py --sensitivity # ... and how much the block length 
 python scripts/sweep_skill_floor.py         # one of five fix sweeps; --loop first replays the loop as first shipped
 python scripts/sweep_holdout.py             # does a longer promotion exam help? (no)
 python scripts/score_fixes.py               # read all five sweeps on both loops under one rule
+python scripts/held_out_cities.py           # the second alarm on nine cities outside the six
 python scripts/figures.py                   # -> outputs/figures.json, and which pages it contradicts
 python scripts/build_site.py                # -> site/data.json
 

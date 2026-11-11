@@ -52,6 +52,14 @@ outputs/first_shipped/*
 !outputs/first_shipped/model_ablation.csv
 !outputs/first_shipped/model_ablation_series.json
 
+# The second alarm on cities the study had not used (scripts/held_out_cities.py):
+# which candidates were walked and why, and both arms of each. Committed because
+# the docs quote them and the run needs nine cities' data to repeat.
+!outputs/held_out/
+outputs/held_out/*
+!outputs/held_out/alarm.csv
+!outputs/held_out/candidates.json
+
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and
 # published. The glob covers cities added later without another edit here.

@@ -181,7 +181,8 @@ model is tuned before the loop is measured.
 ### Limits of the re-run
 
 The same six cities carry both runs. Two runs agreeing shows a verdict survives a change of
-loop, and says nothing about a seventh city.
+loop, and says nothing about a seventh city. Only the second alarm has since been taken to
+new cities, in the next section.
 
 The design is small. Each city carries about 2 to 10 independent observations, the intervals
 are not corrected for one another, and a percentile interval on that few units is narrower
@@ -194,6 +195,93 @@ stricter than the case-by-case reading the first run was given.
 
 The tree is tuned once and the shipped Ridge at every fit, which is why the ablation compares
 the two tuned-once arms with each other.
+
+## The second alarm, on cities the study had not used
+
+Run on 2026-11-11 with `python scripts/held_out_cities.py`. The candidate cities and their
+order, the rule for their replay windows, which of them are tested, and four predictions were
+fixed in [the registration](registrations/2026-11-10-second-alarm-on-held-out-cities.md), and
+committed as `6d8f993` before any of their data was fetched. It is the first result in this
+project measured on cities it was not found on.
+
+Twelve large cities outside the six countries were listed in a fixed order. They were taken
+one at a time with the alarm off, until two turned up whose first alarm goes deaf: at least
+ten quiet weeks in a row, and at least three quiet weeks with the model 50% behind the daily
+profile. Nine were walked before the second such city appeared, none was dropped for missing
+data, and all nine then ran with the alarm on at −0.5. Each city's first model trains on its
+cleanest 75 days between July and November 2025, by rule.
+
+| | weekly runs | longest silence, alarm off → on | weeks the alarm changed the serving model | week by week, on against off |
+|---|---|---|---|---|
+| Tokyo | 47<!--fig:heldout.tokyo.runs--> | 30<!--fig:heldout.tokyo.off.silence--> → 25<!--fig:heldout.tokyo.on.silence--> | 4<!--fig:heldout.tokyo.changed--> | +7.3% [+6.5, +10.9]<!--fig:heldout.tokyo.acted--> |
+| Shanghai | 47<!--fig:heldout.shanghai.runs--> | 25<!--fig:heldout.shanghai.off.silence--> → 23<!--fig:heldout.shanghai.on.silence--> | 1<!--fig:heldout.shanghai.changed--> | one week, no interval |
+| São Paulo | 31<!--fig:heldout.sao_paulo.runs--> | 14<!--fig:heldout.sao_paulo.off.silence--> → 14<!--fig:heldout.sao_paulo.on.silence--> | 0<!--fig:heldout.sao_paulo.changed--> | identical |
+| Mexico City | 31<!--fig:heldout.mexico_city.runs--> | 25<!--fig:heldout.mexico_city.off.silence--> → 25<!--fig:heldout.mexico_city.on.silence--> | 0<!--fig:heldout.mexico_city.changed--> | identical |
+| **Cairo** | 34<!--fig:heldout.cairo.runs--> | 19<!--fig:heldout.cairo.off.silence--> → 13<!--fig:heldout.cairo.on.silence--> | 4<!--fig:heldout.cairo.changed--> | −4.5% [−7.2, +1.0]<!--fig:heldout.cairo.acted--> |
+| Dhaka | 43<!--fig:heldout.dhaka.runs--> | 32<!--fig:heldout.dhaka.off.silence--> → 18<!--fig:heldout.dhaka.on.silence--> | 28<!--fig:heldout.dhaka.changed--> | −6.0% [−19.0, +9.2]<!--fig:heldout.dhaka.acted--> |
+| Karachi | 38<!--fig:heldout.karachi.runs--> | 34<!--fig:heldout.karachi.off.silence--> → 34<!--fig:heldout.karachi.on.silence--> | 0<!--fig:heldout.karachi.changed--> | identical |
+| Buenos Aires | 35<!--fig:heldout.buenos_aires.runs--> | 21<!--fig:heldout.buenos_aires.off.silence--> → 21<!--fig:heldout.buenos_aires.on.silence--> | 0<!--fig:heldout.buenos_aires.changed--> | identical |
+| **Istanbul** | 44<!--fig:heldout.istanbul.runs--> | 22<!--fig:heldout.istanbul.off.silence--> → 15<!--fig:heldout.istanbul.on.silence--> | 6<!--fig:heldout.istanbul.changed--> | +8.8% [−1.4, +11.1]<!--fig:heldout.istanbul.acted--> |
+
+Bold marks the two cities with a deaf first alarm, which carry the predictions about a gain.
+The instrument check passed first: Los Angeles comes out deaf and Santiago does not, and Los
+Angeles's alarm-on arm reproduces its published premium.
+
+| # | predicted | what happened |
+|---|---|---|
+| H1 | the alarm harms no city walked | held: no interval clears zero on the negative side |
+| H2 | it shortens the longest silence in each city with a deaf first alarm | held: 19 → 13 weeks in Cairo, 22 → 15 in Istanbul |
+| H3 | the gain does not reach the standard for a claim | held: neither of the two clears zero |
+| H4 | the direction is positive in both | **failed**: Cairo's is negative |
+
+**The bound on silence carries over.** In the five cities where the alarm fired at all, the
+longest silence is shorter in every one, and in none of the nine is it longer. That is the one
+thing the pages claim for the alarm, and it now holds on nine cities it was never tuned on.
+
+**The accuracy gain does not.** The alarm's effect on accuracy has no consistent sign. Three
+point estimates are positive and two are negative, and the only city where it changed many
+weeks is one of the negative ones: Dhaka, over 28<!--fig:heldout.dhaka.changed--> weeks, at
+−6.0% [−19.0, +9.2]<!--fig:heldout.dhaka.acted-->, with its median error over the replay rising from
+24.52<!--fig:heldout.dhaka.off.rmse--> to 26.45<!--fig:heldout.dhaka.on.rmse--> µg/m³. That interval covers zero, so it is not a
+harm shown. It is also not nothing: the registration set a city harmed at −0.5 as the
+evidence that would switch the alarm off, and the largest sample here leans that way. Under
+the outcome table written beforehand, H4 failing means the gain once seen in Los Angeles is
+described from now on as an observation on the first loop, and not as something the alarm
+does.
+
+Tokyo clears zero on the positive side. It is not one of the two cities the gain was
+registered on, it rests on 4<!--fig:heldout.tokyo.changed--> changed weeks where the registration asked for five
+before reading an interval, and it is one of five intervals read without correction. It is
+reported and not counted.
+
+**A long silence is not always a fault.** Karachi's first alarm is quiet for
+34<!--fig:heldout.karachi.off.silence--> of 38<!--fig:heldout.karachi.runs--> weeks and Mexico City's for 25<!--fig:heldout.mexico_city.off.silence--> of
+31<!--fig:heldout.mexico_city.runs-->, and in neither did the model fall 50% behind the daily profile in a quiet
+week, so the second alarm never fired. The six-city write-up below reads every long silence
+as an alarm gone deaf. On these two the model was simply never bad enough, by the second
+alarm's own yardstick, to need replacing.
+
+**The rule that picked the two test cities guessed badly.** It counted, with the alarm off,
+the quiet weeks in which the alarm would have fired. Dhaka had one such week and the alarm
+went on to change 28. Cairo had six and it changed four. One early promotion sends a replay
+down a different path, so the number of weeks an alarm is eligible to fire does not predict
+how far the two arms end up apart. The rule could not leak the outcome, since it reads only
+the alarm-off arm. It did put the gain test on two cities with 4 and 6 changed weeks and left
+out the one city that could have carried it.
+
+### Limits of the held-out test
+
+Twelve candidates listed from memory are not a sample of the world's cities. They are cities
+nobody had looked at when the rule was written.
+
+Each city holds about 2 to 10 independent observations and five intervals are read without
+correction, so a real effect of a few percent in either direction would usually be missed. The
+accuracy result is "not shown, in either direction".
+
+The replay windows were set by a rule and the six cities' were picked by hand, so the new
+cities are not replayed exactly as the six were. A window chosen as the cleanest stretch
+between July and November also suits the northern cities better than São Paulo or Buenos
+Aires.
 
 ## How to read the rest of this page
 
@@ -1551,11 +1639,14 @@ the published grid is left exactly as it was.
   [that section](#the-five-fixes-and-the-model-ablation-on-the-loop-as-it-ships) is the
   current reading; the ratchet and gate-calibration analyses were not redone in the same
   depth.
-- **The second alarm is kept for the silences it shortens, not for accuracy.** The gain it
-  was first adopted on did not repeat: on the loop as it ships it reads
-  +6.6% [−1.1, +9.3]<!--fig:floor.la.-0.50.acted--> in Los Angeles, which covers zero. D1's settling
-  condition, a seventh and an eighth city chosen before the alarm is swept on them, was never
-  run, so whether it helps accuracy anywhere is untested.
+- **The second alarm is kept for the silences it shortens, not for accuracy.** On nine
+  cities outside the six it shortened the longest silence wherever it fired, and its effect on
+  accuracy had no consistent sign
+  ([the held-out test](#the-second-alarm-on-cities-the-study-had-not-used)). No harm clears
+  zero there, and the city with the most changed weeks, Dhaka, leans negative at
+  −6.0% [−19.0, +9.2]<!--fig:heldout.dhaka.acted-->.
+- **Only the second alarm has been tested outside the six cities.** The headline premiums, the
+  exam's calibration and the other four fixes have not.
 - **Both runs of the five fixes use the same six cities.** A verdict that repeats across two
   loops has not been tested on a city it was not found on.
 - **The pooled baseline is fitted at the default penalty** while each city's own

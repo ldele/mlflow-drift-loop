@@ -125,6 +125,15 @@ one reason" is now written as what was observed on the first loop. The alarm sta
 owner's decision of the same day, as a bound on how long the loop can go deaf, and the pages no
 longer claim it improves accuracy.
 
+**One mechanism met cities it was not found on** (2026-11-11). Everything above was measured on
+the same six cities. The second alarm was then run on nine others, with the candidates, their
+replay windows and four predictions committed (`6d8f993`) before any of their data was fetched.
+The alarm shortened the longest silence in all five cities where it fired, which is the claim the
+pages make for it. The accuracy gain did not appear: Istanbul reads +8.8% [−1.4, +11.1], Cairo
+−4.5% [−7.2, +1.0] and Dhaka −6.0% [−19.0, +9.2], and the prediction that the direction would at
+least be positive failed. The Los Angeles gain, which the first sweep published at +11.8% and on
+which the alarm was briefly adopted, is now described as an observation on the first loop.
+
 ## The half that should have been withdrawn
 
 Finding 2, "retraining costs where the air did not move", was written on 2026-07-31 as "it costs

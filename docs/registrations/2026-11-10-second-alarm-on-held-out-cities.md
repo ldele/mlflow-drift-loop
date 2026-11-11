@@ -162,3 +162,27 @@ The target is CAMS model output in every city, as for the six.
 
 ## Addenda
 
+**2026-11-11, after every result had been seen.** Nothing above was edited. This file and the
+script were committed as `6d8f993` at 10:14 on 2026-11-11, before the first candidate was
+fetched. The fetched files and their hashes are in `outputs/held_out/candidates.json`.
+
+Nine candidates were walked, Tokyo to Istanbul, and none was dropped. Cairo and Istanbul were
+the two with a deaf first alarm. H1, H2 and H3 held. H4 failed: Cairo's direction is negative.
+
+Three things the registration did not anticipate.
+
+The void condition for the gain predictions required fewer than 5 changed weeks in every city
+with a deaf first alarm. Cairo had 4 and Istanbul 6, so the predictions are not void, but
+Cairo's sign rests on fewer weeks than the script's own threshold for reading an interval. H4
+is scored as failed and that is said beside it.
+
+Tokyo clears zero on the positive side over 4 changed weeks. It is not one of the two cities
+the gain predictions were registered on, so it is reported and not counted.
+
+The condition for a deaf first alarm did not predict where the alarm would change the serving
+model. Dhaka failed it and had 28 changed weeks; Cairo passed it and had 4. A later test of
+this kind should pick its cities on something other than a count of eligible weeks, and the
+write-up says so.
+
+Results are in `docs/evaluation.md`, "The second alarm, on cities the study had not used".
+`python scripts/held_out_cities.py` repeats the run from the committed data.

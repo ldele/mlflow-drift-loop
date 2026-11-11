@@ -1,0 +1,19 @@
+city,floor,deaf,runs,retrains,promotions,fired_by_skill,longest_silence,median_rmse,paired,differing_weeks,vs_off_acted,vs_off_acted_lo,vs_off_acted_hi,vs_off_acted_real
+Tokyo,off,False,47,6,3,0,30,15.01,2.85,0,,,,
+Tokyo,-0.50,False,47,7,4,1,25,14.75,3.23,4,7.27,6.52,10.86,True
+Shanghai,off,False,47,6,3,0,25,30.09,-2.28,0,,,,
+Shanghai,-0.50,False,47,8,4,1,23,30.09,-2.28,1,22.59,-inf,inf,False
+São Paulo,off,False,31,10,1,0,14,10.6,-0.07,0,,,,
+São Paulo,-0.50,False,31,10,1,0,14,10.6,-0.07,0,,,,
+Mexico City,off,False,31,2,2,0,25,12.2,-3.94,0,,,,
+Mexico City,-0.50,False,31,2,2,0,25,12.2,-3.94,0,,,,
+Cairo,off,True,34,9,2,0,19,12.34,6.38,0,,,,
+Cairo,-0.50,True,34,15,5,6,13,12.34,6.38,4,-4.46,-7.2,0.96,False
+Dhaka,off,False,43,8,4,0,32,24.52,30.53,0,,,,
+Dhaka,-0.50,False,43,13,8,2,18,26.45,25.59,28,-5.98,-19.03,9.25,False
+Karachi,off,False,38,3,2,0,34,11.44,22.13,0,,,,
+Karachi,-0.50,False,38,3,2,0,34,11.44,22.13,0,,,,
+Buenos Aires,off,False,35,7,4,0,21,4.63,-1.6,0,,,,
+Buenos Aires,-0.50,False,35,7,4,0,21,4.63,-1.6,0,,,,
+Istanbul,off,True,44,12,6,0,22,18.75,21.37,0,,,,
+Istanbul,-0.50,True,44,15,9,4,15,18.75,21.37,6,8.85,-1.36,11.05,False

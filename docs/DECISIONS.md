@@ -64,6 +64,25 @@ What would change this. A city it harms at −0.5 would switch it off. A seventh
 an eighth city, chosen before the alarm is swept on them, are what could turn the
 Los Angeles gain into a claim about accuracy or retire it.
 
+### Tested on cities outside the six, 2026-11-11
+
+That test has now been run, on rules committed before the data was fetched
+([evaluation.md](evaluation.md#the-second-alarm-on-cities-the-study-had-not-used)).
+Nine new cities were walked. The decision stands, and on firmer ground for the one
+claim it rests on: the alarm shortened the longest silence in all five cities where
+it fired and lengthened it in none.
+
+The Los Angeles gain is retired as a claim. In the two cities picked to test it the
+alarm reads +8.8% [−1.4, +11.1]<!--fig:heldout.istanbul.acted--> in Istanbul and −4.5% [−7.2, +1.0]<!--fig:heldout.cairo.acted--> in
+Cairo: neither clears zero, and the signs disagree.
+
+No city is harmed by the standard set above, an interval clear of zero. Dhaka is
+the one to watch. The alarm changed its serving model for 28<!--fig:heldout.dhaka.changed--> weeks, more than
+anywhere else, and reads −6.0% [−19.0, +9.2]<!--fig:heldout.dhaka.acted-->. That is not a harm shown, and it
+is the largest sample in the test leaning the wrong way. Whether a lean of that
+kind is enough to switch the alarm off is the owner's call; this analysis did not
+change the setting.
+
 ### The choice
 
 The retrain trigger ratchets: it compares a model against its own error at

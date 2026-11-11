@@ -117,3 +117,10 @@ def test_the_first_shipped_figures_are_kept_beside_the_current_ones(committed):
         assert f"{city}.acted" in committed
         assert f"{figures.FIRST}{city}.acted" in committed
     assert committed["first.delhi.acted"] != committed["delhi.acted"]
+
+
+def test_the_held_out_cities_are_keyed_by_a_plain_slug(committed):
+    assert figures._city_slug("São Paulo") == "sao_paulo"
+    # Both arms' silences for a city the alarm fired in, and none it did not reach.
+    assert committed["heldout.istanbul.off.silence"] > committed["heldout.istanbul.on.silence"]
+    assert not any(key.startswith("heldout.lagos") for key in committed)

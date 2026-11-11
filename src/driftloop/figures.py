@@ -32,6 +32,7 @@ import csv
 import json
 import re
 import subprocess
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -200,6 +201,36 @@ def _rebaseline(rows: list[dict[str, str]], figures: dict[str, float]) -> None:
         figures[f"{key}.silence"] = int(row["longest_silence"])
 
 
+# The second alarm on cities outside the six (scripts/held_out_cities.py).
+HELD_OUT_DIR = "held_out"
+
+
+def _city_slug(name: str) -> str:
+    """ "São Paulo" -> "sao_paulo": a key a comment in any page can carry."""
+    plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return plain.lower().replace(" ", "_")
+
+
+def _held_out(rows: list[dict[str, str]], figures: dict[str, float]) -> None:
+    """Each arm's longest silence and error, and the alarm-on arm against the off."""
+    for row in rows:
+        city = f"heldout.{_city_slug(row['city'])}"
+        arm = "off" if row["floor"] == "off" else "on"
+        figures[f"{city}.runs"] = int(row["runs"])
+        figures[f"{city}.{arm}.silence"] = int(row["longest_silence"])
+        figures[f"{city}.{arm}.retrains"] = int(row["retrains"])
+        figures[f"{city}.{arm}.rmse"] = float(row["median_rmse"])
+        if arm == "off":
+            continue
+        figures[f"{city}.changed"] = int(row["differing_weeks"])
+        if row["vs_off_acted"]:
+            lo, hi = float(row["vs_off_acted_lo"]), float(row["vs_off_acted_hi"])
+            # One changed week cannot bound anything, and is not given an interval.
+            bounded = abs(lo) != float("inf")
+            _put(figures, f"{city}.acted", float(row["vs_off_acted"]),
+                 lo if bounded else None, hi if bounded else None)
+
+
 def _loop(outputs: Path) -> dict[str, float]:
     """Every figure one loop's outputs hold, under its bare key."""
     figures: dict[str, float] = {}
@@ -226,6 +257,7 @@ def collect(outputs: Path) -> dict[str, float]:
     figures = _loop(outputs)
     figures.update({FIRST + key: value for key, value in _loop(outputs / FIRST_DIR).items()})
     _rebaseline(_rows(outputs / "rebaseline.csv"), figures)
+    _held_out(_rows(outputs / HELD_OUT_DIR / "alarm.csv"), figures)
     return {
         key: value if isinstance(value, int) else round(float(value), 4)
         for key, value in sorted(figures.items())
