@@ -300,6 +300,7 @@ GUIDE_VALUES = guides.context(
     horizon_days=PROFILE.location.forecast_lead_days if PROFILE.location else None,
     climatology_days=retrospect.CLIMATOLOGY_DAYS,
     psi_bands={"stable": PSI_STABLE, "significant": PSI_SIGNIFICANT},
+    span=guides.replay_span(PROFILES.values()),
 )
 
 
@@ -318,6 +319,15 @@ DB = PROFILE.db_filename
 IS_SYNTHETIC = profile_key == "synthetic"
 
 runs = load_runs(DB, CFG.experiment_name)
+# The facts a reading quotes that belong to this city: its dates, its run count,
+# its first training window.
+GUIDE_VALUES.update(guides.city_context(
+    PROFILE.label,
+    [] if runs.empty else list(runs["as_of"]),
+    CFG.monitor_days,
+    (PROFILE.replay.champion_train_start, PROFILE.replay.champion_train_end)
+    if PROFILE.replay else None,
+))
 meta = load_run_meta(PROFILE.meta_filename)
 drift_date = meta.get("drift_date")
 
@@ -517,12 +527,8 @@ with tab_loop:
     st.plotly_chart(fig, width="stretch")
     guide("trigger")
     st.caption(
-        "Where the staircase ends up far above the error, this alarm has gone quiet and cannot "
-        "fire again whatever the model does. A second alarm covers that case: it fires when the "
-        "model falls too far behind a plain daily profile of recent air, a yardstick no promotion "
-        "can reset. The bar is reset by every promotion, and because "
-        "promotions land in the dirty season it ratchets upward. It can step down where a "
-        "challenger trained on a calmer stretch, but only slightly and only early."
+        "Every promotion resets the bar. A marker below it is the second alarm, which fires "
+        "when the model falls too far behind a plain daily profile of recent air."
     )
 
     if retro and retro.champion_skill:
@@ -536,9 +542,7 @@ with tab_loop:
         st.plotly_chart(fig, width="stretch")
         guide("skill")
         st.caption(
-            "Scale-free, and its yardstick holds still when a model is promoted, which is what "
-            "the retrain ratio above cannot say. The baseline sees recent pollution readings and "
-            "the model never does, so it is a hard bar rather than a fair fight."
+            "0 is a tie with a rule of thumb built from recent air. Above it the model wins."
         )
 
         # One curve per promoted version, lined up on the day it took over. The
@@ -571,8 +575,7 @@ with tab_loop:
             st.plotly_chart(fig, width="stretch")
             guide("decay")
             st.caption(
-                "Followed past each model's own retirement, so a line that keeps falling shows what "
-                "keeping it would have cost. The version currently serving is drawn solid."
+                "Each line runs on past the model's retirement. The version serving now is solid."
             )
 
     fig = theme.base_figure("Champion vs. challenger on the held-out window (RMSE, lower is better)", "RMSE")
@@ -595,10 +598,8 @@ with tab_loop:
         st.plotly_chart(fig, width="stretch")
         guide("holdout")
         st.caption(
-            "Being newer is not a qualification. Both models sit the same exam, a week of air "
-            "neither has seen, and the challenger takes the job only by more than the "
-            f"{CFG.promotion_margin:.0%} margin. Whether passing it predicts anything is the "
-            "next question."
+            "The rival takes over only if it wins by more than "
+            f"{CFG.promotion_margin:.0%} on a week neither model has seen."
         )
 
     # Does passing the exam predict anything? The margin the gate decided on
@@ -629,9 +630,6 @@ with tab_loop:
             )
         st.caption(
             " ".join(parts)
-            + " A seven-day exam certifies a model for about a month. A model serves half a "
-            "year only when no rival replaces it, because neither alarm fired or every rival "
-            "failed its exam, so that exam is asked to stand for longer than it can."
         )
         if len(retro.gate) < 4:
             st.caption(

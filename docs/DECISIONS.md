@@ -97,7 +97,7 @@ cities with it on changed nothing worth having.
 ### What changed
 
 Adding intervals, and then fixing the statistic that produced them. Details in
-[evaluation.md](evaluation.md#what-the-medians-were-hiding-in-both-directions);
+[evaluation.md](evaluation-first-loop.md#what-the-medians-were-hiding-in-both-directions);
 the short version is that comparing arms by their median error hid effects in
 both directions, because most weeks a changed trigger leaves the serving model
 alone and those ties dominate any median of paired ratios.
@@ -142,7 +142,7 @@ sweep, and the page it sits on now reports more than two hundred intervals with
 no multiple-comparisons correction. That does not make it wrong, and it is a
 wide interval well clear of zero rather than a marginal one, but it is the kind
 of claim multiplicity reaches. See
-[evaluation.md](evaluation.md#what-is-still-not-corrected). It shifts this
+[evaluation.md](evaluation-first-loop.md#what-is-still-not-corrected). It shifts this
 decision's weight further toward the resolution below: two cities chosen before
 the floor is swept on them settle it in a way that re-reading the same eighteen
 arms cannot.
@@ -184,9 +184,9 @@ loop does without it.
 
 Two measured negative results pointed at the same missing mechanism. Making the
 retrain trigger more sensitive does not pay (D1, and
-[evaluation.md](evaluation.md#fixing-the-trigger-one-fix-is-impossible-the-other-pays-in-one-city)).
+[evaluation.md](evaluation-first-loop.md#fixing-the-trigger-one-fix-is-impossible-the-other-pays-in-one-city)).
 Making the promotion exam longer does not pay
-([evaluation.md](evaluation.md#lengthening-the-exam-does-not-fix-it)). Both
+([evaluation.md](evaluation-first-loop.md#lengthening-the-exam-does-not-fix-it)). Both
 change *when the loop notices something is wrong*, and neither addresses the fact
 that nothing re-examines an incumbent at all.
 
@@ -197,7 +197,7 @@ signal, and passing renews it.
 ### What the measurement says
 
 Full detail in
-[evaluation.md](evaluation.md#re-certification-bounds-staleness-and-staleness-was-not-the-thing-that-hurt).
+[evaluation.md](evaluation-first-loop.md#re-certification-bounds-staleness-and-staleness-was-not-the-thing-that-hurt).
 Three findings, in the order they matter.
 
 **The mechanism works.** It bounds how long a model may serve unexamined, in
@@ -296,7 +296,7 @@ That is measurably a real defect, not a stylistic one. Over the 28 shipped
 promotions, 11 have an exam margin whose interval reaches below the 5% they were
 required to clear and 6 reach below zero, and the width of that interval sorts
 the cities by whether retraining works in them at all. Full detail in
-[evaluation.md](evaluation.md#the-gate-decides-on-a-point-estimate-and-making-it-decide-on-an-interval-is-worse).
+[evaluation.md](evaluation-first-loop.md#the-gate-decides-on-a-point-estimate-and-making-it-decide-on-an-interval-is-worse).
 
 `LoopConfig.promotion_confidence` requires the challenger to clear
 `promotion_margin` at the lower bound as well as at the point estimate.
@@ -379,7 +379,7 @@ sharper gates failed. There is no best-of-many here to inherit a bias from.
 ### What the measurement says
 
 Full detail in
-[evaluation.md](evaluation.md#making-the-promotion-reversible-and-why-that-does-not-rescue-it-either).
+[evaluation.md](evaluation-first-loop.md#making-the-promotion-reversible-and-why-that-does-not-rescue-it-either).
 
 **It does no harm.** Of 18 city-by-window arms, one has an interval clear of
 zero and it is positive (Kraków +1.5% [+0.8, +2.0]<!--fig:first.probation.krakow.21d.acted--> at 21 days). The confidence
@@ -478,7 +478,7 @@ number on what the default costs the *conclusions* rather than just the error.
 ### What the measurement says
 
 Forward-chaining CV on each city's bootstrap window, from
-[evaluation.md](evaluation.md#is-the-finding-about-the-world-or-about-a-linear-model):
+[evaluation.md](evaluation-first-loop.md#is-the-finding-about-the-world-or-about-a-linear-model):
 
 - **The default costs real accuracy.** 11.9% in Delhi, 4.4% in Johannesburg,
   3.6% in Kraków, and under 2.2% in the other three.

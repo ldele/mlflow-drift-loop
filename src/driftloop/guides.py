@@ -6,44 +6,36 @@ within a month. This module is the single copy. `scripts/build_site.py`
 serialises it into `site/data.json` for the browser; `dashboard/app.py` imports
 it directly.
 
-## Why a report needs this at all
+## The four parts of a reading
 
-A published report is normally a chart plus someone's reading of it. Neither of
-these has a someone: they rebuild from whatever the last run produced, and
-nobody writes a caption for the version that comes out. So the reading has to be
-written once, as a rule rather than as an observation -- what the marks mean,
-what the arithmetic behind them is, and what it would mean for the line to go
-each way. A reader arriving at a shape nobody has seen yet can still interpret
-it.
+``shows``  what the marks are, in a sentence or two
+``data``   where the numbers come from and the exact period they cover
+``units``  what each axis is measured in, in plain words
+``read``   two or three "if you see this, it means that" pairs
 
-## The four parts
+A reading describes the chart. It does not report a result: these pages rebuild
+from whatever the last run produced, so a sentence saying what a chart "shows
+here" would be wrong the first time the data moved.
 
-``read``   what the marks are, ending in something to look at on this chart
-``math``   the arithmetic in a line or two, so the axis label is not the only
-           statement of what is being computed
-``moves``  the directional reading: what it means when this goes up, down, or
-           nowhere. This is the part a static caption cannot carry, because it
-           has to hold for a shape the author has not seen
-``next``   what would improve the *monitoring*, not the air. Each chart knows
-           something about its own blind spot, and saying so is how the pages
-           point at their own next piece of work
+## Two kinds of placeholder
 
-## Two conventions that keep it honest
+**Thresholds** such as ``{perf}`` and ``{monitor}`` are filled by
+:func:`context` from the config the loop is running, so a reading cannot quote a
+setting the loop no longer uses.
 
-**Thresholds are placeholders, never literals.** ``{perf}`` and ``{monitor}``
-are filled by :func:`context` from the config the loop is actually running. A
-guide that retyped "1.25x" would be one edit away from describing a loop that no
-longer exists, and nothing would fail.
+**City facts** such as ``{period}`` and ``{training}`` differ from one city to
+the next. :func:`city_context` builds them. The dashboard fills them at once.
+The site keeps them as tokens in `data.json` and fills them in the browser when
+a city is picked, because one page serves all six.
 
-**The prose is Markdown, not HTML.** Streamlit renders it directly; the site
-converts the two constructs used -- ``backticks`` and ``*emphasis*`` -- and
-escapes everything else. Punctuation is Unicode rather than entities for the
-same reason: one string has to satisfy both renderers.
+The prose is Markdown, not HTML: Streamlit renders it directly, and the site
+converts ``backticks`` and ``*emphasis*`` and escapes everything else.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 # Charts that exist in only one of the two interfaces still live here. The set
 # is the union, not the intersection, so moving a chart between the site and the
@@ -55,644 +47,542 @@ DASHBOARD_ONLY = frozenset({
     "distributions", "alpha_sweep", "fit_scatter", "residuals",
 })
 
+#: The placeholders that change with the city, left for the site to fill.
+CITY_TOKENS = ("city", "period", "runs", "latest", "training")
+
+PM25 = "µg/m³ of PM2.5: micrograms of fine particles in a cubic metre of air"
+RMSE = "RMSE in µg/m³: the typical size of an hourly miss, with large misses counting for more"
+SOURCE = (
+    "PM2.5 is the CAMS air-quality model's estimate, served by Open-Meteo. It is not a station "
+    "reading."
+)
+
+
+class _Keep(dict):
+    """A mapping that leaves an unknown placeholder as it was written."""
+
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
 
 @dataclass(frozen=True)
 class Guide:
-    """One chart's reading. ``moves`` is ordered: most common case first."""
+    """One chart's reading. ``read`` is ordered: the most common case first."""
 
-    read: str
-    math: str
-    moves: tuple[tuple[str, str], ...]
-    next: str
+    shows: str
+    data: str
+    units: str
+    read: tuple[tuple[str, str], ...]
 
     def filled(self, values: dict[str, object]) -> dict:
-        """Substitute the threshold placeholders, once, at build time."""
-        fill = lambda s: s.format(**values)  # noqa: E731
+        """Substitute every placeholder ``values`` holds, and leave the rest."""
+        keep = _Keep(values)
+        fill = lambda s: s.format_map(keep)  # noqa: E731
         return {
-            "read": fill(self.read),
-            "math": fill(self.math),
-            "moves": [[fill(a), fill(b)] for a, b in self.moves],
-            "next": fill(self.next),
+            "shows": fill(self.shows),
+            "data": fill(self.data),
+            "units": fill(self.units),
+            "read": [[fill(a), fill(b)] for a, b in self.read],
         }
 
 
 GUIDES: dict[str, Guide] = {
     # ---------------------------------------------------------------- per city
     "forecast": Guide(
+        shows=(
+            "Hourly PM2.5 over the latest {monitor} days: the recorded value, and what the model "
+            "in service predicted for that hour {lead} earlier. The gap between the two lines is "
+            "the error every other chart summarises."
+        ),
+        data=(
+            "{city}, {latest}. " + SOURCE + " Each prediction uses only the weather forecast "
+            "issued {lead} before the hour it is for."
+        ),
+        units=PM25 + ". Times are UTC. The dotted line is the WHO 24-hour guideline, 15 µg/m³.",
         read=(
-            "Two lines over the most recent window: what the monitors actually measured, and what "
-            "the model said about that hour {lead} earlier. The vertical gap between them is the "
-            "error every other chart summarises. Look at the peaks rather than the flat stretches, "
-            "because that is where a pollution forecast either earns its keep or does not."
-        ),
-        math=(
-            "No arithmetic yet. This is the raw prediction, before it is scored against anything, "
-            "which is why it comes first."
-        ),
-        moves=(
-            ("they track each other",
-             "the model has the shape of the week roughly right, which is the most this one is asked for"),
-            ("prediction flat through a measured spike",
-             "the weather forecast gave no warning of the episode. A limit of the input rather than of the model"),
-            ("prediction consistently under the peaks",
-             "expected. Fitting squared error on a skewed target pulls every answer toward the middle, "
-             "and pollution episodes are the tail"),
-        ),
-        next=(
-            "The model answers with a single number and no statement of confidence, so a reader "
-            "cannot tell a confident wrong answer from an uncertain one. A prediction interval here "
-            "would make that difference visible."
+            ("the two lines move together", "the model has the shape of that fortnight right"),
+            ("the prediction stays flat through a spike",
+             "the weather forecast gave no warning of the episode"),
+            ("the prediction sits under the peaks",
+             "expected: a least-squares fit pulls its answers toward the average"),
         ),
     ),
     "skill": Guide(
+        shows=(
+            "How the model in service compares, week by week, with a rule of thumb that needs no "
+            "model: this hour of the day usually looks as it did over the previous {climatology} "
+            "days.{floor_note}"
+        ),
+        data=(
+            "{city}, one point per weekly run, {period} ({runs} runs). Each point scores the "
+            "{monitor} days before that run. The rule of thumb sees recent PM2.5 and the model "
+            "never does."
+        ),
+        units=(
+            "Skill has no unit: `1 − model error ÷ rule-of-thumb error`. 0 is a tie, +0.3 is 30% "
+            "less error than the rule of thumb, −1 is twice its error."
+        ),
         read=(
-            "One line, against zero. Zero is not *no error*: it is the score of a rule of thumb that "
-            "needs no model at all, namely that this hour usually looks like it did over the last "
-            "{climatology} days. Above the line the model is worth running. Below it, the rule of "
-            "thumb would have done better and the model is not paying for itself."
-        ),
-        math=(
-            "`skill = 1 − RMSE(model) / RMSE(baseline)`. +0.30 means 30% less error than the rule of "
-            "thumb. There is no floor on the negative side: −1.0 means twice the error."
-        ),
-        moves=(
-            ("rises",
-             "usually the dirty season arriving. There is more signal to find when the air is doing something"),
-            ("drops below zero",
-             "a month-old daily profile is beating a weather model that week"),
-            ("falls steadily with no retrain",
-             "staleness the trigger has not noticed. Cross-check it against the retrain chart"),
-        ),
-        next=(
-            "Nothing about promoting a model can move this number, which is exactly the property the "
-            "retrain trigger lacks. A second trigger watching this was built, measured, and now runs "
-            "beside the first."
+            ("above zero", "the model beat the rule of thumb that week"),
+            ("below zero", "the rule of thumb would have done better"),
+            ("falling for weeks with no retrain",
+             "the model is going stale and the first alarm has not caught it"),
         ),
     ),
     "decay": Guide(
+        shows=(
+            "The skill of every model this city promoted, lined up by weeks since it took over "
+            "and not by date, so models that never served together can be compared. Each line "
+            "runs on past the model's retirement, which shows what keeping it would have cost."
+        ),
+        data=(
+            "{city}, {period}. Every model version is scored on every weekly window, including "
+            "the windows it never served."
+        ),
+        units=(
+            "Across: weeks since the model took over. Up: skill, where 0 is a tie with the rule "
+            "of thumb and higher is better."
+        ),
         read=(
-            "One line per model version, and the x-axis is weeks in service rather than a calendar "
-            "date. That alignment is the whole point: it lays every model's first month on top of "
-            "every other model's first month, so ageing can be compared between models that never "
-            "served at the same time."
-        ),
-        math=(
-            "Every version is scored on every window, including the ones it never served. That is a "
-            "counterfactual — what this model *would* have done had it stayed — which the loop has "
-            "no reason to compute while it is running."
-        ),
-        moves=(
-            ("one line falls, the others do not",
-             "that model aged badly. Something about when it was trained did not generalise"),
-            ("all the lines fall together",
-             "the world moved. No model would have held up, so this is not a retraining failure"),
-            ("a line stays flat past twenty weeks",
-             "the gate certified something durable. The calibration chart says that is rare"),
-        ),
-        next=(
-            "Nothing re-examines a champion on fresh data while it is serving; it is only ever "
-            "judged on the day it was promoted. A re-certification schedule was built, and bounded "
-            "staleness without buying accuracy."
+            ("one line falls and the others hold", "that model aged badly"),
+            ("every line falls together", "the air changed, and no model would have held up"),
+            ("a line stays level past twenty weeks", "a model that lasted, which is rare"),
         ),
     ),
     "trigger": Guide(
+        shows=(
+            "The error of the model in service (solid line), the bar that error must cross to "
+            "set off a retrain (dotted), and the weeks a retrain fired (markers). The bar is "
+            "{perf}× the serving model's own error when it was trained, so every promotion "
+            "resets it."
+        ),
+        data=(
+            "{city}, one point per weekly run, {period} ({runs} runs). Error is measured on the "
+            "{monitor} days before each run."
+        ),
+        units=RMSE + ".",
         read=(
-            "The solid line is the error of whichever model is in service. The dotted staircase is "
-            "the bar that error has to cross to buy a retrain, and the markers are retrains firing. "
-            "The staircase shape is the failure this whole project is built around, so it is worth "
-            "a moment."
-        ),
-        math=(
-            "The bar is `{perf}×` the model's own RMSE at the moment it was trained. A ratio rather "
-            "than an absolute number, so one threshold covers Delhi at 127 µg/m³ and Melbourne at "
-            "15 — and, fatally, it resets every time a model is promoted."
-        ),
-        moves=(
             ("the bar steps up",
-             "a promotion just reset it, at whatever the dirty season was costing that week. It now "
-             "takes more error than before to fire"),
-            ("error climbs but never reaches the bar",
-             "the alarm has ratcheted deaf. The model can get arbitrarily worse and nothing happens"),
-            ("the bar steps down",
-             "a challenger happened to train on a calmer stretch. It does happen, and never by "
-             "enough to matter"),
-        ),
-        next=(
-            "The denominator is the model's own past, which is what makes it ratchet. Any real fix "
-            "has to be a yardstick that promoting a model cannot move — which is what the skill "
-            "chart already is."
+             "a model was promoted during a dirty stretch, so it now takes more error to fire"),
+            ("the error rises but stays under the bar",
+             "this alarm cannot fire, however stale the model"),
+            ("a marker below the bar",
+             "the second alarm fired: the model had fallen too far behind the rule of thumb"),
         ),
     ),
     "psi": Guide(
+        shows=(
+            "How far each weather input has moved from the weather the serving model was trained "
+            "on, one reading per input per week."
+        ),
+        data=(
+            "{city}, {period} ({runs} runs). Each reading compares the {monitor} days before a "
+            "run with the serving model's training window. The inputs are weather forecasts "
+            "issued {lead} ahead."
+        ),
+        units=(
+            "Population Stability Index, which has no unit: both periods are sorted into bins and "
+            "the differences added up. Under {psi_stable} is stable, up to {psi_significant} "
+            "shifted, above that different."
+        ),
         read=(
-            "One row or line per weather ingredient, one reading per week, showing how far that "
-            "ingredient has drifted from the training window. Read the block rather than any single "
-            "point: these cities go red early and stay red, which is all a statistic that saturates "
-            "can honestly tell you."
-        ),
-        math=(
-            "Population Stability Index. Bin both periods, then sum `(p − q) · ln(p / q)` across the "
-            "bins. The bands are the industry convention: under {psi_stable} stable, up to "
-            "{psi_significant} shifted, above that properly different."
-        ),
-        moves=(
-            ("one ingredient crosses the threshold",
-             "it no longer looks like anything the model was trained on"),
-            ("they all cross at once",
-             "the season turned. Expected, and not by itself a reason to retrain"),
-            ("one stays flat all year",
-             "that ingredient is not seasonal in this city. Surface pressure usually behaves this way"),
-        ),
-        next=(
-            "PSI saturates: once a feature is over the line it stays there however much further the "
-            "world moves, so this is a dependable yes-or-no and an undependable how-much. Computing "
-            "it over the model's component space rather than per raw feature would restore the "
-            "gradient."
+            ("one input crosses a band", "that input no longer looks like the training weather"),
+            ("every input crosses together",
+             "the season turned, which is not by itself a reason to retrain"),
+            ("an input stays in the top band for months",
+             "the index tops out, so it says the weather differs and not by how much"),
         ),
     ),
     "factors": Guide(
+        shows=(
+            "Each weather input in its own units, averaged over every {monitor}-day window "
+            "(line), against the range that same average covered while the first model was "
+            "being trained (band)."
+        ),
+        data=(
+            "{city}, {period}. The band is the middle 80% of {monitor}-day averages inside the "
+            "first training window, {training}. Inputs are forecasts issued {lead} ahead."
+        ),
+        units=(
+            "Temperature in °C, wind in m/s, humidity in %, precipitation in mm per hour, "
+            "pressure in hPa, sunlight reaching the ground in W/m²."
+        ),
         read=(
-            "One panel per ingredient, in the units it is measured in, because *PSI 0.25* is not a "
-            "picturable quantity and *fourteen degrees colder than anything the model saw* is. The "
-            "line is that ingredient averaged over each {monitor}-day window; the band is where the "
-            "same average sat while the first model was trained. A line outside its band is the "
-            "model being asked about weather it has never seen."
-        ),
-        math=(
-            "The band is the 10th–90th percentile of {monitor}-day rolling means over the training "
-            "window — deliberately the same window length as the line, so both sides describe the "
-            "same quantity and leaving the band means something."
-        ),
-        moves=(
-            ("the line leaves the band and stays out",
-             "sustained covariate drift. This is the case for retraining, before any statistic is computed"),
-            ("it leaves and comes back",
-             "a season passing. The model will be wrong for a while and then right again"),
-            ("it stays inside the band while error rises",
-             "the weather did not change, so the error is concept drift: the same weather now "
-             "produces different air"),
-        ),
-        next=(
-            "This is the readable version of the PSI chart — it carries direction and magnitude in "
-            "physical units, which PSI throws away. The two disagreeing would be informative, and "
-            "neither chart currently flags it."
+            ("the line leaves the band and stays out", "weather the first model never saw"),
+            ("it leaves and comes back", "a season passing"),
+            ("the line stays inside while error rises",
+             "the weather is the same and the air is not, so the link between them changed"),
         ),
     ),
     "distributions": Guide(
+        shows=(
+            "For each weather input, how often each value occurred in the training window and in "
+            "the latest monitoring window. These are the two shapes the drift index compares."
+        ),
+        data="{city}. The serving model's training window against the latest {monitor} days, {latest}.",
+        units=(
+            "Across: the input's own unit (°C, m/s, %, mm per hour, hPa, W/m²). Up: the share of "
+            "hours at that value."
+        ),
         read=(
-            "The histogram PSI is a summary of. Training window against the most recent monitoring "
-            "window, one ingredient at a time. PSI compresses each of these pairs into a single "
-            "number, and this is what that number was computed from."
-        ),
-        math=(
-            "The same bins PSI uses. Where the two histograms overlap, the term contributes nothing; "
-            "where one has mass the other does not, it contributes a lot. A long tail present in one "
-            "period and absent in the other is what drives the statistic."
-        ),
-        moves=(
-            ("the two shapes sit on top of each other",
-             "no drift in this ingredient, whatever the season is doing elsewhere"),
+            ("the two shapes overlap", "no drift in that input"),
             ("one is shifted sideways",
-             "the ordinary case: colder, calmer, wetter than training. PSI reports this well"),
-            ("one is the same centre but a different width",
-             "the case PSI reports poorly. The mean has not moved and the model is still seeing "
-             "conditions it was never shown"),
-        ),
-        next=(
-            "Only the latest window is drawn. An animation or a small multiple across the replay "
-            "would show *when* a distribution moved, which is the question the retrain trigger "
-            "actually needs answered."
+             "colder, calmer or wetter than training, which the index picks up well"),
+            ("same centre, different width",
+             "conditions the model was not shown, which the index picks up poorly"),
         ),
     ),
     "holdout": Guide(
+        shows=(
+            "Each time a retrain fired: the error of the model in service and of the rival just "
+            "trained, on the same {holdout} days that neither had seen. The rival is promoted "
+            "only if it wins by more than {margin_pct}."
+        ),
+        data="{city}, one pair of points per retrain, {period}.",
+        units=RMSE + ", on the exam days. Lower is better. A star marks a promotion.",
         read=(
-            "Two series: the model in service and the challenger just trained, both scored on the "
-            "same {holdout} days of air that neither has ever seen. Being newer is not a "
-            "qualification — the challenger takes the job only by winning this."
-        ),
-        math=(
-            "RMSE on the held-out week. Promotion needs "
-            "`1 − rmse_challenger / rmse_champion > {margin}`, so winning by a nose is not enough."
-        ),
-        moves=(
-            ("challenger well below champion",
-             "a clear win. Whether it lasts is the calibration chart's question, not this one"),
-            ("the two nearly equal",
-             "the exam is deciding on noise. A week of hourly air cannot separate two models this close"),
-            ("champion below challenger",
-             "the gate working. The challenger was trained and thrown away, which is most of what "
-             "the gate does"),
-        ),
-        next=(
-            "The margin is a point estimate with no interval attached. Requiring the interval to "
-            "clear the bar instead was built, and is *worse* — because the loop simply retries until "
-            "something passes."
+            ("the rival is well below the serving model",
+             "a clear win on the exam; whether it lasts is a separate question"),
+            ("the two are nearly level",
+             "{holdout} days of hourly air cannot separate models this close"),
+            ("the rival is above", "it was rejected, which is the usual outcome"),
         ),
     ),
     "importance": Guide(
+        shows=(
+            "How much the serving model's prediction moves when each input moves by a typical "
+            "amount, one standard deviation."
+        ),
+        data="{city}, the model serving at the end of the replay, over {latest}.",
+        units=(
+            "µg/m³ of predicted PM2.5 per one-standard-deviation change in the input. Size only; "
+            "the coefficient chart gives the direction."
+        ),
         read=(
-            "How far the model's answer moves when each ingredient moves by one standard deviation, "
-            "in µg/m³. This is the comparable version of the coefficients: a coefficient per °C and "
-            "a coefficient per hPa cannot be ranked against each other, and these can."
-        ),
-        math=(
-            "`|coefficient| × the feature's standard deviation` over the window. Magnitude only — "
-            "the coefficient chart carries the sign."
-        ),
-        moves=(
-            ("one bar dominates",
-             "the model is close to a single-variable rule, whatever its eight inputs suggest"),
-            ("the bars are roughly even",
-             "it is genuinely combining ingredients"),
-            ("the order changes after a retrain",
-             "the new model believes something different about what drives the air here"),
-        ),
-        next=(
-            "This is one version on one window. Tracking it across versions would separate retrains "
-            "that change *what* the model believes from retrains that only change *how much*."
+            ("one bar dominates", "the model is close to a one-input rule"),
+            ("the bars are roughly even", "the model is combining its inputs"),
         ),
     ),
     "coefficients": Guide(
+        shows=(
+            "What each model version learned about each weather input: one panel per input, one "
+            "point per version."
+        ),
+        data=(
+            "{city}, every version trained during {period}, placed at the end of its training "
+            "window."
+        ),
+        units=(
+            "µg/m³ of PM2.5 per unit of the input: per °C, per m/s, per %, per mm, per hPa, per "
+            "W/m². Each panel has its own scale."
+        ),
         read=(
-            "One panel per ingredient, one point per model version, in the ingredient's own units. "
-            "Each panel has its own scale on purpose: °C, hPa and W/m² on one axis leaves five of "
-            "the six features pinned flat against the sixth."
-        ),
-        math=(
-            "Coefficients recovered in original units by undoing the scaler, so they read as µg/m³ "
-            "per °C rather than per standard deviation. This is also how old versions are rebuilt "
-            "for scoring, without keeping a pickled model for each."
-        ),
-        moves=(
             ("a line crosses zero",
-             "the model has changed its mind about direction: wind used to clear the air and now "
-             "dirties it. The single strongest sign something structural moved"),
-            ("it drifts steadily",
-             "the relationship is moving with the season, which is what retraining is for"),
-            ("it jumps at one version",
-             "that challenger learned something quite different from its predecessor. Worth checking "
-             "what it was trained through"),
-        ),
-        next=(
-            "A sign flip is a loud signal and nothing in the loop watches for one. It is the most "
-            "obvious candidate for a third retrain trigger, and it has not been built or measured."
+             "the model reversed its view of which way that input pushes the air"),
+            ("a steady drift", "the link is moving with the season"),
+            ("a jump at one version", "that model learned something its predecessor had not"),
         ),
     ),
     "alpha_sweep": Guide(
+        shows=(
+            "Cross-validated error at each strength of the Ridge penalty, with the best value and "
+            "the library default marked. The loop makes this choice again at every fit."
+        ),
+        data=(
+            "{city}, the first training window, {training}. Five folds, each trained on earlier "
+            "hours and scored on later ones."
+        ),
+        units="Across: the penalty `alpha`, on a log scale, no unit. Up: " + RMSE + ".",
         read=(
-            "Cross-validated error against the Ridge penalty, with the library default marked. The "
-            "curve is usually flat-bottomed over a wide range, which is the useful part: it says how "
-            "much the exact value matters, not just which value wins."
-        ),
-        math=(
-            "Forward-chaining cross-validation on the champion's own training window, never a random "
-            "split. Hourly weather is autocorrelated, and a random split leaks the answer across the "
-            "fold boundary badly enough to make any setting look fine."
-        ),
-        moves=(
-            ("a flat bottom",
-             "the penalty is not critical. Pick anything in the flat region and move on"),
-            ("the default marker sits off the minimum",
-             "the default would cost accuracy. It did here until the loop began choosing the penalty "
-             "at every fit, and the ablation prices it: most of the first headline premium was this"),
-            ("the optimum at an end of the swept range",
-             "the grid is truncating the answer rather than containing it. Extend it and re-run"),
-        ),
-        next=(
-            "The sweep runs on the bootstrap window only. Challengers train on a longer window and "
-            "inherit a penalty chosen for a shorter one, which nothing currently checks."
+            ("a flat bottom", "the exact value matters little"),
+            ("the default sits above the lowest point", "the default would cost accuracy"),
+            ("the best value is at the edge of the range", "the range tried is too narrow"),
         ),
     ),
     "benchmark": Guide(
+        shows=(
+            "The served model beside the alternatives that need no retraining, grouped by what "
+            "each one is allowed to see."
+        ),
+        data=(
+            "{city}, the median over {runs} weekly windows of {monitor} days, {period}. The "
+            "second group sees past PM2.5; the model never does."
+        ),
+        units=RMSE + ". Lower is better.",
         read=(
-            "A table rather than a chart, because the question is a ranking and not a shape: does "
-            "the model beat the things you could have done without one. Grouped by what each "
-            "predictor is allowed to see, which is the only fair way to line them up. Lower is "
-            "better. Read the gap to the nearest baseline rather than the model's own number, which "
-            "has no scale."
-        ),
-        math=(
-            "Median RMSE over the same {monitor}-day windows the charts use. The baselines get to "
-            "see recent pollution readings and the model never does, so this is a hard bar rather "
-            "than a fair fight — and it is the right bar, because those are the alternatives you "
-            "could actually deploy."
-        ),
-        moves=(
-            ("the model is below every baseline",
-             "it is paying for itself. Check by how much before celebrating"),
-            ("a baseline beats it",
-             "in the clean season this is normal and still worth knowing: it puts a floor under what "
-             "the loop can be worth"),
-            ("the frozen model beats the served one",
-             "retraining cost this city accuracy. That is a result, not a bug, and Los Angeles is "
-             "here to produce it"),
-        ),
-        next=(
-            "Every baseline here is a persistence or profile rule. A seasonal-climatology baseline "
-            "would be a harder bar and would say more about whether the model has learned weather or "
-            "merely learned the calendar."
+            ("the served model is lowest in its group",
+             "it beats what a weather forecast alone manages without retraining"),
+            ("a predictor that sees past PM2.5 is lower",
+             "knowing recent air beat a weather-only model, which is common in a clean season"),
+            ("the never-retrained model is lower than the served one",
+             "retraining cost accuracy over this replay"),
         ),
     ),
     "fit_scatter": Guide(
+        shows=(
+            "Predicted against recorded PM2.5 for one run, one point per hour. A perfect "
+            "prediction sits on the diagonal."
+        ),
+        data="{city}, the {monitor} days before the run picked above.",
+        units="Both axes are " + PM25 + ".",
         read=(
-            "Predicted against measured for one run, with the diagonal as a perfect answer. A "
-            "scatter rather than a line because the question is about the *spread* of the error, "
-            "not its shape over time: how wrong the model is at each level of pollution, which the "
-            "single RMSE above averages away."
-        ),
-        math=(
-            "Each point is one scored hour. RMSE is the root of the mean squared vertical distance "
-            "to the diagonal, so a handful of badly missed peaks move it more than a great many "
-            "small misses."
-        ),
-        moves=(
-            ("the cloud hugs the diagonal",
-             "the model is tracking. Compare an early-summer run against a deep-autumn one to see this break"),
-            ("it leans flatter than the diagonal",
-             "the model under-calls high hours and over-calls low ones — regression toward the mean, "
-             "and the usual failure of a squared-error fit on a skewed target"),
-            ("it fans out at the right",
-             "the error grows with the level of pollution, so the model is least reliable exactly "
-             "when the answer matters most"),
-        ),
-        next=(
-            "RMSE weights a missed episode and a quiet hour by the same rule. An error measure "
-            "weighted toward the hours anyone would act on would say more about whether this is "
-            "useful, and nothing here computes one."
+            ("the points hug the diagonal", "the model tracked that fortnight"),
+            ("the cloud lies flatter than the diagonal",
+             "dirty hours were under-called and clean hours over-called"),
+            ("the cloud fans out to the right", "the error grows as the air gets dirtier"),
         ),
     ),
     "residuals": Guide(
+        shows="Recorded minus predicted PM2.5, hour by hour, for one run.",
+        data="{city}, the {monitor} days before the run picked above.",
+        units="µg/m³. Above zero the model predicted too little.",
         read=(
-            "What is left over after the prediction, hour by hour. The useful property of a "
-            "residual plot is that a *good* one is boring: noise around zero with no pattern. Any "
-            "structure visible here is signal the model failed to use."
-        ),
-        math=(
-            "`residual = measured − predicted`. Positive means the model under-predicted that hour, "
-            "which for pollution is the direction that matters."
-        ),
-        moves=(
-            ("scattered around zero",
-             "nothing left to extract. This is the good case"),
-            ("drifting away from zero over the run",
-             "bias, not noise: the model is systematically wrong in one direction and a retrain "
-             "would recover it"),
-            ("a repeating daily shape",
-             "the hour-of-day encoding is not capturing the cycle, which is a modelling fault rather "
-             "than a drift one"),
-        ),
-        next=(
-            "Residuals are shown per run and never aggregated. Stacking them by hour of day across "
-            "the replay would separate the daily-cycle failure from the seasonal one, which is a "
-            "question this project asks repeatedly and answers by eye."
+            ("scattered around zero", "nothing systematic is left to fix"),
+            ("drifting to one side", "a bias that a retrain would remove"),
+            ("a pattern that repeats daily", "the model is missing part of the day's cycle"),
         ),
     ),
     # ------------------------------------------------------------- cross-city
     "map": Guide(
+        shows=(
+            "One marker per city. Colour is how far its latest weather has moved from the weather "
+            "its model was trained on. Size is how many weeks it was replayed."
+        ),
+        data="All six cities, each at the last run of its own replay ({span}).",
+        units=(
+            "Colour: the largest drift index among the six weather inputs, banded at "
+            "{psi_stable} and {psi_significant}. Size: weeks."
+        ),
         read=(
-            "One marker per city under watch. Colour is how far that city's weather has wandered "
-            "from what its model was trained on; size is how long it has been watched. The point of "
-            "the globe is that these are six continents: half these cities are dirtiest in June to "
-            "August and half in December to January, which is how you can tell the thresholds are "
-            "not secretly encoding a season."
-        ),
-        math=(
-            "Colour is the worst per-feature PSI on the latest window, banded on the same convention "
-            "as the drift chart. Size is the number of weeks replayed, not a measure of anything "
-            "about the air."
-        ),
-        moves=(
-            ("a marker turns red",
-             "that city's incoming weather no longer resembles its training window"),
-            ("red markers in both hemispheres at once",
-             "opposite seasons drifting together, which is a property of the calendar rather than of "
-             "the loop"),
-            ("a large marker still green",
-             "a long replay with no covariate drift. That is the control condition this study needs "
-             "and rarely gets"),
-        ),
-        next=(
-            "Six markers. The claims on this page about what does and does not harm a city are "
-            "claims about these six, and the cheapest way to strengthen every one of them is a "
-            "seventh."
+            ("a red marker", "that city's latest weather no longer resembles its training weather"),
+            ("red in both hemispheres",
+             "opposite seasons at once, so the bands are not tied to one calendar"),
         ),
     ),
     "pooled": Guide(
+        shows=(
+            "Three ways to serve each city: its own model retrained by the loop, its own first "
+            "model never retrained, and one model trained once on all six cities."
+        ),
+        data=(
+            "The median over each city's weekly windows ({span}). The shared model is fitted on "
+            "the six first training windows, with its own baseline level for each city."
+        ),
+        units=(
+            RMSE + ". Lower is better. The cities differ several-fold in level, so compare bars "
+            "within a city and not between cities."
+        ),
         read=(
-            "Median error over the same monitoring windows, lower is better, three predictors per "
-            "city: the loop's retrained champion, that same first model left frozen, and one Ridge "
-            "trained across all six cities at once and never retrained."
-        ),
-        math=(
-            "The pooled model gets a separate intercept per city, which is doing most of its work: "
-            "mean pollution runs from 7 µg/m³ in Melbourne to 84 in Delhi, and the same model "
-            "without that adjustment scores 43% worse."
-        ),
-        moves=(
-            ("pooled below frozen",
-             "training on five other cities is worth more than a year of staleness"),
-            ("pooled above the served champion",
-             "and worth less than keeping one city's model current. Both hold here"),
-            ("pooled wins outright somewhere",
-             "that city's weather-to-pollution relationship is close enough to the others to borrow. "
-             "It does not happen here"),
-        ),
-        next=(
-            "Six models is the arrangement that wins, but the margin is not large. A seventh city, "
-            "especially one unlike these six, is what would test whether it keeps winning."
+            ("the shared model is below the never-retrained one",
+             "other cities' data is worth more than leaving one model to go stale"),
+            ("the shared model is above the retrained one",
+             "keeping a city's own model current is worth more still"),
         ),
     ),
     "gate": Guide(
+        shows=(
+            "One point per promotion, from all six cities. Across: the margin the rival won its "
+            "exam by. Up: how much better it then was than the model it replaced, over the weeks "
+            "it served."
+        ),
+        data=(
+            "Every promotion in the six replays ({span}). The delivered margin compares the two "
+            "models on the same weekly windows."
+        ),
+        units=(
+            "Both axes are percent less RMSE. On the diagonal the exam's promise was kept. Below "
+            "zero the promotion left the city worse off."
+        ),
         read=(
-            "One point per promotion. Across: the margin the challenger won its exam by. Up: what it "
-            "actually delivered over the weeks it then served, measured against the model it "
-            "displaced. A promise kept sits on the diagonal."
-        ),
-        math=(
-            "The exam margin is the number the promotion decision was made *on*, so it cannot also "
-            "be the evidence that the decision was right — that would be marking your own homework. "
-            "The delivered margin is `1 − median(rmse_winner) / median(rmse_displaced)` over the "
-            "winner's service windows, which is out of sample for the decision."
-        ),
-        moves=(
-            ("points near the diagonal",
-             "the exam is calibrated: it promises what it delivers"),
-            ("points below the diagonal",
-             "over-promising. The exam saw something that did not last"),
-            ("short-serving above, long-serving below",
-             "a certificate with a shelf life. That is what this chart shows, and it is about five weeks"),
-        ),
-        next=(
-            "The shelf life is measurable and nothing in the loop uses it. Re-certifying at that "
-            "cadence was built and measured: it bounds staleness and buys no accuracy, because it "
-            "only exercises a gate whose calibration is the actual problem."
+            ("points near the diagonal", "the exam delivered what it promised"),
+            ("points under the diagonal", "the exam promised more than the model delivered"),
+            ("the long-serving points are lowest",
+             "an exam passed once does not vouch for a model months later"),
         ),
     ),
     "control_covariate": Guide(
+        shows=(
+            "A simulated city, where the cause of the drift is known because it was set. This "
+            "dial changes the weather and leaves alone how weather turns into pollution. The "
+            "weather alarm should rise and the error alarm should not."
+        ),
+        data="Simulated hourly data, one full replay per dial setting. No real city is involved.",
+        units=(
+            "Across: the dial, where 0 is no drift. Up: each alarm's reading divided by its "
+            "reading at 0, so 1.0 means unchanged."
+        ),
         read=(
-            "A made-up world with two dials, because a real city has no control condition — nobody "
-            "knows what the right answer was supposed to be, so an alarm firing at random would look "
-            "much like one that worked. This dial moves the weather and leaves the "
-            "weather-to-pollution relationship alone. The weather alarm should climb; the error "
-            "alarm should not."
-        ),
-        math=(
-            "Both responses are indexed to their reading with the dial at zero rather than plotted "
-            "on two axes. PSI and an error ratio share no unit, and a second axis would let the two "
-            "curves be scaled into any story at all. One axis means a flat line is honestly flat."
-        ),
-        moves=(
-            ("weather alarm climbs, error alarm flat at 1.0",
-             "the pass. Each detector answers only to its own cause"),
-            ("both climb",
-             "the two alarms are not separable, and having two of them buys nothing"),
-            ("neither moves",
-             "the dial is not doing what it claims, so the experiment says nothing"),
-        ),
-        next=(
-            "This is the one claim no real city can settle. Its cost is that the synthetic world is "
-            "much simpler than Kraków, so it can show the detectors are separable without showing "
-            "they are *sensitive enough*."
+            ("the weather alarm rises and the error alarm stays at 1.0",
+             "each alarm answers only to its own cause"),
+            ("both rise", "the two alarms cannot be told apart"),
+            ("neither moves", "the dial did nothing, and the test says nothing"),
         ),
     ),
     "control_concept": Guide(
+        shows=(
+            "The same simulated city, the other dial: the weather stays as it was and the way it "
+            "turns into pollution changes. The error alarm should rise and the weather alarm "
+            "should not."
+        ),
+        data="Simulated hourly data, one full replay per dial setting. No real city is involved.",
+        units=(
+            "Across: the dial, where 0 is no drift. Up: each alarm's reading divided by its "
+            "reading at 0, so 1.0 means unchanged."
+        ),
         read=(
-            "The same made-up world, other dial. This one changes how weather turns into pollution "
-            "and leaves the weather distributions alone: concept drift with no covariate drift. The "
-            "error alarm should climb, and the weather alarm should not — it is right not to, "
-            "because the weather genuinely has not changed."
-        ),
-        math=(
-            "Indexed to the dial-at-zero reading, as in the panel beside it. Seasonal difference "
-            "between the training and monitoring windows puts a real floor under PSI before either "
-            "dial is touched, so the honest question is not *is it zero* but *does it move, and only "
-            "for its own cause*."
-        ),
-        moves=(
-            ("error alarm climbs, weather alarm flat",
-             "the pass, and the more important half: this is the drift no label-free detector can see"),
-            ("the weather alarm climbs too",
-             "PSI is picking up something it should not, and the case for two independent signals "
-             "weakens"),
-        ),
-        next=(
-            "Concept drift is the expensive one to detect, because it needs labels and therefore "
-            "needs waiting. Nothing here shortens that wait, and a leading indicator for it would be "
-            "the single largest improvement available to this loop."
+            ("the error alarm rises and the weather alarm stays flat",
+             "correct: this kind of drift cannot be seen until outcomes are recorded"),
+            ("the weather alarm rises too", "it is reacting to something it should not"),
         ),
     ),
     "ablation": Guide(
+        shows=(
+            "What retraining was worth in two cities under three models: the Ridge as it ships, a "
+            "Ridge tuned once, and a gradient-boosted tree tuned once."
+        ),
+        data=(
+            "Delhi and Los Angeles, their full replays ({span}), with both retrain alarms on in "
+            "every arm. Each value compares the loop with the same first model never retrained, "
+            "over the weeks a retrained model was serving."
+        ),
+        units=(
+            "Percent less RMSE than never retraining. The bars are 95% intervals, and one that "
+            "crosses zero means no measurable effect."
+        ),
         read=(
-            "What retraining was worth in each city, under the model that ships and under two tuned "
-            "properly on the same protocol. The error bars are the point of the chart rather than "
-            "decoration on it: a bar crossing the zero line means retraining cannot be shown to have "
-            "paid at all."
-        ),
-        math=(
-            "Each premium is a paired week-by-week comparison against never retraining, with a "
-            "moving-block bootstrap for the interval — blocks, because consecutive weekly windows "
-            "overlap and are not independent observations."
-        ),
-        moves=(
-            ("the premium shrinks as the model improves",
-             "part of what looked like drift was really a straight line failing to fit a season"),
-            ("it survives unchanged",
-             "the effect is about the air, not about the model class"),
-            ("it crosses zero under the better model",
-             "the result does not survive, and that city's finding is withdrawn. It happens here to "
-             "Los Angeles"),
-        ),
-        next=(
-            "Two cities. Running the same three arms on the other four is the obvious next step, and "
-            "the decomposition is a strong claim currently resting on one of them."
+            ("the value shrinks under the tree",
+             "part of the gain was a straight line being refitted to a season"),
+            ("it stays clear of zero under the tree", "the gain survives a model that can bend"),
+            ("the bar crosses zero", "no measurable effect in that city"),
         ),
     ),
     "compare_city": Guide(
+        shows=(
+            "The skill of each city's serving model, one panel per city, all on one vertical "
+            "scale so the six can be compared by eye."
+        ),
+        data="Each city's own replay ({span}), one point per weekly run.",
+        units=(
+            "Skill has no unit: 0 is a tie with a rule of thumb built from the previous "
+            "{climatology} days, and higher is better."
+        ),
         read=(
-            "One panel per city on shared axes, so the six can be compared by eye rather than by "
-            "remembering the previous page. Shared axes are the whole reason this page exists: a "
-            "chart auto-scaled per city makes Melbourne's 5-to-15 µg/m³ look like Delhi's 42-to-127."
-        ),
-        math="The same underlying series as the per-city page, redrawn on one scale. Nothing is recomputed.",
-        moves=(
-            ("one city is flat where the others swing",
-             "its air has no season worth tracking, which is what makes it useful as a control"),
-            ("two cities move together",
-             "shared seasonality, not a shared cause. These are on six different continents"),
-        ),
-        next=(
-            "Six cities chosen for contrast is a good design and a small sample. Every *cannot harm "
-            "any city here* claim on this site is a claim about these six."
+            ("one city is flat where the others swing", "its air has little season to track"),
+            ("two cities move together", "a shared season, not a shared cause"),
         ),
     ),
     "compare_value": Guide(
+        shows=(
+            "What retraining was worth in each city, measured two ways: across the whole replay, "
+            "and week by week over the weeks a retrained model was serving."
+        ),
+        data="Each city's full replay ({span}), against its own first model never retrained.",
+        units=(
+            "Percent less RMSE than never retraining. The interval is drawn on the week-by-week "
+            "bar, which is the one to read."
+        ),
         read=(
-            "Two bars per city, because one of them lies. The first compares median error across the "
-            "whole replay against never retraining. The second holds the window fixed and compares "
-            "the two models week by week, over the weeks a retrained model was actually serving. The "
-            "error bars are on the second, because that is the one to read."
-        ),
-        math=(
-            "The first figure is unpaired: in a city that promotes nothing until week 14 of 20, most "
-            "windows compare the first model against itself and the answer collapses toward zero. "
-            "Johannesburg reads 0.0% that way and +14.9% paired."
-        ),
-        moves=(
-            ("the two bars disagree sharply",
-             "the city promoted late or rarely. Trust the paired one"),
-            ("the interval crosses zero",
-             "not a finding, whatever the height of the bar. Two of these six are in that position"),
-            ("a bar goes negative",
-             "retraining measurably harmed that city. Los Angeles is here on purpose"),
-        ),
-        next=(
-            "The paired figure conditions on the weeks the loop acted, which is conditioning on "
-            "something the treatment caused. Both figures are published side by side for that "
-            "reason, and the conditioning is an open question rather than a settled one."
+            ("the two bars disagree",
+             "the city promoted late or rarely, so trust the week-by-week bar"),
+            ("the interval crosses zero", "no measurable effect, whatever the height of the bar"),
+            ("a bar below zero", "retraining cost that city accuracy"),
         ),
     ),
 }
 
 
-def context(cfg, *, horizon_days: int | None, climatology_days: int, psi_bands: dict) -> dict:
-    """The threshold values the guides quote, taken from the running config.
+def _day(stamp) -> str:
+    """ "15 Aug 2025": unambiguous in any locale, and short enough for a sentence."""
+    return f"{stamp.day} {stamp.strftime('%b %Y')}"
 
-    Every one of these appears in prose somewhere above. Passing them in rather
-    than importing the defaults means a profile with a non-default threshold
-    gets a description of *its* loop.
+
+def replay_span(profiles) -> str:
+    """The months the replays cover between them, as "Aug 2025 to Jul 2026"."""
+    plans = [p.replay for p in profiles if getattr(p, "replay", None) is not None]
+    if not plans:
+        return "the replay"
+    first = min(plan.first_run for plan in plans)
+    last = max(plan.last_run for plan in plans)
+    return f"{first.strftime('%b %Y')} to {last.strftime('%b %Y')}"
+
+
+def context(cfg, *, horizon_days: int | None, climatology_days: int, psi_bands: dict,
+            span: str = "the replay") -> dict:
+    """The values every reading quotes, taken from the running config.
+
+    Passing them in, not importing the defaults, means a profile with a
+    non-default threshold gets a description of *its* loop.
     """
+    floor = getattr(cfg, "skill_floor", None)
     return {
         "monitor": cfg.monitor_days,
         "holdout": cfg.holdout_days,
         "perf": cfg.perf_drift_threshold,
-        "margin": cfg.promotion_margin,
+        "margin_pct": f"{cfg.promotion_margin:.0%}",
         "climatology": climatology_days,
         "psi_stable": psi_bands["stable"],
         "psi_significant": psi_bands["significant"],
         "lead": f"{horizon_days} days" if horizon_days is not None else "a week",
+        "floor_note": (
+            "" if floor is None
+            else f" A second retrain alarm fires when skill drops below {floor:g}.".replace("-", "−")
+        ),
+        "span": span,
+    }
+
+
+def city_context(label: str, as_of, monitor_days: int, training=None) -> dict[str, str]:
+    """The facts that change with the city: its name, its dates, its run count.
+
+    ``as_of`` is the run dates in order. ``training`` is the first model's
+    training window as ``(start, end)``, where it is known.
+    """
+    dates = list(as_of)
+    if not dates:
+        return {"city": label, "period": "no runs yet", "runs": "0",
+                "latest": "no runs yet", "training": "not trained yet"}
+    first, last = dates[0], dates[-1]
+    window_start = last - timedelta(days=monitor_days)
+    return {
+        "city": label,
+        "period": f"{_day(first)} to {_day(last)}",
+        "runs": str(len(dates)),
+        "latest": f"{_day(window_start)} to {_day(last)}",
+        "training": (
+            f"{_day(training[0])} to {_day(training[1])}" if training
+            else "the first model's training window"
+        ),
+    }
+
+
+def all_cities_context(span: str, monitor_days: int, runs: tuple[int, int]) -> dict[str, str]:
+    """City facts for a page that draws every city at once. ``runs`` is the
+    fewest and the most weekly runs any one city has."""
+    return {
+        "city": "Each city",
+        "period": f"its own replay, {span}",
+        "runs": f"{runs[0]} to {runs[1]}",
+        "latest": f"its last {monitor_days} days",
+        "training": "its own first training window",
     }
 
 
 def payload(values: dict[str, object]) -> dict[str, dict]:
-    """Every guide with its placeholders filled, for `site/data.json`."""
+    """Every reading for `site/data.json`, with whatever ``values`` holds filled in."""
     return {key: guide.filled(values) for key, guide in GUIDES.items()}
 
 
 def markdown(key: str, values: dict[str, object]) -> str | None:
-    """One guide as a Markdown block, for Streamlit.
+    """One reading as a Markdown block, for Streamlit.
 
-    ``None`` for an unknown key so a caller can skip the expander entirely
-    rather than rendering an empty one.
+    ``None`` for an unknown key so a caller can skip the expander entirely.
     """
     guide = GUIDES.get(key)
     if guide is None:
         return None
     g = guide.filled(values)
-    parts = [g["read"], f"**The maths.** {g['math']}"]
-    if g["moves"]:
-        parts.append("**What it means when it moves**")
-        # A definition list is not Markdown, so this is the closest honest
-        # rendering: the condition bolded, the reading after an em dash.
-        parts.extend(f"- **{when}** — {then}" for when, then in g["moves"])
-    parts.append(f"**What would improve this.** {g['next']}")
+    parts = [g["shows"], f"**Data.** {g['data']}", f"**Units.** {g['units']}", "**Reading it**"]
+    # A definition list is not Markdown, so this is the closest honest
+    # rendering: the condition bolded, the meaning after an em dash.
+    parts.append("\n".join(f"- **{when}** — {then}" for when, then in g["read"]))
     return "\n\n".join(parts)

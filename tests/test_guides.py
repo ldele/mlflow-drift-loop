@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from driftloop import guides
@@ -31,12 +32,31 @@ SITE = REPO / "site"
 SHARED_PANEL = ("theme.hist_overlay",)
 
 
+SPAN = "Aug 2025 to Jul 2026"
+
+
 @pytest.fixture(scope="module")
-def values() -> dict:
+def thresholds() -> dict:
+    """What the site builder fills: the loop's settings, and nothing about a city."""
     return guides.context(
         LoopConfig(), horizon_days=7, climatology_days=30,
-        psi_bands={"stable": 0.1, "significant": 0.25},
+        psi_bands={"stable": 0.1, "significant": 0.25}, span=SPAN,
     )
+
+
+@pytest.fixture(scope="module")
+def values(thresholds) -> dict:
+    """What the dashboard fills: the settings and one city's facts."""
+    runs = list(pd.date_range("2025-08-15", "2026-07-10", freq="7D"))
+    city = guides.city_context(
+        "Kraków", runs, 14, (pd.Timestamp("2025-06-01"), pd.Timestamp("2025-08-01"))
+    )
+    return {**thresholds, **city}
+
+
+def _parts(guide: dict) -> list[str]:
+    return [guide["shows"], guide["data"], guide["units"],
+            *(side for pair in guide["read"] for side in pair)]
 
 
 def _dashboard_keys() -> set[str]:
@@ -115,8 +135,8 @@ def test_every_dashboard_chart_has_a_panel_under_it() -> None:
     assert not unguarded, "dashboard charts with no reading under them:\n" + "\n".join(unguarded)
 
 
-def test_the_thresholds_in_the_prose_come_from_the_config(values) -> None:
-    """A guide quoting "1.25x" as a literal would survive a change to the loop.
+def test_the_thresholds_in_the_prose_come_from_the_config() -> None:
+    """A reading quoting "1.25x" as a literal would survive a change to the loop.
 
     Filling against a config with nothing at its default is what catches that:
     if the placeholders are live, none of the shipped values can survive.
@@ -125,40 +145,65 @@ def test_the_thresholds_in_the_prose_come_from_the_config(values) -> None:
                      promotion_margin=0.91)
     filled = guides.payload(guides.context(
         odd, horizon_days=3, climatology_days=95,
-        psi_bands={"stable": 0.93, "significant": 0.94},
+        psi_bands={"stable": 0.93, "significant": 0.94}, span=SPAN,
     ))
-    blob = " ".join(
-        part
-        for guide in filled.values()
-        for part in (guide["read"], guide["math"], guide["next"])
-    )
-    for shipped in ("1.25", "14-day", "0.25 shifted"):
+    blob = " ".join(part for guide in filled.values() for part in _parts(guide))
+    for shipped in ("1.25", "14-day", "0.25 shifted", "more than 5%"):
         assert shipped not in blob, (
-            f"{shipped!r} survives a config change, so it is a literal rather than a placeholder"
+            f"{shipped!r} survives a config change, so it is a literal and not a placeholder"
         )
-    assert "9.5" in blob and "99-day" in blob, "placeholders did not take the new config"
+    assert "9.5" in blob and "99-day" in blob and "91%" in blob, (
+        "placeholders did not take the new config"
+    )
 
 
 def test_no_placeholder_is_left_unfilled(values) -> None:
-    """A typo'd placeholder raises at build time; an unclosed brace does not."""
+    """A typo'd placeholder would reach the page as text in braces."""
     for key, guide in guides.payload(values).items():
-        parts = [guide["read"], guide["math"], guide["next"]]
-        parts += [side for pair in guide["moves"] for side in pair]
-        for part in parts:
+        for part in _parts(guide):
             assert "{" not in part and "}" not in part, f"{key} still holds a placeholder: {part}"
 
 
-def test_every_reading_answers_all_four_questions(values) -> None:
-    """The four parts are the contract: marks, maths, direction, and what next.
+def test_the_site_payload_leaves_only_the_city_facts_to_fill(thresholds) -> None:
+    """The builder fills the loop's settings; the browser fills what differs by city.
 
-    A guide missing the directional part is the one a static caption could have
-    carried, and the directional part is the reason this exists.
+    Anything else left in braces is a placeholder nobody will ever fill.
     """
+    tokens = set()
+    for guide in guides.payload(thresholds).values():
+        for part in _parts(guide):
+            tokens |= set(re.findall(r"\{(\w+)\}", part))
+    assert tokens, "no reading names its city or its period"
+    assert tokens <= set(guides.CITY_TOKENS), f"nothing fills {sorted(tokens - set(guides.CITY_TOKENS))}"
+
+
+def test_every_reading_has_all_four_parts(values) -> None:
+    """What it shows, the data behind it, the units, and how to read it."""
     for key, guide in guides.payload(values).items():
-        assert len(guide["read"]) > 80, f"{key}: 'read' is too short to describe a chart"
-        assert guide["math"], f"{key}: no maths"
-        assert len(guide["moves"]) >= 2, f"{key}: fewer than two directional readings"
-        assert guide["next"], f"{key}: nothing on what would improve it"
+        assert len(guide["shows"]) > 40, f"{key}: 'shows' is too short to describe a chart"
+        assert guide["data"], f"{key}: nothing on the data"
+        assert guide["units"], f"{key}: nothing on the units"
+        assert len(guide["read"]) >= 2, f"{key}: fewer than two ways to read it"
+
+
+def test_a_reading_stays_short(values) -> None:
+    """These replaced panels three times as long. A reading is a caption, not an essay."""
+    for key, guide in guides.payload(values).items():
+        words = sum(len(part.split()) for part in _parts(guide))
+        assert words <= 150, f"{key}: {words} words"
+
+
+def test_a_city_reading_states_its_exact_period(values) -> None:
+    body = guides.markdown("trigger", values)
+    assert "15 Aug 2025 to 10 Jul 2026 (48 runs)" in body
+    assert "Kraków" in body and "RMSE in µg/m³" in body
+    assert "26 Jun 2026 to 10 Jul 2026" in guides.markdown("forecast", values)
+    assert "1 Jun 2025 to 1 Aug 2025" in guides.markdown("factors", values)
+
+
+def test_a_profile_with_no_runs_still_reads() -> None:
+    city = guides.city_context("Live schedule", [], 14)
+    assert city["runs"] == "0" and "{" not in " ".join(city.values())
 
 
 def test_the_prose_is_markdown_and_not_html(values) -> None:
@@ -171,9 +216,7 @@ def test_the_prose_is_markdown_and_not_html(values) -> None:
     tag = re.compile(r"</?[a-zA-Z]")
     entity = re.compile(r"&[a-zA-Z]+;|&#\d+;")
     for key, guide in guides.payload(values).items():
-        parts = [guide["read"], guide["math"], guide["next"]]
-        parts += [side for pair in guide["moves"] for side in pair]
-        for part in parts:
+        for part in _parts(guide):
             assert not tag.search(part), f"{key} contains an HTML tag: {part[:80]}"
             assert not entity.search(part), f"{key} contains an HTML entity: {part[:80]}"
             # A leading ">" is a Markdown blockquote, which is not what any of

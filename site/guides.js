@@ -31,29 +31,35 @@ function guideMarkdown(text) {
     .replace(/\*([^*]+)\*/g, "<em>$1</em>");
 }
 
+/* The readings arrive with the loop's thresholds already filled in. What is
+ * left are the facts that differ by city, written as {period}, {runs} and so
+ * on, and `ctx` holds this city's values for them. A token with no value is
+ * left as written, which is visible on the page and is what a test looks for. */
+function guideFill(text, ctx) {
+  return String(text).replace(/\{(\w+)\}/g, (whole, name) =>
+    ctx && ctx[name] != null ? ctx[name] : whole);
+}
+
 /* Returns "" for an unknown key or a payload built before the guides existed,
- * so a chart without one degrades to the card it was before rather than
- * throwing. `tests/test_site_assets.py` is what stops that being silent.
+ * so a chart without one degrades to the card it was before and does not
+ * throw. `tests/test_site_assets.py` is what stops that being silent.
  *
  * `<details>` rather than a button and a class toggle: it brings its own
  * keyboard handling and its own open/closed state, and it prints expanded. */
-function guideHTML(key, data) {
+function guideHTML(key, data, ctx) {
   const g = key && data && data.guides && data.guides[key];
   if (!g) return "";
-  const moves = (g.moves || [])
-    .map(([when, then]) => `<dt>${guideMarkdown(when)}</dt><dd>${guideMarkdown(then)}</dd>`)
-    .join("");
+  const say = (text) => guideMarkdown(guideFill(text, ctx));
+  const rows = (pairs) =>
+    pairs.map(([left, right]) => `<dt>${say(left)}</dt><dd>${say(right)}</dd>`).join("");
   return (
     `<details class="guide">` +
     `<summary>How to read this</summary>` +
     `<div class="guide-body">` +
-    `<p>${guideMarkdown(g.read)}</p>` +
-    `<p><strong>The maths.</strong> ${guideMarkdown(g.math)}</p>` +
-    (moves
-      ? `<p class="guide-lead"><strong>What it means when it moves</strong></p>` +
-        `<dl class="guide-moves">${moves}</dl>`
-      : "") +
-    `<p><strong>What would improve this.</strong> ${guideMarkdown(g.next)}</p>` +
+    `<p>${say(g.shows)}</p>` +
+    `<dl class="guide-moves guide-facts">${rows([["Data", g.data], ["Units", g.units]])}</dl>` +
+    `<p class="guide-lead"><strong>Reading it</strong></p>` +
+    `<dl class="guide-moves">${rows(g.read || [])}</dl>` +
     `</div></details>`
   );
 }

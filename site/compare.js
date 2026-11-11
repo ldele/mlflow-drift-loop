@@ -82,7 +82,7 @@ function chartCard(jobs, title, desc, chips, traces, layout, opts = {}) {
     (desc ? `<p class="desc">${desc}</p>` : "") +
     `<div class="plot"></div>` +
     // After the chart, not before it: the reader looks first and asks second.
-    guideHTML(guide, DATA);
+    guideHTML(guide, DATA, DATA.guide_all);
   document.getElementById(container).appendChild(card);
   jobs.push({ div: card.querySelector(".plot"), traces, layout });
 }
@@ -258,7 +258,8 @@ function renderValue() {
   ];
 
   chartCard(jobs, "Retraining, measured two ways",
-    "Where the two bars disagree, trust the blue one. An orange bar near zero next to a tall blue one means the city spent most of its replay before anything had been promoted, so the unpaired comparison is measuring the season rather than the retraining. The whiskers are 95% intervals on the blue bar: where one crosses zero, that city shows no measurable effect at all.",
+    "What retraining was worth in each city, across the whole replay and week by week over the " +
+    "weeks a retrained model was serving. Whiskers are 95% intervals on the week-by-week bar.",
     [
       { label: "across the whole replay", color: pal.series[3], kind: "dot" },
       { label: "week by week, when it acted", color: pal.series[0], kind: "dot" },
@@ -329,7 +330,8 @@ function renderPooled() {
   lay.margin.b = 54;
 
   chartCard(jobs, "One model for all six cities, against six models",
-    "Median error over the same monitoring windows, lower is better. The pooled model gets a separate intercept per city, which is doing most of the work: mean pollution runs from 7 µg/m³ in Melbourne to 84 in Delhi, and the same model without that adjustment scores 43% worse.",
+    "Median error in each city under three arrangements: its own model retrained by the loop, " +
+    "its own first model never retrained, and one model trained once on all six cities.",
     names.map((n, i) => ({ label: POOLED_LABEL[n], color: colors[i], kind: "dot" })),
     names.map((name, i) => ({
       type: "bar", name: POOLED_LABEL[name],

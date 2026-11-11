@@ -169,8 +169,8 @@ h1 { margin: 0; font-size: 28px; }
   list-style: none;
 }
 .guide > summary::-webkit-details-marker { display: none; }
-.guide > summary::before { content: "B8"; font-size: 10px; line-height: 1; }
-.guide[open] > summary::before { content: "BE"; }
+.guide > summary::before { content: "\25B8"; font-size: 10px; line-height: 1; }
+.guide[open] > summary::before { content: "\25BE"; }
 .guide > summary:hover { text-decoration: underline; }
 .guide > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
 .guide-body { font-size: 12.5px; line-height: 1.5; color: var(--muted); max-width: 92ch; padding: 2px 0 10px; }
@@ -182,6 +182,7 @@ h1 { margin: 0; font-size: 28px; }
    way their line went and scans one column to find it. */
 .guide-moves { margin: 4px 0 0; display: grid; grid-template-columns: minmax(0, 15em) 1fr; gap: 4px 14px; }
 .guide-moves dt { color: var(--ink2); font-weight: 600; }
+.guide-facts { grid-template-columns: minmax(0, 4em) 1fr; margin-top: 9px; }
 .guide-moves dd { margin: 0; }
 @media (max-width: 620px) {
   .guide-moves { grid-template-columns: 1fr; gap: 1px 0; }

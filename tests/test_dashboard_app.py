@@ -84,5 +84,5 @@ def test_the_synthetic_knob_charts_get_theirs_too():
         pytest.skip("synthetic backend not generated -- run scripts/run_simulation.py --fresh")
     bodies = " ".join(m.value for m in app.markdown)
     # Each knob's reading names the dial it belongs to.
-    assert "This dial moves the weather" in bodies, "the covariate knob has no reading"
-    assert "changes how weather turns into pollution" in bodies, "the concept knob has no reading"
+    assert "This dial changes the weather" in bodies, "the covariate knob has no reading"
+    assert "the way it turns into pollution changes" in bodies, "the concept knob has no reading"

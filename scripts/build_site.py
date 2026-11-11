@@ -545,6 +545,14 @@ def profile_data(key: str) -> dict | None:
             "latest_actual_at": latest_actual_at,
         },
         "as_of": _dates(runs["as_of"]),
+        # The facts a reading quotes that differ from city to city: its dates, how
+        # many runs, the first training window. Filled in the browser when a city
+        # is picked, since one page serves all six.
+        "guide": guides.city_context(
+            profile.label, list(runs["as_of"]), cfg.monitor_days,
+            (profile.replay.champion_train_start, profile.replay.champion_train_end)
+            if profile.replay else None,
+        ),
         "psi": {f: _floats(runs[f"metrics.psi_{f}"]) for f in DRIFT_FEATURES if f"metrics.psi_{f}" in runs},
         # Features whose PSI is identically zero for every run. That is not
         # stability: `psi()` bins on reference quantiles, so a feature that is
@@ -800,9 +808,9 @@ def guides_block() -> dict[str, dict]:
     readings within a month, which is the failure the shared stylesheet and the
     single ``retrospect`` implementation already exist to avoid.
 
-    Filled here rather than in the browser so the substitution happens once,
-    against the config that produced these charts, instead of the parameter
-    names being spelled out a second time in JavaScript.
+    The thresholds are filled here, once, against the config that produced
+    these charts. The facts that differ by city (dates, run counts) stay as
+    tokens and are filled in the browser from each profile's ``guide`` entry.
     """
     from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
 
@@ -814,6 +822,7 @@ def guides_block() -> dict[str, dict]:
         horizon_days=leads.pop() if len(leads) == 1 else None,
         climatology_days=retrospect.CLIMATOLOGY_DAYS,
         psi_bands={"stable": PSI_STABLE, "significant": PSI_SIGNIFICANT},
+        span=guides.replay_span(PROFILES[k] for k in DISPLAY_ORDER),
     ))
 
 
@@ -922,6 +931,12 @@ def build() -> Path:
         "method": method_block(),
         "sweep": sweep_block(),
         "guides": guides_block(),
+        # The same city facts for a page that draws every city at once.
+        "guide_all": guides.all_cities_context(
+            guides.replay_span(PROFILES[k] for k in DISPLAY_ORDER),
+            PROFILES[DISPLAY_ORDER[0]].loop.monitor_days,
+            (min(len(p["as_of"]) for p in profiles), max(len(p["as_of"]) for p in profiles)),
+        ),
         "ablation": ablation_block(profiles),
         "rebaseline_check": rebaseline_check(profiles),
         "schedule": schedule_block(),

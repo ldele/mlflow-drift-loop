@@ -335,7 +335,7 @@ upward and never falls: the champion serving that stretch has a baseline of
 45.8 µg/m³, and almost nothing can cross 1.25× of it. Measured against a
 reference that holds still, the same champion is at its worst there rather than
 its best, with skill of −1.67 against climatology having been +0.43 in January.
-See [evaluation.md](evaluation.md#the-retrain-trigger-stops-measuring-staleness).
+See [evaluation.md](evaluation-first-loop.md#the-retrain-trigger-stops-measuring-staleness).
 
 **A second trigger runs beside it for that.** `LoopConfig.skill_floor`, set to
 −0.5 in every shipped profile, also fires when skill against climatology drops
@@ -373,7 +373,7 @@ challenger trained on six weeks sees one season, wins its exam honestly, and is
 mismatched the moment the year turns. Replays that stopped at the winter peak hid
 this entirely. Extended through the recovery, retraining came out 29.6% worse in
 Kraków and 7.2% worse in Delhi; widening to 180 days took Delhi to +43.7%. See
-[evaluation.md](evaluation.md#what-a-full-year-exposed).
+[evaluation.md](evaluation-first-loop.md#what-a-full-year-exposed).
 
 180 is argued rather than tuned, on the grounds that it spans more than one
 season. Sweeping it is the cheapest experiment left.
@@ -389,7 +389,7 @@ and 21 days. A longer exam makes the promise more honest over the horizon it
 tests and does nothing beyond it: long-serving promotions still reverse at every
 length. It also filters harder, rejecting challengers that the cities where
 retraining pays cannot afford to lose. See
-[evaluation.md](evaluation.md#lengthening-the-exam-does-not-fix-it).
+[evaluation.md](evaluation-first-loop.md#lengthening-the-exam-does-not-fix-it).
 
 **No evaluation leak**, and two guards make that structural rather than
 aspirational. Within a run, the loop raises if the holdout would overlap the
@@ -587,7 +587,7 @@ default is `L = round(n ** (1/3))`, the usual rate, floored at 2 and capped at
 resample it unchanged and report zero width, which is the worst thing this
 module could do. Because the choice is a judgement,
 `sensitivity_to_block_length` re-runs each interval across a range of `L`, and
-[evaluation.md](evaluation.md#the-block-length-is-a-knob-so-here-is-the-sweep)
+[evaluation.md](evaluation-first-loop.md#the-block-length-is-a-knob-so-here-is-the-sweep)
 prints the result. It immediately earned itself: Kraków's premium excludes zero
 at `L=1` and includes it from `L=4`, so that conclusion is a function of a
 modelling choice and is now labelled as one.

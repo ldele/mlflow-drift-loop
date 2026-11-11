@@ -44,6 +44,8 @@ const THEMES = {
 };
 
 let DATA, byKey = {}, current;
+// The selected city's dates and run counts, for the readings under its charts.
+let GUIDE_CTX = null;
 
 function resolveTheme() {
   const attr = document.documentElement.getAttribute("data-theme");
@@ -267,7 +269,7 @@ function chartCard(jobs, title, desc, chips, traces, layout, opts = {}) {
     `<div class="card-head"><h3>${title}</h3><div class="legend">${legendHTML(chips)}</div></div>` +
     `<p class="desc">${desc}</p><div class="plot"></div>` +
     // After the chart, not before it: the reader looks first and asks second.
-    guideHTML(guide, DATA);
+    guideHTML(guide, DATA, GUIDE_CTX);
   document.getElementById(container).appendChild(card);
   jobs.push({ div: card.querySelector(".plot"), traces, layout });
 }
@@ -461,7 +463,7 @@ function renderMap() {
   card.hidden = cities.length === 0;
   if (!cities.length) return;
   document.getElementById("map-guide").innerHTML =
-    guideHTML("map", DATA);
+    guideHTML("map", DATA, DATA.guide_all);
 
   const pal = P();
   const gd = document.getElementById("globe");
@@ -564,6 +566,7 @@ function renderStory(p) {
 
 function render() {
   const p = byKey[current];
+  GUIDE_CTX = p.guide || DATA.guide_all || null;
   const pal = P();
   renderStory(p);
   renderMap();
@@ -592,11 +595,8 @@ function render() {
     }
     chartCard(jobs,
       `What the model forecasts: ${t.name}`,
-      `The PM2.5 recorded for each hour, against what the model thought it would be. The record is ` +
-      `CAMS's estimate of the air, not a station reading. The call was made ` +
-      `<em>a week before it happened</em>, working only from the weather forecast, with no ` +
-      `knowledge of how dirty the air had been lately. The gap between the two lines is the ` +
-      `mistake every other chart on this page is measuring.`,
+      `Recorded PM2.5 for each hour, against what the model predicted for it a week earlier ` +
+      `from the weather forecast alone.`,
       [
         { label: `measured ${t.name}`, color: pal.series[0], kind: "line" },
         { label: "champion prediction", color: pal.series[3], kind: "line" },
@@ -622,9 +622,8 @@ function render() {
     driftRegion(lay, pal, p.drift_date, xEnd);
     chartCard(jobs,
       "What the model is worth",
-      `These models earn their keep in the dirty season and lose to a rule of thumb in the clean one. ` +
-      `Above the line the model beats the rule of thumb, which is "this hour usually looks like it did over the last ${days} days". Below the line it loses to it. ` +
-      `That baseline gets to see recent pollution readings and the model never does, so it is a hard bar rather than a fair fight. It is here because it is the alternative you could deploy instead.`,
+      `The model against a rule of thumb built from the previous ${days} days of air. ` +
+      `Above zero the model wins.`,
       [{ label: `skill vs. ${days}-day daily profile`, color: pal.series[2], kind: "line" }],
       [lineT(p.as_of, R.skill.champion, "skill", pal.series[2], null, { hover: "%{y:+.2f}" })],
       lay, { guide: "skill" });
@@ -718,11 +717,11 @@ function render() {
     thresholdLine(lay, pal, 0, "0 · no better than the baseline");
     chartCard(jobs,
       "How each model ages once it takes over",
-      `Every model this city promoted, lined up on the day it took over rather than on the calendar, and followed past its own retirement so a line that keeps falling shows what keeping it would have cost. ` +
+      `Every model this city promoted, lined up by weeks since it took over. ` +
       (n > SUMMARISE_ABOVE
-        ? `${n} models are summarised as a median and the middle half, because one line each stops being readable. `
-        : `All ${n} are drawn, since there are few enough to tell apart. `) +
-      `Two are named: the model answering now, and the longest unbroken run, which is where staleness shows up first.`,
+        ? `${n} models are drawn as a median and the middle half. `
+        : `All ${n} are drawn. `) +
+      `The model serving now and the longest-serving one are named.`,
       chipsD, traces, lay, { wide: true, guide: "decay" });
   }
 
@@ -752,9 +751,9 @@ function render() {
     }
     chartCard(jobs,
       "When it retrains, and against what bar",
-      "A retrain fires when the error crosses the dotted bar, which is 1.25× whatever the model in service scored when it was trained. " +
-      "The bar is a staircase because every promotion resets it, and promotions happen in the dirty season, so each new model inherits a higher bar than the one it replaced and the bar ratchets upward. It can step down where a challenger trained on a calmer stretch, but only slightly and only early. " +
-      "Where the staircase ends up far above the error, this alarm has gone quiet and cannot fire again whatever the model does. That is what the second alarm is for: a retrain marked below the bar was fired by the model falling too far behind a plain daily profile of recent air, a yardstick no promotion can reset.",
+      `A retrain fires when the error crosses the dotted bar, which is ` +
+      `${DATA.method?.params?.perf_drift_threshold ?? 1.25}× the serving model's own error when ` +
+      `it was trained. A marker below the bar is the second alarm.`,
       chipsT, traces, lay, { guide: "trigger" });
   }
 
@@ -796,11 +795,11 @@ function render() {
   }];
   chartCard(jobs,
     "How far the weather has moved from training",
-    "The early warning. It compares incoming weather against what the model was trained on, one ingredient at a time, and needs no labels and no model, so it can raise a hand before any mistake shows up. " +
-    "Green means the ingredient still looks like training, amber that it has shifted, red that it is properly different. " +
-    "Read the whole block rather than any one cell. These cities go red early and stay red, which is all a statistic that maxes out long before the season does can honestly tell you. It is called PSI, and the bands are the industry convention." +
+    "How far each weather input has moved from the weather the serving model was trained on. " +
+    "Green still looks like training, amber has shifted, red is different." +
     (degenerate.length
-      ? ` Not shown: ${degenerate.join(", ")}, which barely varies during training here, so the statistic is undefined rather than zero.`
+      ? ` Not shown: ${degenerate.join(", ")}, which barely varies in training here, so the ` +
+        `index is undefined for it, not zero.`
       : ""),
     [
       { label: "looks like training", color: pal.good, kind: "dot" },
@@ -821,8 +820,10 @@ function render() {
     })), { zeroLine: false });
     chartCard(jobs,
       "What changed in the world",
-      `Each weather ingredient, averaged over every ${DATA.method?.params?.monitor_days ?? 14}-day monitoring window, in its own units. The band is where that same average sat while the first model was being trained (${R.factors.bootstrap_train[0]} to ${R.factors.bootstrap_train[1]}), its middle 80%. ` +
-      "A line leaving its band is the model being asked about weather it was never shown. This is the case for retraining, before any statistic is computed.",
+      `Each weather input in its own units, averaged over every ` +
+      `${DATA.method?.params?.monitor_days ?? 14}-day window. The band is where that average ` +
+      `sat while the first model was trained (${R.factors.bootstrap_train[0]} to ` +
+      `${R.factors.bootstrap_train[1]}).`,
       shown.map((f, i) => ({ label: f, color: pal.series[i], kind: "dot" })),
       sm.traces, sm.layout, { wide: true, guide: "factors" });
   }
@@ -851,7 +852,8 @@ function render() {
   }
   chartCard(jobs,
     "The exam: champion vs. challenger",
-    "Being newer is not a qualification. The model in service and the one just trained sit the same exam, a week of air neither has ever seen, and the newcomer only takes the job if it wins by more than 5% rather than by a nose. Whether passing this exam predicts anything is tested further down the page.",
+    "The model in service and the rival just trained, scored on the same week neither had " +
+    "seen. A star marks a rival that won by enough to take over.",
     chips3, traces, lay, { guide: "holdout" });
 
   // 7. What the model leans on. Answers the question the coefficient chart
@@ -877,8 +879,8 @@ function render() {
     }];
     chartCard(jobs,
       "What moves the prediction",
-      `How much the model's answer shifts when each ingredient moves by one standard deviation. This is the comparable version of the coefficients below, in µg/m³, for version ${imp.version} over the most recent window. ` +
-      "Boundary layer height, the depth of air that pollution is diluted into, would very likely top this list and is missing. Open-Meteo does not archive it at a seven-day lead, so shortwave radiation stands in for it.",
+      `How much the prediction moves when each input moves by a typical amount, for version ` +
+      `${imp.version} over the latest window.`,
       [], traces, lay, { wide: true, guide: "importance" });
   }
 
@@ -911,7 +913,7 @@ function render() {
   }
   chartCard(jobs,
     "Model coefficients",
-    "What the model believes about each ingredient, and how that belief shifts every time it is retrained. A line crossing zero is the model changing its mind about which way something pushes: wind used to clear the air, now it dirties it. Each panel has its own scale, because the ingredients are measured in different units.",
+    "What each model version learned about each weather input. Every panel has its own scale.",
     chips4, traces, lay, { wide: coefPts > 1, guide: "coefficients" });
 
   renderBenchmark(p);
@@ -1019,16 +1021,13 @@ function renderBenchmark(p) {
 
   card.innerHTML =
     `<div class="card-head"><h3>Does it beat the baselines?</h3></div>` +
-    `<p class="desc">Median error across the ${b.windows} monitoring windows of ` +
-    `${b.monitor_days} days each, the same slices the charts above report on. Grouped by what ` +
-    `each predictor is allowed to see: a forecaster issuing ${days(b.lead_days)} out may use ` +
-    `readings up to that moment and no later, so the baselines below repeat a week-old ` +
-    `observation rather than yesterday's. Lower is better.</p>` +
+    `<p class="desc">Median error over the ${b.windows} weekly windows, grouped by what each ` +
+    `predictor is allowed to see. Lower is better.</p>` +
     `<div class="bench-wrap"><table class="bench">` +
     `<thead><tr><th>Predictor</th><th class="num">Median RMSE</th><th>What it does</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div>` +
     `<div class="verdict">${verdict.join("")}</div>` +
-    guideHTML("benchmark", DATA);
+    guideHTML("benchmark", DATA, GUIDE_CTX);
 }
 
 /* ---------- one model for every city? ---------- */
@@ -1066,7 +1065,8 @@ function renderPooled() {
 
   chartCard(jobs,
     "One model for all six cities, against six models",
-    "Median error over the same monitoring windows, lower is better. The pooled model gets a separate intercept per city, which is doing most of the work: mean pollution runs from 7 µg/m³ in Melbourne to 84 in Delhi, and the same model without that adjustment scores 43% worse. So the weather slopes are shared and only the level is learned per place.",
+    "Median error in each city under three arrangements: its own model retrained by the loop, " +
+    "its own first model never retrained, and one model trained once on all six cities.",
     names.map((name, i) => ({ label: POOLED_LABEL[name], color: colors[i], kind: "dot" })),
     traces, lay, { container: "pooled-charts", wide: true, guide: "pooled" });
 
@@ -1074,16 +1074,13 @@ function renderPooled() {
   const beatsServed = cities.filter((p) => pick(p, "pooled_cities") < pick(p, "champion_served"));
   const delhi = cities.find((p) => p.label === "Delhi");
   document.getElementById("pooled-note").innerHTML =
-    `<strong>The answer is no, and the near miss is the interesting part.</strong> One model over ` +
-    `every city loses to the city's own retrained model in ${cities.length - beatsServed.length} of ` +
-    `${cities.length} cities. But it beats the city's own <em>frozen</em> model in ` +
-    `${beatsFrozen.length}, and in Delhi it is not close: ` +
-    `${delhi ? `${pick(delhi, "pooled_cities").toFixed(1)} against ${pick(delhi, "champion_frozen").toFixed(1)} µg/m³` : ""}. ` +
-    `Training on five other cities is worth more than a year of staleness, and less than keeping ` +
-    `one city's model current. The cheap arrangement is not one model; it is one model plus the ` +
-    `retraining loop, which is what the six cities here already are. ` +
-    `Where pooling hurts most is Melbourne, the cleanest city by a distance, whose weather-to-` +
-    `pollution relationship the other five outvote.`;
+    `One model over every city has lower error than the city's own retrained model in ` +
+    `${beatsServed.length} of ${cities.length} cities, and lower than the city's own first ` +
+    `model never retrained in ${beatsFrozen.length}` +
+    (delhi
+      ? ` (Delhi: ${pick(delhi, "pooled_cities").toFixed(1)} against ` +
+        `${pick(delhi, "champion_frozen").toFixed(1)} µg/m³).`
+      : `.`);
 
   plotAll(jobs);
 }
@@ -1156,8 +1153,8 @@ function renderGate() {
 
   chartCard(jobs,
     "What the exam promised against what it delivered",
-    `One point per promotion, across every city. Horizontal is the margin the challenger won its exam by, which is the number the gate decided on. Vertical is what it went on to deliver over the weeks it then served, measured against the model it replaced and scored on those same windows. ` +
-    `On the dotted diagonal the exam predicted the outcome perfectly. Below the red line the promotion left the city worse off.`,
+    `One point per promotion, from every city: the margin it won its exam by, against what it ` +
+    `then delivered while serving. On the dotted diagonal the promise was kept.`,
     [
       { label: `served under ${GATE_LONG_WEEKS} weeks`, color: pal.series[2], kind: "dot" },
       { label: `served ${GATE_LONG_WEEKS}+ weeks`, color: pal.crit, kind: "dot" },
@@ -1170,28 +1167,16 @@ function renderGate() {
   // replay that changes them. It did once: "not one of them left its city worse
   // off" stayed on the page until a re-run produced two that had.
   const harmed = (group) => group.filter((r) => r.delivered < 0).length;
-  const shortHarmed = harmed(short), longHarmed = harmed(long);
-  const shortVerdict = shortHarmed === 0
-    ? "and not one of them left its city worse off"
-    : `and ${shortHarmed} of them left ${shortHarmed === 1 ? "its city" : "their cities"} worse off`;
   let note =
-    `<strong>The result:</strong> over the horizon it tests, the exam mostly keeps its promise. ` +
-    `Across ${short.length} promotions that served under ${GATE_LONG_WEEKS} weeks it promised ` +
-    `${pct(mean(short, "exam") * 100, 1)} and delivered ${pct(mean(short, "delivered") * 100, 1)}, ${shortVerdict}.`;
+    `Across ${short.length} promotions that served under ${GATE_LONG_WEEKS} weeks the exam ` +
+    `promised ${pct(mean(short, "exam") * 100, 1)} and the winners delivered ` +
+    `${pct(mean(short, "delivered") * 100, 1)}; ${harmed(short)} left their city worse off.`;
   if (long.length) {
-    const who = long.length === 1 ? "the one model" : `the ${long.length} models`;
-    const outcome = longHarmed === long.length
-      ? (long.length === 1 ? "delivered a <em>negative</em> margin" : "each delivered a <em>negative</em> margin")
-      : `delivered a negative margin in ${longHarmed} ${longHarmed === 1 ? "case" : "cases"}`;
     note +=
-      ` But ${who} that ended up serving ${GATE_LONG_WEEKS} weeks or more ${outcome}, ` +
-      `${pct(mean(long, "exam") * 100, 1)} promised against ${pct(mean(long, "delivered") * 100, 1)} ` +
-      `delivered, despite passing the same exam just as convincingly. A seven-day exam can certify a ` +
-      `model for about a month, and nothing here shows it certifying one for half a year. A model ` +
-      `serves that long only when no rival replaces it, because neither alarm fired or because every ` +
-      `rival failed its exam, so the exam that cleared it is asked to stand for far longer than it can. ` +
-      `With ${long.length} such ${long.length === 1 ? "model" : "models"}, read that as a direction ` +
-      `and not as a measurement.`;
+      ` The ${long.length} that served ${GATE_LONG_WEEKS} weeks or more were promised ` +
+      `${pct(mean(long, "exam") * 100, 1)} and delivered ${pct(mean(long, "delivered") * 100, 1)}, ` +
+      `with ${harmed(long)} worse off. That is too few to measure, and enough to say a ` +
+      `seven-day exam does not vouch for a model months later.`;
   }
   document.getElementById("gate-note").innerHTML = note;
 
@@ -1222,17 +1207,14 @@ function renderControl(sweep) {
       key: "feature_shift",
       guide: "control_covariate",
       title: "Turning the covariate knob",
-      desc: "The feature distributions are pushed further from the training window, while the " +
-        "relationship between weather and pollution is left alone. Data drift should climb and " +
-        "performance drift should not move.",
+      desc: "The weather is pushed away from the training weather. How weather turns into " +
+        "pollution is left alone.",
     },
     {
       key: "drift_strength",
       guide: "control_concept",
       title: "Turning the concept knob",
-      desc: "The relationship between weather and pollution is changed, while the feature " +
-        "distributions are left alone. Performance drift should climb and data drift should not " +
-        "move.",
+      desc: "How weather turns into pollution is changed. The weather itself is left alone.",
     },
   ];
 
@@ -1262,15 +1244,11 @@ function renderControl(sweep) {
   const last = (a) => a[a.length - 1];
   if (fs && ds) {
     document.getElementById("control-note").innerHTML =
-      `<strong>The result:</strong> turn the dial that changes how weather becomes pollution, and ` +
-      `the "is the error rising" alarm climbs ${last(ds.perf_rel).toFixed(1)}× while the ` +
-      `"does the weather look different" alarm does not move at all ` +
-      `(${last(ds.psi_rel).toFixed(2)}×). It is right not to: the weather has not changed. Turn ` +
-      `the other dial and it reverses, with the weather alarm climbing ` +
-      `${last(fs.psi_rel).toFixed(1)}× and the error alarm staying put ` +
-      `(${last(fs.perf_rel).toFixed(2)}×). Each answers only to the cause it is meant to ` +
-      `watch, which is the whole reason for having two, and it is the one claim no real city can ` +
-      `settle, because in a real city nobody knows what the right answer was.`;
+      `Changing how weather becomes pollution moves the error alarm ` +
+      `${last(ds.perf_rel).toFixed(1)}× and the weather alarm ${last(ds.psi_rel).toFixed(2)}×. ` +
+      `Changing the weather moves the weather alarm ${last(fs.psi_rel).toFixed(1)}× and the ` +
+      `error alarm ${last(fs.perf_rel).toFixed(2)}×. Each alarm answers to its own cause, ` +
+      `which only a simulated city can show, because there the cause is known.`;
   }
 
   plotAll(jobs);
@@ -1358,19 +1336,10 @@ function renderAblation(ablation) {
   // chart is what invites the unpaired reading: three bars at different heights
   // are three medians, and differencing two medians is the mistake this project
   // spends a whole column of its city table warning about.
-  const delhiPaired = (cities.find((c) => c.city === "Delhi") || cities[0]).paired;
   chartCard(jobs,
     "The same city, replayed under three models",
-    "What retraining was worth in each city, week by week, under the model that ships and under " +
-    "two tuned once on the same protocol. Bars are 95% intervals; one crossing the zero line " +
-    "means retraining cannot be shown to have paid at all. If the premium were really about the " +
-    "air changing, it would survive the change of model. " +
-    (delhiPaired
-      ? `Compared week for week rather than by differencing the bars, over the ` +
-        `${delhiPaired.weeks} weeks both models retrained, the flexible one gives up ` +
-        `${delhiPaired.points.toFixed(1)} points of premium in Delhi ` +
-        `[${delhiPaired.lo.toFixed(1)}, ${delhiPaired.hi.toFixed(1)}].`
-      : ""),
+    "What retraining was worth in two cities, under the model that ships and under two tuned " +
+    "once on the same protocol. Bars are 95% intervals.",
     ARMS.map((kind, i) => ({ label: label(kind), color: colors[i], kind: "dot" })),
     traces, lay, { container: "ablation-charts", wide: true, guide: "ablation" });
 
@@ -1386,22 +1355,18 @@ function renderAblation(ablation) {
   const paired = delhi.paired;
 
   let note =
-    `<strong>Part of it is the straight line, and most of it is not.</strong> ` +
     `${delhi.city} reads ${pct(shipped.premium, 1)} under the model that ships and ` +
     `${pct(tree.premium, 1)} ${iv(tree.lo, tree.hi)} under a tree tuned on the same protocol, ` +
     (tree.real ? `still clear of zero.` : `which no longer clears zero.`) +
     (paired
       ? ` Week for week over the ${paired.weeks} weeks both models retrained, the tree gives up ` +
         `${paired.points.toFixed(1)} points of that [${paired.lo.toFixed(1)}, ${paired.hi.toFixed(1)}].`
-      : ``) +
-    ` The first time this experiment ran, on the loop as it first shipped, it took four fifths ` +
-    `of the headline, and most of that was a default setting in the model. That is why the loop ` +
-    `now chooses the setting itself.`;
+      : ``);
 
   if (la) {
     const laShipped = armOf(la, "ridge"), laTree = armOf(la, "gbm_tuned");
     note += !laShipped.real && !laTree.real
-      ? ` <strong>${la.city} shows nothing measurable under either model:</strong> ` +
+      ? ` ${la.city} shows nothing measurable under either: ` +
         `${pct(laShipped.premium, 1)} ${iv(laShipped.lo, laShipped.hi)} and ` +
         `${pct(laTree.premium, 1)} ${iv(laTree.lo, laTree.hi)}.`
       : ` ${la.city} reads ${pct(laShipped.premium, 1)} ${iv(laShipped.lo, laShipped.hi)} under ` +
@@ -1419,11 +1384,8 @@ function renderAblation(ablation) {
       `it is not — so those arms are two misspecified models and say nothing about linearity.`;
   } else if (checked.length) {
     note +=
-      ` <strong>The check that licenses all of it is thin.</strong> The tuned tree has to be the ` +
-      `better model or both arms are just misspecified, and it is — by ` +
-      `${checked.map((c) => `${c.tree_is_better.margin.toFixed(2)} µg/m³ in ${c.city}`).join(" and ")}. ` +
-      `It also turns out to be a decision stump, which is its own answer about how close to a ` +
-      `straight line this problem is.`;
+      ` The comparison counts only where the tree is the better model, and it is by ` +
+      `${checked.map((c) => `${c.tree_is_better.margin.toFixed(2)} µg/m³ in ${c.city}`).join(" and ")}.`;
   }
 
   document.getElementById("ablation-note").innerHTML = note;

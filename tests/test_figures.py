@@ -18,7 +18,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "outputs"
 
 # Pages every interval on which is keyed or declared.
-FULLY_KEYED = ("README.md", "docs/DECISIONS.md", "docs/evaluation.md", "docs/methodology.md")
+FULLY_KEYED = (
+    "README.md", "docs/DECISIONS.md", "docs/evaluation.md", "docs/evaluation-first-loop.md",
+    "docs/methodology.md",
+)
 
 
 @pytest.fixture(scope="module")
