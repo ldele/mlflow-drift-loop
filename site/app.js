@@ -1478,6 +1478,27 @@ function scheduleOutcome(s) {
   return `${asked}, and ${passed}, so the model serving now is version ${s.champion_version}.`;
 }
 
+/* The heartbeat: how long since a cycle was last logged, counted against the
+ * reader's clock rather than the build's. A page that stopped being rebuilt
+ * then shows the gap growing instead of a reassuring number frozen at build
+ * time. The limit is the one the weekly job fails on, published by the build. */
+function scheduleHeartbeat(s, now = Date.now()) {
+  const logged = Date.parse(s.logged_at_utc);
+  if (Number.isNaN(logged) || !s.max_silence_days) return `The last cycle was logged on ${s.logged_at}.`;
+  // Calendar days in UTC, as heartbeat.py counts them, so the number agrees
+  // with the date printed beside it and the page and the job call the same
+  // day stale.
+  const DAY = 86400000;
+  const days = Math.max(0, Math.floor(now / DAY) - Math.floor(logged / DAY));
+  const ago = days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+  const limit = `A weekly job should never go more than ${s.max_silence_days} days without one`;
+  if (days <= s.max_silence_days) {
+    return `The last cycle was logged ${ago}, on ${s.logged_at}. ${limit}.`;
+  }
+  return `<strong>The last cycle was logged ${ago}, on ${s.logged_at}.</strong> ${limit}, ` +
+    `so either the job has stopped running or this page has not been rebuilt since it last ran.`;
+}
+
 function renderSchedule(s) {
   const card = document.getElementById("schedule-card");
   card.hidden = !s;
@@ -1486,7 +1507,7 @@ function renderSchedule(s) {
   document.getElementById("schedule-desc").innerHTML =
     `The same code also runs one cycle every Monday on live Kraków data and commits its ` +
     `records to the repository. ${s.cycles} ${plural} been recorded, covering ${s.first} to ` +
-    `${s.last}, last logged on ${s.logged_at}. ${scheduleOutcome(s)} ` +
+    `${s.last}. ${scheduleHeartbeat(s)} ${scheduleOutcome(s)} ` +
     `<span class="gloss">The Mondays the job failed are in ` +
     `<a href="https://github.com/ldele/mlflow-drift-loop/actions/workflows/drift-loop.yml">its run log</a>.</span>`;
 }

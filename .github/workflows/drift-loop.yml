@@ -45,6 +45,12 @@ jobs:
       - name: Set up environment
         run: uv sync --python 3.12 # reproducible install driven by uv.lock
 
+      # Says so when the store is already stale before this run starts, which is
+      # an outage the runner's catch-up is about to repair. A warning, not a
+      # failure: stopping here would stop the repair.
+      - name: Heartbeat before the cycle (warn only)
+        run: uv run python scripts/check_heartbeat.py --warn-only
+
       - name: Run one scheduled drift cycle
         id: cycle
         run: uv run python scripts/run_scheduled.py
@@ -52,30 +58,6 @@ jobs:
       - name: Announce promotion
         if: steps.cycle.outputs.promotion == 'true'
         run: echo "::notice title=Drift loop — champion promoted::${{ steps.cycle.outputs.headline }}"
-
-      # A red tick in the Actions tab is only a notice to somebody who looks at
-      # the Actions tab. This job failed every Monday from 2026-08-03 to
-      # 2026-09-07 and the loop was down for six weeks before anyone noticed, so
-      # a failure now files itself where the work is. One issue, reopened and
-      # commented on rather than duplicated, so a long outage is one thread.
-      - name: File a failure where it will be seen
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          title="drift-loop: the weekly cycle is failing"
-          body="The scheduled cycle failed: $RUN_URL
-
-          Every failed Monday is a weekly decision nobody takes. The runner catches
-          up the weeks it missed once it runs again (\`scripts/run_scheduled.py\`),
-          so fixing this restores the decisions as well as the schedule."
-          number=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
-          if [ -n "$number" ]; then
-            gh issue comment "$number" --body "$body"
-          else
-            gh issue create --title "$title" --body "$body"
-          fi
 
       - name: Persist MLflow state + gathered data back to the repo
         run: |
@@ -91,4 +73,40 @@ jobs:
           else
             git commit -m "chore(drift-loop): scheduled cycle $(date -u +%F) [skip ci]"
             git push
+          fi
+
+      # The heartbeat (src/driftloop/heartbeat.py): fails the job when the store
+      # as just persisted has no cycle logged in the last 8 days. After the
+      # persist, so a cycle that did run is kept even if this check then fails.
+      # It catches a job that goes green without leaving a recent cycle on
+      # record. It cannot catch a job that never starts; the site's schedule
+      # card ages the same date in the reader's browser for that.
+      - name: Heartbeat after the cycle
+        run: uv run python scripts/check_heartbeat.py
+
+      # A red tick in the Actions tab is only a notice to somebody who looks at
+      # the Actions tab. This job failed every Monday from 2026-08-03 to
+      # 2026-09-07 and the loop was down for six weeks before anyone noticed, so
+      # a failure now files itself where the work is. One issue, reopened and
+      # commented on rather than duplicated, so a long outage is one thread.
+      # Last, so it also files a failed heartbeat.
+      - name: File a failure where it will be seen
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="drift-loop: the weekly cycle is failing"
+          body="The scheduled job failed: $RUN_URL
+
+          Either the cycle itself failed, or it finished without a recent cycle on
+          record (the heartbeat step says which). Every failed Monday is a weekly
+          decision nobody takes. The runner catches up the weeks it missed once it
+          runs again (\`scripts/run_scheduled.py\`), so fixing this restores the
+          decisions as well as the schedule."
+          number=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
           fi

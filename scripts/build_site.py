@@ -27,7 +27,7 @@ from mlflow.tracking import MlflowClient
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from driftloop import guides, retrospect, tracking  # noqa: E402
+from driftloop import guides, heartbeat, retrospect, tracking  # noqa: E402
 from driftloop.config import DRIFT_FEATURES, FEATURES, PROFILES  # noqa: E402
 
 OUT = REPO_ROOT / "site"
@@ -828,11 +828,18 @@ def schedule_block() -> dict | None:
     runs = load_runs(profile.db_filename, profile.loop.experiment_name)
     if runs.empty:
         return None
+    logged = heartbeat.check(pd.to_datetime(runs["start_time"]).max()).last_logged
     return {
         "cycles": int(len(runs)),
         "first": runs["as_of"].min().strftime("%Y-%m-%d"),
         "last": runs["as_of"].max().strftime("%Y-%m-%d"),
-        "logged_at": pd.to_datetime(runs["start_time"]).max().strftime("%Y-%m-%d"),
+        "logged_at": logged.strftime("%Y-%m-%d"),
+        # The heartbeat, for the page to age in the reader's browser rather than
+        # at build time: a page that stopped being rebuilt has to show the gap
+        # growing, which a "days since" baked in here never would. The limit is
+        # the one the weekly job fails on, read from the code, not retyped.
+        "logged_at_utc": logged.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "max_silence_days": heartbeat.MAX_SILENCE_DAYS,
         "champion_version": (
             runs["tags.champion_version"].iloc[-1] if "tags.champion_version" in runs else None
         ),
