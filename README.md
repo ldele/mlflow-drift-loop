@@ -45,7 +45,10 @@ the same first model never retrained, week by week, with a 95% interval
    led by Delhi at **+22.8% [+11.8, +36.4]**<!--fig:delhi.acted-->. Los Angeles, the
    control, and Kraków show nothing measurable. Under a tree model tuned the same
    way Delhi still reads +13.4% [+8.0, +27.0]<!--fig:ablation.delhi.gbm_tuned-->, so the
-   gain is not a straight line being refitted to a season.
+   gain is not a straight line being refitted to a season. On nine cities outside the
+   six it paid in 3<!--fig:heldout.p1.pays-->, harmed none, and the seasonal swing measured
+   the year before did not say which, against a
+   [prediction written first](docs/registrations/2026-11-11-premium-on-held-out-cities.md).
 
 2. **A default setting doubled the first headline.** This page once led with
    Delhi at +49.4% [+33.7, +61.8]<!--fig:first.delhi.acted--> and with retraining costing
@@ -191,6 +194,7 @@ python scripts/score_fixes.py               # read all five sweeps on both loops
 python scripts/ablate_model.py              # the same loop under a model that can bend
 python scripts/rebaseline.py                # the first loop against the loop as it ships
 python scripts/held_out_cities.py           # the second alarm on nine cities outside the six
+python scripts/held_out_premium.py          # what retraining is worth on the same nine
 ```
 
 ## Where things are

@@ -127,3 +127,17 @@ def test_the_held_out_cities_are_keyed_by_a_plain_slug(committed):
     # Both arms' silences for a city the alarm fired in, and none it did not reach.
     assert committed["heldout.istanbul.off.silence"] > committed["heldout.istanbul.on.silence"]
     assert not any(key.startswith("heldout.lagos") for key in committed)
+
+
+def test_the_held_out_premium_is_keyed_with_its_interval_and_its_score(committed):
+    walked = ("tokyo", "shanghai", "sao_paulo", "mexico_city", "cairo", "dhaka", "karachi",
+              "buenos_aires", "istanbul")
+    for city in walked:
+        for suffix in ("premium", "premium.lo", "premium.hi", "premium.n", "swing"):
+            assert f"heldout.{city}.{suffix}" in committed, f"heldout.{city}.{suffix}"
+    # The six carry their swing under their own slugs, and the threshold is the
+    # smallest swing among the four where retraining pays.
+    paying = [committed[f"swing.{c}"] for c in ("delhi", "santiago", "joburg", "melbourne")]
+    assert committed["heldout.threshold"] == pytest.approx(min(paying), abs=1e-4)
+    assert 0 <= committed["heldout.p1.correct"] <= 9
+    assert 0 <= committed["heldout.p1.chance"] <= 1

@@ -148,6 +148,9 @@ def run_arm(profile: Profile, source: OpenMeteoSource, floor: float | None) -> d
         # goes deaf in a city.
         "_fired": [value == "True" for value in runs["tags.retrain_triggered"]],
         "_skill": [float(v) for v in skill],
+        # The whole retrospective, for scripts/held_out_premium.py, which takes
+        # the premium against the first model and its interval from it.
+        "_retro": retro,
         "city": profile.label,
         "floor": "off" if floor is None else f"{floor:+.2f}",
         "runs": len(df),

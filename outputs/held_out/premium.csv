@@ -1,0 +1,16 @@
+group,city,slug,swing,swing_low,swing_high,swing_months,predicted,weeks,acted,n_eff,premium,premium_lo,premium_hi,outcome,correct,stored_paired
+six,Delhi,delhi,3.6822,33.6944,124.0699,12,pays,39,37,9.93,22.8273,11.7756,36.3703,pays,True,
+six,Santiago,santiago,3.9563,14.8349,58.6907,12,pays,21,16,2.33,17.4799,8.5734,37.1508,pays,True,
+six,Kraków,krakow,5.7449,9.5578,54.9086,12,pays,48,47,5.43,5.706,-14.8279,26.8303,not shown,False,
+six,Johannesburg,johannesburg,2.5854,16.4007,42.4015,12,pays,19,6,5.12,9.7272,4.6105,13.9671,pays,True,
+six,Melbourne,melbourne,1.3742,6.3074,8.6675,12,pays,30,27,7.92,5.5793,2.0409,6.5688,pays,True,
+six,Los Angeles,los_angeles,2.2354,15.1038,33.7634,12,pays,36,35,3.34,-3.5486,-25.6449,3.0308,not shown,False,
+held out,Tokyo,tokyo,2.1146,20.2839,42.8914,12,pays,47,46,3.6219,3.2322,1.3997,10.7963,pays,True,3.23
+held out,Shanghai,shanghai,3.2147,28.1504,90.4956,12,pays,47,46,3.5299,-2.2848,-11.6799,5.6385,not shown,False,-2.28
+held out,São Paulo,sao_paulo,2.3771,15.9212,37.8464,12,pays,31,8,6.332,-0.0717,-3.5082,2.1682,not shown,False,-0.07
+held out,Mexico City,mexico_city,2.0995,16.4258,34.4868,12,pays,31,30,5.8271,-3.9446,-12.1665,1.9371,not shown,False,-3.94
+held out,Cairo,cairo,1.9886,18.3235,36.4374,12,pays,34,31,4.2865,6.3795,-49.5735,16.1811,not shown,False,6.38
+held out,Dhaka,dhaka,6.8954,14.978,103.2797,12,pays,43,41,10.6076,25.5911,4.5887,47.8696,pays,True,25.59
+held out,Karachi,karachi,2.375,17.1284,40.6794,12,pays,38,37,5.2506,22.1331,8.1242,34.1742,pays,True,22.13
+held out,Buenos Aires,buenos_aires,2.0403,6.1286,12.504,12,pays,35,34,2.2978,-1.6007,-10.8489,1.5453,not shown,False,-1.6
+held out,Istanbul,istanbul,3.9834,12.4289,49.5087,12,pays,44,39,5.4064,21.3739,-7.918,26.6479,not shown,False,21.37

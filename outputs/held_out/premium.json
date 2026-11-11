@@ -1,0 +1,42 @@
+{
+ "registration": "docs/registrations/2026-11-11-premium-on-held-out-cities.md",
+ "controls": [
+  {
+   "city": "Delhi",
+   "ok": true,
+   "reading": "pays",
+   "acted": 37,
+   "n_eff": 9.93,
+   "premium": 22.83,
+   "premium_lo": 11.78,
+   "premium_hi": 36.37
+  },
+  {
+   "city": "Los Angeles",
+   "ok": true,
+   "reading": "not shown",
+   "acted": 35,
+   "n_eff": 3.34,
+   "premium": -3.55,
+   "premium_lo": -25.64,
+   "premium_hi": 3.03
+  }
+ ],
+ "void": [],
+ "threshold": 1.3741837458792174,
+ "threshold_city": "Melbourne",
+ "p1": {
+  "correct": 3,
+  "of": 9,
+  "holds": false,
+  "observed_pays": 3,
+  "predicted_pays": 9,
+  "chance": 1.0
+ },
+ "p2": {
+  "harms": [],
+  "holds": true
+ },
+ "spearman": 0.41666666666666663,
+ "six_in_sample_correct": 4
+}

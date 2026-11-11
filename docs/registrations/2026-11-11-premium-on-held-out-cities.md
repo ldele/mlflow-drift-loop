@@ -203,4 +203,21 @@ The loop's configuration is not changed by any outcome of this analysis.
 
 ## Addenda
 
-<!-- Dated. Each states what changed, why, and whether any result had been seen. -->
+**2026-11-11, after every result had been seen.** Nothing above was edited. This file was
+committed as `b69c755` at 13:20 on 2026-11-11, before any interval or swing was computed, and run
+with `python scripts/held_out_premium.py`. Outputs are in `outputs/held_out/premium.csv` and
+`premium.json`; the swing year's PM2.5 is cached under `data_cache/` as `pm25_*.parquet`.
+
+Both controls reproduced to one decimal, all nine cities reproduced their stored point estimate,
+and every city had 12 months of swing data, so nothing is void. P1 failed, 3 of 9 sorted right.
+P2 held. Retraining paid in Dhaka, Karachi and Tokyo.
+
+One thing the registration did not anticipate. Melbourne's swing over 2024-25 was 1.37×, the
+lowest of all fifteen cities, so the threshold put all nine above the line and P1 became the
+prediction "all nine pay". The registration's own chance figure is therefore 1.0. Melbourne's
+swing over its replay span is about 3×, so the year chosen for the swing is not a stable
+description of a city's season. The failure is scored as registered and not re-scored with a
+different threshold. A later test should measure the predictor on the replay's own training
+data or score it without a cut-off, and should not let one city set the line.
+
+Results are in `docs/evaluation.md`, "What retraining is worth on the same nine cities".

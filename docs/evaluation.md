@@ -283,6 +283,66 @@ cities are not replayed exactly as the six were. A window chosen as the cleanest
 between July and November also suits the northern cities better than São Paulo or Buenos
 Aires.
 
+## What retraining is worth on the same nine cities
+
+Run on 2026-11-11 with `python scripts/held_out_premium.py`. The question, how each city is
+read, the predictor and two predictions were fixed in
+[the registration](registrations/2026-11-11-premium-on-held-out-cities.md), committed as
+`b69c755` before any interval or swing was computed. The point estimates had already been
+seen, because the alarm test above stored them, and the registration says so.
+
+Each city replays the loop as it ships on the windows the alarm test used, and is compared week
+by week with its first model, never retrained, as in the six-city table. Retraining **pays** in a
+city when that interval is above zero. The predictor is the city's **seasonal swing**: its
+highest monthly mean PM2.5 divided by its lowest, over May 2024 to April 2025, a year that ends
+before any city trains or is scored. A city was predicted to pay if its swing was at least that
+of the least seasonal of the four cities among the six where retraining pays. Before any held-out
+interval was read, Delhi and Los Angeles reproduced their published intervals through the same
+code, and each of the nine reproduced its stored point estimate.
+
+| | swing, 2024-25 | weeks served by a retrained model | week by week, against the first model |
+|---|---|---|---|
+| Dhaka | 6.9<!--fig:heldout.dhaka.swing-->× | 41<!--fig:heldout.dhaka.premium.n--> | **+25.6% [+4.6, +47.9]**<!--fig:heldout.dhaka.premium--> |
+| Istanbul | 4.0<!--fig:heldout.istanbul.swing-->× | 39<!--fig:heldout.istanbul.premium.n--> | +21.4% [−7.9, +26.6]<!--fig:heldout.istanbul.premium--> |
+| Shanghai | 3.2<!--fig:heldout.shanghai.swing-->× | 46<!--fig:heldout.shanghai.premium.n--> | −2.3% [−11.7, +5.6]<!--fig:heldout.shanghai.premium--> |
+| São Paulo | 2.4<!--fig:heldout.sao_paulo.swing-->× | 8<!--fig:heldout.sao_paulo.premium.n--> | −0.1% [−3.5, +2.2]<!--fig:heldout.sao_paulo.premium--> |
+| Karachi | 2.4<!--fig:heldout.karachi.swing-->× | 37<!--fig:heldout.karachi.premium.n--> | **+22.1% [+8.1, +34.2]**<!--fig:heldout.karachi.premium--> |
+| Tokyo | 2.1<!--fig:heldout.tokyo.swing-->× | 46<!--fig:heldout.tokyo.premium.n--> | **+3.2% [+1.4, +10.8]**<!--fig:heldout.tokyo.premium--> |
+| Mexico City | 2.1<!--fig:heldout.mexico_city.swing-->× | 30<!--fig:heldout.mexico_city.premium.n--> | −3.9% [−12.2, +1.9]<!--fig:heldout.mexico_city.premium--> |
+| Buenos Aires | 2.0<!--fig:heldout.buenos_aires.swing-->× | 34<!--fig:heldout.buenos_aires.premium.n--> | −1.6% [−10.8, +1.5]<!--fig:heldout.buenos_aires.premium--> |
+| Cairo | 2.0<!--fig:heldout.cairo.swing-->× | 31<!--fig:heldout.cairo.premium.n--> | +6.4% [−49.6, +16.2]<!--fig:heldout.cairo.premium--> |
+
+Bold where the interval excludes zero.
+
+| # | predicted | what happened |
+|---|---|---|
+| P1 | the swing sorts the nine into the cities where retraining pays and the rest | **failed**: 3<!--fig:heldout.p1.correct--> of 9 sorted right |
+| P2 | retraining harms no held-out city | held: no interval is below zero |
+
+**Retraining paid in 3<!--fig:heldout.p1.pays--> of the nine and harmed none, and the swing did not
+say which in advance.** Under the outcome table written beforehand, "retraining pays where the
+season is strong" is now a finding about the six cities it was found on, and it did not carry over
+to new ones. Seeing the point estimates first could only have helped the prediction pass, so the
+failure stands as scored.
+
+**The threshold failed before it reached the nine.** Melbourne pays, and its swing over 2024-25
+was 1.4<!--fig:swing.melbourne-->×, so every one of the nine sat above the line and the prediction was
+"all nine pay". A rule that predicts the same thing everywhere cannot sort: labels handed out at
+random would have done as well every time (chance 1.0<!--fig:heldout.p1.chance-->). Across the nine, the
+swing and the point premium rank together only loosely, at a correlation of
++0.42<!--fig:heldout.spearman-->, which is reported and not scored.
+
+**What this says about measuring the loop.** Two parts of the design did not hold. A threshold set
+by the weakest of four cities is set by one city, here the one whose gain this page already reads
+with caution. And a city's swing in one year does not fix it in the next: Melbourne's air swings
+about 3× over its replay and 1.4× the year before. The season may still be what matters; this test
+cannot show it, and a repeat should measure the predictor on a year it can trust and score it
+without a cut-off.
+
+The limits are those of the alarm test above, plus one: the predictor was chosen by someone who
+had seen the point estimates. Each city carries about 2 to 11 independent observations, so a city
+where retraining is worth a few percent will usually read as nothing measurable.
+
 ## The analysis of the first loop
 
 The full analysis of the loop as it ran until 2026-11-10 is in

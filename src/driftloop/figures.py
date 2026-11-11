@@ -231,6 +231,30 @@ def _held_out(rows: list[dict[str, str]], figures: dict[str, float]) -> None:
                  lo if bounded else None, hi if bounded else None)
 
 
+def _held_out_premium(rows: list[dict[str, str]], summary: dict, figures: dict[str, float]) -> None:
+    """What retraining is worth on the nine, each city's swing, and the registered score
+    (scripts/held_out_premium.py). The six cities' swings are keyed under ``swing.``."""
+    for row in rows:
+        if row["group"] == "six":
+            figures[f"swing.{CITY_SLUGS[row['city']]}"] = float(row["swing"])
+            continue
+        city = f"heldout.{_city_slug(row['city'])}"
+        figures[f"{city}.swing"] = float(row["swing"])
+        figures[f"{city}.premium.n"] = int(row["acted"])
+        if row["premium"]:
+            lo, hi = float(row["premium_lo"]), float(row["premium_hi"])
+            bounded = abs(lo) != float("inf")
+            _put(figures, f"{city}.premium", float(row["premium"]),
+                 lo if bounded else None, hi if bounded else None)
+            figures[f"{city}.premium.n_eff"] = float(row["n_eff"])
+    figures["heldout.threshold"] = summary["threshold"]
+    figures["heldout.p1.correct"] = summary["p1"]["correct"]
+    figures["heldout.p1.pays"] = summary["p1"]["observed_pays"]
+    figures["heldout.p1.predicted"] = summary["p1"]["predicted_pays"]
+    figures["heldout.p1.chance"] = summary["p1"]["chance"]
+    figures["heldout.spearman"] = summary["spearman"]
+
+
 def _loop(outputs: Path) -> dict[str, float]:
     """Every figure one loop's outputs hold, under its bare key."""
     figures: dict[str, float] = {}
@@ -258,6 +282,11 @@ def collect(outputs: Path) -> dict[str, float]:
     figures.update({FIRST + key: value for key, value in _loop(outputs / FIRST_DIR).items()})
     _rebaseline(_rows(outputs / "rebaseline.csv"), figures)
     _held_out(_rows(outputs / HELD_OUT_DIR / "alarm.csv"), figures)
+    _held_out_premium(
+        _rows(outputs / HELD_OUT_DIR / "premium.csv"),
+        json.loads((outputs / HELD_OUT_DIR / "premium.json").read_text(encoding="utf-8")),
+        figures,
+    )
     return {
         key: value if isinstance(value, int) else round(float(value), 4)
         for key, value in sorted(figures.items())

@@ -59,6 +59,9 @@ outputs/first_shipped/*
 outputs/held_out/*
 !outputs/held_out/alarm.csv
 !outputs/held_out/candidates.json
+# And what retraining is worth there, against the first model (scripts/held_out_premium.py).
+!outputs/held_out/premium.csv
+!outputs/held_out/premium.json
 
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and
