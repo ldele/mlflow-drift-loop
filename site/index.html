@@ -23,14 +23,12 @@
             <span class="live"><span class="dot"></span> rebuilt weekly</span>
           </div>
           <p class="lede">
-            Models go stale. The world they were trained on moves on, and usually nobody notices
-            until something downstream breaks. This one notices on its own, every week, with nobody
-            watching it. The job: forecast <strong>how dirty a city's air will be</strong>
-            (<strong>PM2.5</strong>, the soot fine enough to reach your bloodstream)
-            <strong>a week ahead</strong>, from nothing but the weather forecast. When the model
-            starts slipping it trains a replacement, then refuses to ship it unless it beats the one
-            already in service. Six cities, each replayed week by week through a year of recorded
-            data, from 2025 into 2026. One of them, Kraków, also runs for real every Monday.
+            Models go stale as the world they were trained on moves on. This loop checks its
+            model every week, trains a replacement when it slips, and ships the replacement only
+            if it beats the one in service. The example: forecasting <strong>PM2.5</strong>, fine
+            airborne soot, <strong>a week ahead</strong> from the weather forecast alone. Six
+            cities are replayed week by week through a year of recorded data, 2025 into 2026.
+            One, Kraków, also runs live every Monday.
           </p>
           <p class="built" id="built"></p>
         </div>
@@ -44,9 +42,7 @@
            method, and the answer changes halfway down the page. -->
       <h2 class="method-h scope-h">One city at a time</h2>
       <p class="method-sub">
-        Six cities, each with its own model and its own history of retraining. Every setting is
-        identical across all of them, so where two cities behave differently it is their air that
-        differs and not their tuning. Pick one, or
+        Six cities on identical settings, each with its own model. Pick one, or
         <a href="compare.html">see all six side by side</a>.
       </p>
       <div class="toolbar">
@@ -155,32 +151,30 @@
           <ol class="steps" id="steps"></ol>
           <p class="why">
             <strong>Why two kinds of signal:</strong> the weather check needs no recorded
-            outcomes, so it can speak first. But weather that looks different is not a model that
-            is failing, so only a rise in the model's own error can order a retrain.
+            air, so it can speak first. But different weather is not a failing model, so only
+            the model's own error can order a retrain.
           </p>
           <p class="why">
             <strong>Where it goes wrong:</strong> the error alarm compares the model with
             <em>its own</em> error at training time, and every promotion resets that bar. Models
-            are promoted when the air is dirty, so the bar climbs, and past the seasonal peak the
-            alarm cannot fire at all. Left alone that silenced Kraków for 30 weeks and Los Angeles
-            for 35 of its 36. A second alarm now runs beside it, comparing the model with a plain
-            daily profile of recent air, which no promotion can reset. With both, the longest
-            silences are 22 weeks and 16.
+            are promoted when the air is dirty, so the bar climbs until the alarm cannot fire:
+            Kraków went 30 weeks unchecked and Los Angeles 35 of its 36. A second alarm, measured
+            against a plain daily profile of recent air, cannot be reset by a promotion. With
+            both, the longest silences are 22 weeks and 16.
           </p>
           <p class="why">
             <strong>Five fixes were built, and none makes the forecasts better.</strong> Each
-            was replayed on all six cities, on the loop as it first shipped and again on this one,
-            with the expected results written down first. The second alarm stayed, for the
-            silences it shortens: on nine cities this page does not show, it shortened them
-            wherever it fired and did not change accuracy measurably. A longer exam, a schedule of
-            re-examinations and an undo step change nothing measurable.
+            was replayed on all six cities, on the first loop and on this one, with predictions
+            written down first. The second alarm stayed because it shortens silences: on nine
+            further cities it did so wherever it fired, with no measurable change in accuracy. A
+            longer exam, scheduled re-examinations and an undo step change nothing measurable.
           </p>
           <p class="why">
             <strong>One result did not survive the second run.</strong> A harder exam made two
-            cities worse on the first loop and one on this one, which is within what chance
-            produces across this many comparisons. What holds on both: winners deliver less than
-            their exam promised. A year of weekly checks in one city holds only a handful of
-            independent observations, so a fix worth a few percent would not show in either run.
+            cities worse on the first loop and one on this one, which chance alone could produce.
+            What holds on both: winners deliver less than their exam promised. A year of weekly
+            checks holds only a handful of independent observations, so a fix worth a few percent
+            would not show.
           </p>
         </section>
 
@@ -193,10 +187,9 @@
           <section class="card">
             <div class="card-head"><h3>The model</h3></div>
             <p class="desc">
-              It answers one question: given the weather forecast for a week from now, how
-              dirty will the air be? It sees the forecast as it was issued, not the weather that
-              turned out, and it is never told how dirty the air has been lately. It is simple on
-              purpose: a simple model fails visibly when the world shifts, and
+              One question: given the weather forecast for a week from now, how dirty will
+              the air be? It sees the forecast as issued, not the weather that turned out, and
+              never the recent air. It is simple on purpose:
               <strong>the subject here is the loop around the model.</strong>
             </p>
             <dl class="spec" id="model-spec"></dl>
@@ -213,9 +206,8 @@
       <footer>
         <div class="data-links" id="data-links"></div>
         <p class="foot-note">
-          Every chart is live. Hover for values, drag to zoom, click a legend entry to hide a line.
-          The page rebuilds itself once a week from the system's own records. Code, and a deeper
-          version of this dashboard, on
+          Hover a chart for values, drag to zoom, click a legend entry to hide a line. The page
+          rebuilds weekly from the loop's own records. Code on
           <a href="https://github.com/ldele/mlflow-drift-loop">GitHub</a>.
         </p>
       </footer>

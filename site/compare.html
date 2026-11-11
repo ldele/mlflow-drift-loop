@@ -19,10 +19,8 @@
             <h1>All six cities at once</h1>
           </div>
           <p class="lede">
-            The main page shows one city at a time, which is the right way to follow a single model
-            through a year and the wrong way to see what the six have in common. This is the other
-            view. Every panel below carries all six, so the differences between them are the subject
-            rather than a thing you hold in memory across six clicks.
+            Every panel here carries all six cities on shared axes, so they can be compared
+            directly.
           </p>
           <p class="built" id="built"></p>
         </div>
@@ -38,10 +36,8 @@
       <section id="grid-section">
         <h2 class="method-h">How each city's model holds up</h2>
         <p class="method-sub">
-          One panel per city, same scale on every one, so a shallow curve and a collapsing one are
-          told apart by shape rather than by reading the axis. Above the line the model beats a
-          rule of thumb, which is what this hour usually looked like over the previous 30 days.
-          Below it, it loses to one.
+          One panel per city on one scale. Above the line the model beats a rule of thumb:
+          what this hour usually looked like over the previous 30 days.
         </p>
         <div class="charts" id="skill-grid"></div>
       </section>
@@ -49,11 +45,10 @@
       <section id="value-section">
         <h2 class="method-h">What retraining was worth</h2>
         <p class="method-sub">
-          Two readings per city, because the first misleads on its own. Across the replay compares
-          the median error of what was served against the first model held frozen, which is an
-          unpaired comparison: where a city promotes nothing until late, most windows compare the
-          first model against itself and the answer collapses toward zero. Week by week holds the
-          window fixed and compares the two models inside it.
+          Two readings per city. <em>Across the replay</em> compares median error served
+          against the first model never retrained; in a city that promotes late, most weeks
+          compare the first model with itself. <em>Week by week</em> compares the two models
+          inside each week a retrained model was serving.
         </p>
         <div class="charts" id="value-charts"></div>
         <p class="why" id="value-note"></p>
@@ -62,9 +57,8 @@
       <section id="pooled-section">
         <h2 class="method-h">Six models, or one?</h2>
         <p class="method-sub">
-          Each city here gets its own model, retrained on its own schedule. The cheaper arrangement
-          is one model over all six, so every city's benchmark carries it: one Ridge, trained once
-          on the six training windows, never retrained.
+          The cheaper arrangement is one model for all six cities, trained once and never
+          retrained. It is scored here beside each city's own model.
         </p>
         <div class="charts" id="pooled-charts"></div>
         <p class="why" id="pooled-note"></p>
@@ -75,7 +69,7 @@
       <footer>
         <div class="data-links" id="data-links"></div>
         <p class="foot-note">
-          Every chart is live. Hover for values, drag to zoom, click a legend entry to hide a line.
+          Hover a chart for values, drag to zoom, click a legend entry to hide a line.
           Code, and the per-city view, on
           <a href="https://github.com/ldele/mlflow-drift-loop">GitHub</a>.
         </p>

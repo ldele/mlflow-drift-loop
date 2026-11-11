@@ -242,3 +242,35 @@ def test_the_page_still_measures_what_the_committed_rebaseline_says() -> None:
         if not c["passed"]
     ]
     assert not stale, "re-run scripts/rebaseline.py -- " + "; ".join(stale)
+
+
+def test_each_city_story_takes_its_verdict_from_the_interval() -> None:
+    """A story says "cut" or "raised" only where the interval clears zero.
+
+    The verdict used to be typed into each story. After the loop was changed two
+    of them contradicted the numbers they quoted: one called a gain clear of zero
+    "nothing measurable", the other called an interval covering zero "measurably
+    harmed".
+    """
+    import json
+
+    payload = SITE / "data.json"
+    if not payload.is_file():
+        pytest.skip("site/data.json not built")
+
+    profiles = json.loads(payload.read_text(encoding="utf-8"))["profiles"]
+    profiles = list(profiles.values()) if isinstance(profiles, dict) else profiles
+    checked = 0
+    for profile in profiles:
+        stats, story = profile["stats"], profile["story"]
+        if stats.get("retrain_acted_real") is None:
+            continue
+        checked += 1
+        if not stats["retrain_acted_real"]:
+            assert "includes zero" in story, story
+            assert "cut the error" not in story and "raised the error" not in story, story
+        elif stats["retrain_acted"] > 0:
+            assert "cut the error" in story, story
+        else:
+            assert "raised the error" in story, story
+    assert checked, "no city carries an interval, so nothing was checked"

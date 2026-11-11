@@ -284,21 +284,10 @@ function renderValue() {
   const worst = rows.slice().sort((a, b) => acted(a) - acted(b))[0];
   const names = (cs) => cs.map((c) => c.label).join(" and ");
   document.getElementById("value-note").innerHTML =
-    `<strong>Pairing the comparison rescues some of these cities, and not all of them.</strong> ` +
-    `Week by week, ${gained} of ${rows.length} show a gain the interval can separate from zero` +
-    (noEffect.length
-      ? `, and ${names(noEffect)} show no measurable effect at all. `
-      : ". ") +
-    `The widest gap between the two readings is ${gap.label}, at ` +
-    `${gap.d.toFixed(1)} percentage points. ` +
-    (acted(worst) > 0
-      ? `The weakest of them, ${worst.label}, gains only ${pct(acted(worst))}, and the effort ` +
-        `still has to be paid for. `
-      : `And retraining is not free: ${worst.label} comes out at ${pct(acted(worst))} even ` +
-        `paired, winning ${worst.stats.retrain_win_rate}% of the weeks it acts, which is worse ` +
-        `than a coin toss and still costs the compute. `) +
-    `What it does mean is that the headline number was answering a different question ` +
-    `than the one it appeared to answer.`;
+    `Week by week, ${gained} of ${rows.length} cities show a gain whose range is clear of zero` +
+    (noEffect.length ? `; ${names(noEffect)} show no measurable effect. ` : ". ") +
+    `The two readings differ most in ${gap.label}, by ${gap.d.toFixed(1)} points. ` +
+    `The lowest is ${worst.label} at ${pct(acted(worst))}.`;
 
   plotAll(jobs);
 }
@@ -347,16 +336,10 @@ function renderPooled() {
     .map((c) => ({ label: c.label, r: pick(c, "pooled_cities") / pick(c, "champion_served") }))
     .sort((a, b) => b.r - a.r)[0];
   document.getElementById("pooled-note").innerHTML =
-    `<strong>Six models win, and by less than the layout implies.</strong> ` +
-    `One model over every city loses to the city's own retrained model in ` +
-    `${rows.length - beatsServed.length} of ${rows.length}, and beats the city's own <em>frozen</em> ` +
-    `model in ${beatsFrozen.length}. Training on five other cities is worth more than a year of ` +
-    `staleness and less than keeping one city's model current. ` +
-    `It hurts most in ${worst.label}, at ${worst.r.toFixed(2)}× the error of that city's own model. ` +
-    `Read the other way, this is a limit on the features rather than on the arrangement: six weather ` +
-    `variables and an hour of day do not carry whatever makes a city's air behave the way it does, ` +
-    `so the per-city intercept has to stand in for all of it. Better features would likely narrow ` +
-    `the gap between the blue and orange bars everywhere.`;
+    `One model for every city has higher error than the city's own retrained model in ` +
+    `${rows.length - beatsServed.length} of ${rows.length} cities, and lower error than the ` +
+    `city's own first model never retrained in ${beatsFrozen.length}. It does worst in ` +
+    `${worst.label}, at ${worst.r.toFixed(2)}× the error of that city's own model.`;
 
   plotAll(jobs);
 }

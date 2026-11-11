@@ -1175,8 +1175,7 @@ function renderGate() {
     note +=
       ` The ${long.length} that served ${GATE_LONG_WEEKS} weeks or more were promised ` +
       `${pct(mean(long, "exam") * 100, 1)} and delivered ${pct(mean(long, "delivered") * 100, 1)}, ` +
-      `with ${harmed(long)} worse off. That is too few to measure, and enough to say a ` +
-      `seven-day exam does not vouch for a model months later.`;
+      `with ${harmed(long)} worse off: too few to measure.`;
   }
   document.getElementById("gate-note").innerHTML = note;
 
@@ -1355,12 +1354,12 @@ function renderAblation(ablation) {
   const paired = delhi.paired;
 
   let note =
-    `${delhi.city} reads ${pct(shipped.premium, 1)} under the model that ships and ` +
-    `${pct(tree.premium, 1)} ${iv(tree.lo, tree.hi)} under a tree tuned on the same protocol, ` +
+    `${delhi.city}: ${pct(shipped.premium, 1)} with the model that ships, ` +
+    `${pct(tree.premium, 1)} ${iv(tree.lo, tree.hi)} with a tree tuned the same way, ` +
     (tree.real ? `still clear of zero.` : `which no longer clears zero.`) +
     (paired
-      ? ` Week for week over the ${paired.weeks} weeks both models retrained, the tree gives up ` +
-        `${paired.points.toFixed(1)} points of that [${paired.lo.toFixed(1)}, ${paired.hi.toFixed(1)}].`
+      ? ` Over the ${paired.weeks} weeks both retrained, the tree gives up ` +
+        `${paired.points.toFixed(1)} points [${paired.lo.toFixed(1)}, ${paired.hi.toFixed(1)}].`
       : ``);
 
   if (la) {
@@ -1384,7 +1383,7 @@ function renderAblation(ablation) {
       `it is not — so those arms are two misspecified models and say nothing about linearity.`;
   } else if (checked.length) {
     note +=
-      ` The comparison counts only where the tree is the better model, and it is by ` +
+      ` The tree is the better model in each, by ` +
       `${checked.map((c) => `${c.tree_is_better.margin.toFixed(2)} µg/m³ in ${c.city}`).join(" and ")}.`;
   }
 
@@ -1407,17 +1406,15 @@ function renderMethod(m) {
 
   document.getElementById("method").hidden = false;
   document.getElementById("method-sub").textContent =
-    "Every city on this page comes out of the same four steps, run once a week. No city gets " +
-    "special treatment: they all run on identical settings, so where two cities behave " +
-    "differently, it is their air that differs and not their tuning.";
+    "The same four steps, run once a week, on identical settings in every city.";
 
   const steps = [
     ["Mark its homework", `Take the model in service and check the last ${days(p.monitor_days)} of forecasts against the PM2.5 recorded for those days.`],
-    ["Look for trouble, two ways", "First, whether the weather has stopped resembling what the model learned from. Separately, whether the model's error is rising. The first can fire before any damage shows. Only the second is allowed to spend money."],
+    ["Look for trouble, two ways", "Whether the weather still looks like what the model learned from, and whether the model's error is rising. Only the second can order a retrain."],
     ["Train a rival", `If the error is ${p.perf_drift_threshold}× what it used to be` +
       (p.skill_floor == null ? "" : `, or the model has fallen ${pct(-p.skill_floor)} behind a plain daily profile of recent air`) +
       `, train a fresh model on the last ${days(p.challenger_train_days)} and let it apply for the job.`],
-    ["Make it earn the job", `Both sit the same exam, ${days(p.holdout_days)} of air neither has seen. The newcomer has to win by ${pct(p.promotion_margin)} rather than squeak past, or it is thrown away.`],
+    ["Make it earn the job", `Both sit the same exam, ${days(p.holdout_days)} of air neither has seen. The newcomer must win by ${pct(p.promotion_margin)} or it is discarded.`],
   ];
   document.getElementById("steps").innerHTML = steps
     .map(([title, desc], i) =>
@@ -1443,8 +1440,7 @@ function renderMethod(m) {
   ]);
 
   document.getElementById("param-desc").textContent = m.params_uniform
-    ? "Every threshold the loop decides with, in one place, and identical for every city so a city's " +
-      "behaviour reflects its weather and not its tuning."
+    ? "Every threshold the loop decides with, identical for every city."
     : "Every threshold the loop decides with. These are the values for the first source shown; they are " +
       "not currently identical across cities.";
 
@@ -1488,12 +1484,10 @@ function renderSchedule(s) {
   if (!s) return;
   const plural = s.cycles === 1 ? "cycle has" : "cycles have";
   document.getElementById("schedule-desc").innerHTML =
-    `Alongside the six replays, the same code runs one cycle at a time against live Kraków data, ` +
-    `keeping its history in a tracking store committed back to the repository. So far ${s.cycles} ` +
-    `${plural} been recorded, covering ${s.first} to ${s.last}, most recently logged on ` +
-    `${s.logged_at}. ${scheduleOutcome(s)} ` +
-    `<span class="gloss">The store does not record what started each cycle. The weekly job's own ` +
-    `history, including the Mondays it failed, is in ` +
+    `The same code also runs one cycle every Monday on live Kraków data and commits its ` +
+    `records to the repository. ${s.cycles} ${plural} been recorded, covering ${s.first} to ` +
+    `${s.last}, last logged on ${s.logged_at}. ${scheduleOutcome(s)} ` +
+    `<span class="gloss">The Mondays the job failed are in ` +
     `<a href="https://github.com/ldele/mlflow-drift-loop/actions/workflows/drift-loop.yml">its run log</a>.</span>`;
 }
 

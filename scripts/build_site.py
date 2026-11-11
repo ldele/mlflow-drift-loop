@@ -63,69 +63,38 @@ SCHEDULE_KEY = "scheduled"
 
 # Templates, not prose. Every number a city's story quotes is a `{placeholder}`
 # filled from that city's own run and benchmark output at build time, on the same
-# rule the method block follows: introspected rather than retyped. Widening the
-# feature set or changing the forecast lead moves all of these figures at once,
-# and hand-edited paragraphs go stale.
+# rule the method block follows: introspected rather than retyped.
 #
 # Only what a re-run cannot change stays hardcoded: geography, season, and why a
-# city was chosen. A sentence a re-run could falsify belongs in a placeholder.
+# city was chosen. A sentence a re-run could falsify belongs in a placeholder,
+# and that includes the verdict: `{retrain_value}` reads the interval, so a
+# story cannot call a result a gain after a re-run has moved it across zero.
 # See _story_facts for the available names.
 STORY = {
-    # Both readings for the lead city, where they disagree by six points and the
-    # page's own argument is that the across-the-replay number misleads.
-    "openmeteo": "The city this started with. Kraków sits in a valley, and when the coal heating "
-    "goes on for winter the smog has nowhere to escape to. A model trained on clean summer air "
-    "goes from {rmse_first} to {rmse_peak} µg/m³ of error as that happens, and is replaced "
-    "{retrains} times over {runs} weeks. Measured across the whole replay that replacing is worth "
-    "{retrain_gain}, near enough a wash; held week by week over the {acted_weeks} weeks a "
-    "retrained model was serving, it is {retrain_acted} {retrain_acted_ci}, which is "
-    "{retrain_verdict}. Those {acted_weeks} weeks carry about {effective_n} independent "
-    "observations between them, and that is why the range is so wide. What it ends up with "
-    "is {rank_phrase}.",
-    "openmeteo_delhi": "The violent one. The monsoon scrubs Delhi's air clean by September, then "
-    "the crop stubble is burned and the winter air stops moving, and the pollution triples. The "
-    "model's error runs from {rmse_first} to {rmse_peak} µg/m³ while the weather stops resembling "
-    "anything it was trained on. Keeping it retrained is worth {retrain_gain} across the replay "
-    "and {retrain_acted} {retrain_acted_ci} week by week, the biggest payoff here and the one "
-    "furthest clear of zero. Left alone, it ends up worse than guessing the same number every "
-    "hour.",
-    "openmeteo_la": "Retraining buys nothing here, and that is why the city is on the page. Los "
-    "Angeles was picked as the summer-smog control and the measurements disagreed twice over: its "
-    "pollution peaks in November, and it moves only 1.9× against Delhi's 3×. Across {runs} weeks "
-    "the loop fires {retrains_times}. Over the whole replay retraining scores {retrain_gain}, and "
-    "in the {acted_weeks} weeks a retrained model was serving it won {win_rate} of them, worse "
-    "than a coin toss rather than equal to one. Week by week it costs {retrain_acted} "
-    "{retrain_acted_ci}, a range that stays {retrain_verdict}, so the control does not merely "
-    "fail to benefit. It is measurably harmed. The model comes {rank_phrase}. Something built "
-    "to catch change needs something to change.",
-    "openmeteo_santiago": "Kraków's twin, half a year out of step. Santiago sits in a coastal bowl "
-    "that traps winter air the same way, except that its winter is June. A model trained on clean "
-    "December air decays from {rmse_first} to {rmse_peak} µg/m³ as that winter arrives. It is "
-    "replaced {retrains} times over {runs} weeks, worth {retrain_gain} across the replay and "
-    "{retrain_acted} {retrain_acted_ci} week by week, on settings identical to every other "
-    "city here.",
-    "openmeteo_joburg": "Where the quality gate does its most visible work, and where the headline "
-    "number lies. Highveld winter nights trap coal and wood smoke, and the model's error climbs "
-    "from {rmse_first} to {rmse_peak} µg/m³, the worst on this page. It trains {retrains} "
-    "replacements over {runs} weeks and ships only {promotions}. Across the whole replay "
-    "retraining scores {retrain_gain}, which reads as a wash and is not one: nothing was promoted "
-    "until week 14 of 20, so most windows compare the first model against itself. In the "
-    "{acted_weeks} weeks where a retrained model was serving it beat the original in {win_rate} of "
-    "them, by a median of {retrain_acted} {retrain_acted_ci}. Six weeks is the thinnest "
-    "evidence of any city here, and the range says so.",
-    "openmeteo_melbourne": "Clean air does not mean a stable model. Sydney is the obvious "
-    "Australian choice and its air barely moves; Melbourne swings 3.1× on winter wood smoke while "
-    "staying near the WHO guideline all year round, and its model still decays to {perf_peak}× the "
-    "error it started with across {runs} weeks. Retraining scores {retrain_gain} over the replay "
-    "and {retrain_acted} {retrain_acted_ci} in the {acted_weeks} weeks it was serving a "
-    "retrained model, winning {win_rate} of them. That range is {retrain_verdict}, so the "
-    "honest reading is that retraining here buys nothing measurable at all.",
-    "synthetic": "A made-up world with a dial controlling how far the data shifts, so the "
-    "detection can be shown to fire when something really has changed, and only then.",
-    "scheduled": "The same system running unattended, and not a city at all. This is the Kraków "
-    "data again, with one check appended automatically by a robot every Monday. What it shows is "
-    "that the machinery keeps going with nobody starting it, building its own history in real "
-    "calendar time.",
+    "openmeteo": "The city this started with. Kraków sits in a valley, and winter coal heating "
+    "fills it with smog that cannot escape. The model's error runs from {rmse_first} to "
+    "{rmse_peak} µg/m³ and it is replaced {retrains} times in {runs} weeks. {retrain_value}",
+    "openmeteo_delhi": "The violent one. The monsoon cleans Delhi's air by September, then crop "
+    "stubble is burned, the winter air stops moving and pollution triples. The model's error "
+    "runs from {rmse_first} to {rmse_peak} µg/m³. {retrain_value}",
+    "openmeteo_la": "The control. Los Angeles was picked for summer smog, but its pollution "
+    "peaks in November and moves only 1.9× against Delhi's 3×. The loop retrains "
+    "{retrains_times} in {runs} weeks. {retrain_value}",
+    "openmeteo_santiago": "Kraków's twin, half a year out of step. Santiago sits in a bowl that "
+    "traps winter air the same way, and its winter is June. The model's error runs from "
+    "{rmse_first} to {rmse_peak} µg/m³ and it is replaced {retrains} times in {runs} weeks. "
+    "{retrain_value}",
+    "openmeteo_joburg": "Where the promotion exam turns most models away. Highveld winter nights "
+    "trap coal and wood smoke, and the model's error climbs from {rmse_first} to {rmse_peak} "
+    "µg/m³. The loop trains {retrains} replacements in {runs} weeks and promotes {promotions}. "
+    "{retrain_value}",
+    "openmeteo_melbourne": "Clean air does not mean a stable model. Melbourne stays near the WHO "
+    "guideline all year, yet winter wood smoke swings its air 3.1× and the model's error reaches "
+    "{perf_peak}× where it started. {retrain_value}",
+    "synthetic": "A simulated city with a dial for how far the data shifts, to show the alarms "
+    "fire when something has changed and only then.",
+    "scheduled": "Not a city. This is the Kraków data with one check added by a scheduled job "
+    "every Monday, to show the loop keeps running with nobody starting it.",
 }
 
 # Human-readable position of the served champion in the benchmark table, so a
@@ -215,7 +184,28 @@ def _story_facts(runs: pd.DataFrame, retr: pd.DataFrame, prom: pd.DataFrame,
             else "not distinguishable from zero"
         )
         facts["effective_n"] = f"{acted_ci.get('n_effective', 0):.0f}"
+    if acted_ci and "retrain_acted" in facts:
+        facts["retrain_value"] = _retrain_value(facts, acted_ci)
     return facts
+
+
+def _retrain_value(facts: dict[str, str], acted_ci: dict) -> str:
+    """The one sentence a story says about what retraining was worth.
+
+    The verdict is read from the interval, never typed: "cut" only where the
+    whole range is above zero, "raised" only where it is all below.
+    """
+    weeks = f"Over the {facts['acted_weeks']} weeks a retrained model was serving, retraining"
+    if not acted_ci.get("excludes_zero"):
+        return (
+            f"{weeks} changed the error by {facts['retrain_acted']} "
+            f"{facts['retrain_acted_ci']}, where plus is an improvement. The range includes "
+            f"zero, so no effect is shown."
+        )
+    point = float(facts["retrain_acted"].replace("−", "-").rstrip("%"))
+    low, high = sorted((abs(acted_ci["lo"]), abs(acted_ci["hi"])))
+    verb = "cut" if acted_ci["lo"] > 0 else "raised"
+    return f"{weeks} {verb} the error by {abs(point):.1f}% (range {low:.1f} to {high:.1f})."
 
 
 def _render_story(key: str, facts: dict[str, str]) -> str:

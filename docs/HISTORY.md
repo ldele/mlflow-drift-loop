@@ -1,19 +1,16 @@
 # How the findings changed
 
-Every number on this project's pages has been rewritten at least once, and the pages are
-rewritten in place. This file is the trail: what was published, what replaced it, and what the
-correction was. Reconstructed from the commit history on 2026-09-22, because most of it existed
-nowhere else.
+Every number on this project's pages has been rewritten at least once, in place. This file
+is the trail: what was published, what replaced it and why. It was reconstructed from the
+commit history on 2026-09-22 and has been kept up since.
 
-The short version: the first headline was measured in a way that flattered the loop in four
-separate ways at once. Each was found and fixed. The claim ended at roughly a fifth of where it
-started, and one half of it should have been withdrawn and was not.
+In short: the first headline was measured in four ways that each flattered the loop. Each
+was found and fixed, and the claim ended at less than half of where it started.
 
 ## The headline, version by version
 
-"Retraining worth" is whatever figure the README led with that day. It changes meaning at
-2026-08-04, where an unpaired comparison across the whole replay gives way to a paired one over
-the weeks a retrained model was actually serving. That switch is itself one of the corrections.
+"Retraining worth" is the figure the README led with that day: percent lower error than
+never retraining. From 2026-08-04 it is the paired week-by-week figure.
 
 | date | commit | Delhi | Los Angeles | Kraków | what changed |
 |---|---|---|---|---|---|
@@ -30,148 +27,82 @@ the weeks a retrained model was actually serving. That switch is itself one of t
 | 11-10 | this change | +22.8% [+11.8, +36.4] | −3.5% [−25.6, +3.0] | +5.7% [−14.8, +26.8] | the loop itself: penalty tuned at every fit, second retrain alarm on |
 
 The rows dated 08-12 and 08-16 are arms of an ablation, not replacements for the shipped
-figure, and for three months the README went on leading with the first loop's numbers beside them.
-The last row is the loop itself being changed, and it is the figure the README leads with now.
+figure. The last row is the loop itself being changed.
 
 ## What each correction was
 
-**The model was not forecasting** (`95b6ae1`, 2026-08-01). Until this commit the features were
-the analysed weather for the hour being predicted, so the model was a same-hour estimator with no
-forecasting in it. `FORECAST_LEAD_DAYS = 7` makes the features the forecast as it stood a week
-earlier, which is the job the README describes, and the model inherits the weather forecast's own
-error. Kraków's premium fell from +26.9% to +4.4% on the harder problem.
-
-**The replay stopped where the story was flattering** (`5e10624`, 2026-08-03). Kraków and Delhi
-ran to 2026-01-20 and 2026-01-25, which is just past their dirty-season peak. The loop was only
-ever watched through the world getting worse, which is the half where any refit helps. Both now
-run to 2026-07-10.
-
-**A challenger could only learn one season** (same commit). `challenger_train_days` was 45. A
-six-week window sees one season, wins its exam, and is wrong as soon as the year turns. The
-half-year replay had been hiding it. Held at 45 days over a full year, retraining comes out
-**−7.2% in Delhi and −29.6% in Kraków**; at 180 days, +43.7% and +0.2%. This is the most useful
-finding in the repository and it was only visible once the replay ran past the flattering point.
-
-**The metric compared the wrong things** (`3aff123`, 2026-08-04). The unpaired figure takes median
-error across the whole replay against never retraining, so in a city that promotes nothing until
-late, most windows compare the first model against itself and the answer collapses toward zero.
-Johannesburg read 0.0% unpaired and +14.9% paired, over the six weeks a retrained model was
-actually serving.
-
-**Two first-run accounting bugs** (`679ac9a` and `e1f91a3`, 2026-08-05 and 08-06).
-- A first run that promotes had no earlier row to read the outgoing version from, so the promotion
-  was credited to the wrong model.
-- Five of six replays started 9 to 11 days after the champion's training ended, against a 14-day
-  monitor window, so run 0 scored the champion on 3 to 5 days of its own training data and
-  understated its error by up to 15%.
-
-Fixing the second dropped one run from five cities. Two of Los Angeles's three retrains fell
-inside the dropped window, so it went from 3 retrains to 1 and from −2.8% to −13.4%. From that
-point the entire Los Angeles result rests on a single promotion. `test_loop.py` now asserts the
-gap for every shipped profile.
-
-**Nothing carried an interval until 2026-08-11** (`bc0bf4c`). With a 95% moving-block bootstrap,
-Kraków and Melbourne stopped being results: both had been published as small positive findings.
-Kraków's 47 weekly comparisons carry about five independent observations, which is what makes
-every interval on the page as wide as it is.
-
-**A confound check that could not fail was read as evidence** (`541db47` → `d22977b`). The first
-ablation swapped in a gradient-boosted challenger at library defaults. It lost to the Ridge, and
-the README concluded that "finding 1 does not depend on the model class". The tree was undertrained:
-tuning is worth 26.5% to it, and the shipped Ridge was undertuned by 11.9%, so tuning only the tree
-would have inverted the unfairness. With both classes tuned on the same protocol, Delhi's +49.35%
-decomposes into **21.62 points lost to the shipped `alpha`, 17.99 to linearity, and +9.74% left
-over**. The earlier conclusion is withdrawn in `docs/evaluation.md`.
-
-**The `alpha` default was seen on day one and misjudged.** The 2026-07-31 README already said
-`alpha=1.0` ships while forward-chaining CV picks 30 to 100, "worth 0.1-2.4% error", and called the
-curve nearly flat. That judged the setting by its effect on the model's accuracy rather than by its
-effect on the headline, where it is worth 21.6 points. `docs/DECISIONS.md` D5 records it: the page
-described the curve as nearly flat and left it there.
-
-**A restated figure had drifted from its own output** (2026-09-23). Keying every figure the
-README quotes to `outputs/figures.json` found Santiago's across-the-replay interval published as
-[−0, +43] when the output holds an upper bound of 42.49. Small, and the reason the check exists:
-the same numbers were restated in three to five places by hand, which is also how finding 2
-outlived its own withdrawal. Every page now fails CI when a keyed figure disagrees with the file.
-
-**The configuration was changed, three months after the evidence said to** (2026-11-10). The
-ablation of 2026-08-16 priced the default penalty at 21.6 of Delhi's 49.4 points, and the
-side-by-side replay of 2026-09-22 measured the loop with the penalty tuned at every fit and the
-second retrain alarm switched on. Both sat on the page as open decisions (D1, D5) while the README
-led with numbers the project had itself explained away. On 2026-11-10 the six city profiles and the
-live schedule took that configuration, and a fresh replay reproduced the September figures to the
-decimal: Delhi +22.8% [+11.8, +36.4], Los Angeles −3.5% [−25.6, +3.0] and no longer a harm,
-Melbourne up from nothing to +5.6% [+2.0, +6.6]. The ablation and the five mechanism sweeps were
-not re-run in that change. They were later the same day, and the entry on the five fixes below is what they found.
-
-Two things the same pass found. The benchmark's "never retrained" model was still being fitted at
-the default penalty, which would have credited retraining with the gain that tuning the first fit
-had already made: it read +44.2% for Delhi where the replay reads +17.9%. And the site's sentence
-that no short-serving promotion "left its city worse off" was written into the page, not counted
-from the data; under the new replay two of 28 did.
-
-**The five fixes were measured again, and two results shrank** (2026-11-10). The sweeps and the
-ablation had only ever run on the first loop. They were re-run on the loop as it ships, with ten
-predictions and a reading rule written first: a setting counts only where it clears zero, in the
-same direction, in two cities. Seven predictions held. Two results the pages had leaned on did not
-repeat. The confidence-aware gate, published as "actively harmful", cost two cities accuracy on the
-first loop and one on this one, and the evidence for why splits three cities each way. The second
-retrain alarm, switched on that same day partly for improving Los Angeles by +11.8% [+2.1, +17.2],
-improves it by +6.6% [−1.1, +9.3] on the tuned loop, an interval that covers zero. Across the five
-sweeps, intervals clear of zero fell from 15 of 55 to 6 of 59. The default penalty had inflated
-the effects measured on top of the model as well as the headline, and the README's "they fail for
-one reason" is now written as what was observed on the first loop. The alarm stays on by the
-owner's decision of the same day, as a bound on how long the loop can go deaf, and the pages no
-longer claim it improves accuracy.
-
-**One mechanism met cities it was not found on** (2026-11-11). Everything above was measured on
-the same six cities. The second alarm was then run on nine others, with the candidates, their
-replay windows and four predictions committed (`6d8f993`) before any of their data was fetched.
-The alarm shortened the longest silence in all five cities where it fired, which is the claim the
-pages make for it. The accuracy gain did not appear: Istanbul reads +8.8% [−1.4, +11.1], Cairo
-−4.5% [−7.2, +1.0] and Dhaka −6.0% [−19.0, +9.2], and the prediction that the direction would at
-least be positive failed. The Los Angeles gain, which the first sweep published at +11.8% and on
-which the alarm was briefly adopted, is now described as an observation on the first loop.
+- **The model was not forecasting** (`95b6ae1`, 2026-08-01). The features were the analysed
+  weather for the hour being predicted. `FORECAST_LEAD_DAYS = 7` makes them the forecast
+  issued a week earlier. Kraków fell from +26.9% to +4.4%.
+- **The replay stopped at the flattering point** (`5e10624`, 2026-08-03). Kraków and Delhi
+  ended just past their dirty-season peak. Both now run to 2026-07-10.
+- **A challenger could only learn one season** (same commit). At a 45-day training window
+  over a full year, retraining comes out −7.2% in Delhi and −29.6% in Kraków; at 180 days,
+  +43.7% and +0.2%.
+- **The metric compared the wrong things** (`3aff123`, 2026-08-04). Unpaired medians across
+  the replay mostly compare the first model with itself in a city that promotes late.
+  Johannesburg read 0.0% unpaired and +14.9% paired.
+- **Two first-run accounting bugs** (`679ac9a`, `e1f91a3`, 2026-08-05 and 08-06). A first
+  run that promotes was credited to the wrong model, and run 0 scored the first model on 3
+  to 5 days of its own training data in five cities. Fixing the second took Los Angeles from
+  three retrains to one and from −2.8% to −13.4%.
+- **Nothing carried an interval until 2026-08-11** (`bc0bf4c`). With a 95% moving-block
+  bootstrap, Kraków and Melbourne stopped being results. Kraków's 47 weekly comparisons
+  carry about five independent observations.
+- **A check that could not fail was read as evidence** (`541db47` to `d22977b`). The first
+  ablation used a tree at library defaults, which lost, and the README concluded the finding
+  did not depend on the model class. With both classes tuned, Delhi's +49.35% splits into
+  21.62 points from the default `alpha`, 17.99 from linearity and +9.74% left over.
+- **The `alpha` default was seen on day one and misjudged.** The 2026-07-31 README called
+  the tuning curve nearly flat. That judged the setting by the model's accuracy, not by its
+  effect on the headline, where it was worth 21.6 points.
+- **A restated figure had drifted from its output** (2026-09-23). Santiago's interval was
+  published as [−0, +43] where the output holds 42.49. Every page now fails CI when a keyed
+  figure disagrees with `outputs/figures.json`.
+- **The configuration was changed, three months after the evidence said to** (2026-11-10).
+  The six profiles and the live schedule took the penalty tuned at every fit and the second
+  retrain alarm. Delhi reads +22.8% [+11.8, +36.4], Los Angeles −3.5% [−25.6, +3.0] and no
+  longer a harm, Melbourne +5.6% [+2.0, +6.6]. The same pass found the benchmark's
+  never-retrained model still fitted at the default penalty (+44.2% for Delhi where the
+  replay reads +17.9%), and a site sentence saying no short-serving promotion left its city
+  worse off, when two of 28 had.
+- **The five fixes were measured again, and two results shrank** (2026-11-10). Re-run on
+  the loop as it ships, with ten predictions and a reading rule written first: an effect
+  counts only where it clears zero, in the same direction, in two cities. Seven predictions
+  held. The confidence gate, published as "actively harmful", cost two cities on the first
+  loop and one on this one. The second alarm's Los Angeles gain went from
+  +11.8% [+2.1, +17.2] to +6.6% [−1.1, +9.3]. Intervals clear of zero fell from 15 of 55 to
+  6 of 59. The alarm stays on, by the owner's decision, as a bound on silence.
+- **One mechanism met cities it was not found on** (2026-11-11). The second alarm was run on
+  nine other cities, with candidates, windows and four predictions committed (`6d8f993`)
+  before any data was fetched. It shortened the longest silence in all five cities where it
+  fired. The accuracy gain did not appear: Istanbul +8.8% [−1.4, +11.1], Cairo
+  −4.5% [−7.2, +1.0], Dhaka −6.0% [−19.0, +9.2].
 
 ## The half that should have been withdrawn
 
-Finding 2, "retraining costs where the air did not move", was written on 2026-07-31 as "it costs
-12.7% in Los Angeles. A drift loop needs drift." Los Angeles has since read −11.6, −8.2, −8.9,
-0.0, −2.8 and −13.4, and −3.5 and −6.9 under better models. The sentence survived all of it, with
-a new caption each time: a cost, then a coin toss, then a coin toss that costs money, then
-measurably harmed. Under the loop as it ships since 2026-11-10 it reads −3.5% [−25.6, +3.0], and
-the README no longer makes the claim.
+"Retraining costs where the air did not move" was written on 2026-07-31 as "it costs 12.7%
+in Los Angeles". Los Angeles has since read −11.6, −8.2, −8.9, 0.0, −2.8 and −13.4, and the
+sentence survived each with a new caption. On the loop as it ships it reads
+−3.5% [−25.6, +3.0], and the README no longer makes the claim. The published report has not
+been changed.
 
-`docs/evaluation.md` states the conclusion plainly — the cost half "holds for the model that ships
-and cannot be established for the best model available" — while the README and the published
-report still led with it. Those two should agree. On 2026-09-23 the README's finding 2 was narrowed
-to "for the model that ships", with the tuned tree's −6.9% [−13.2, +2.8] beside it; the published
-report has not been changed. What the evidence supports is narrower and
-more interesting: where the air barely moves, the promotion gate has almost no signal to select
-on. Los Angeles's exam intervals are 39.2 points wide at the median, its one promotion was won on
-+21.9% [−6.9, +32.3], and the ratcheted trigger then left that model serving for 35 of 36 weeks.
+What the evidence supports is narrower: where the air barely moves, the promotion exam has
+almost no signal to select on. Los Angeles's exam intervals are 39.2 points wide at the
+median, and its one promotion on the first loop was won on +21.9% [−6.9, +32.3].
 
 ## The scheduled loop, which is a separate story
 
-The replay is the measurement. The weekly Action is the thing actually running, and its record is
-thinner than the replay's:
-
-- Champion v1 was bootstrapped 2026-07-21 on three features at `alpha=1.0`.
-- The Action then failed every Monday from 2026-08-03 to 2026-09-07, because `b1a15b8` had widened
-  `FEATURES` under a model already fitted on three columns. Fixed in `a69dfb6` on 2026-09-11.
-- The six missed weeks were never run. The loop resumed at the current week, so those weekly
-  decisions do not exist.
-- v2 was promoted on 2026-09-21, winning its seven-day exam by 0.51 µg/m³ (6.35 against 6.86).
-- Until 2026-11-10 every mechanism this project built and measured was switched off in that
-  config, and the only retrain alarm was the ratcheting one, set at 1.25 × v2's own baseline of
-  5.45. In its first two months the loop made one retraining decision.
-- From the first cycle after 2026-11-10 the live loop runs the same configuration as the six
-  replays: the penalty tuned at every fit and the second alarm at −0.5. The model serving then is
-  v7, promoted in the cycle for 2026-11-02 and fitted at the default penalty. It keeps serving
-  until a rival passes its exam; nothing was re-bootstrapped.
-- One cycle failed on 2026-11-02, on a single busy-server reply from Open-Meteo, and the following
-  Monday caught the week up. The fetch now tries again before it gives up.
+- The first model was bootstrapped on 2026-07-21, on three features at `alpha=1.0`.
+- The weekly job failed every Monday from 2026-08-03 to 2026-09-07, because `b1a15b8`
+  widened the features under a model fitted on three columns. Fixed in `a69dfb6` on
+  2026-09-11. The six missed weeks were never run.
+- v2 was promoted on 2026-09-21, winning its exam by 0.51 µg/m³ (6.35 against 6.86).
+- Until 2026-11-10 the live loop ran with one retrain alarm and the default penalty. Since
+  then it runs the same configuration as the six replays. The model serving at the change
+  was v7, fitted at the default penalty; it serves until a rival passes its exam.
+- One cycle failed on 2026-11-02 on a busy-server reply from Open-Meteo, and the next Monday
+  caught the week up. The fetch now retries.
 
 ## What this history is for
 

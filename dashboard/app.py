@@ -47,25 +47,17 @@ st.set_page_config(page_title="Drift loop", page_icon="~", layout="wide")
 # falls back to the generic line rather than borrowing another city's, which
 # would describe the wrong season on the wrong page.
 CITY_STORY = {
-    "openmeteo": " Here it's a summer-trained model walking into the winter heating season, "
-    "when basin inversions over a coal-heated valley drive PM2.5 up several-fold, then "
-    "back out the other side. That second half of the year is what exposed the retrain rule.",
-    "openmeteo_delhi": " Here it's a monsoon-trained model walking into the post-monsoon "
-    "burning season, which triples Delhi's PM2.5, the most violent of the six.",
-    "openmeteo_la": " Los Angeles is the quiet one: barely a season at all, so the champion "
-    "mostly holds and the loop mostly declines to retrain. It is the control, and it earns "
-    "its place by failing: there has to be drift for a drift loop to be worth anything.",
-    "openmeteo_santiago": " Santiago is Kraków's twin, half a year out of phase: the same "
-    "basin trapping the same winter inversions, walked into from a southern-summer-trained "
-    "model. Same thresholds, opposite season, which is how you can tell the loop has no "
-    "calendar in it.",
-    "openmeteo_joburg": " Johannesburg is where the promotion gate does its most visible "
-    "work. Highveld coal smoke takes the error from 12 to 82 µg/m³, eleven retrains fire, "
-    "and only three challengers clear the 5% margin. The other eight are trained and "
-    "thrown away.",
+    "openmeteo": " Kraków: a model trained on summer air meets the winter heating season in a "
+    "valley that traps smog.",
+    "openmeteo_delhi": " Delhi: a model trained in the monsoon meets the burning season, which "
+    "triples PM2.5.",
+    "openmeteo_la": " Los Angeles is the control: little seasonal change, so little for the "
+    "loop to catch.",
+    "openmeteo_santiago": " Santiago is Kraków's twin half a year out of step: the same trapped "
+    "winter air, with winter in June.",
+    "openmeteo_joburg": " Johannesburg is where the promotion exam turns most rivals away.",
     "openmeteo_melbourne": " Melbourne stays near the WHO guideline all year and its model "
-    "still decays to more than four times its training error, which is the case against "
-    "reading clean air as a stable model.",
+    "still decays.",
 }
 
 
@@ -477,16 +469,15 @@ tab_loop, tab_dist, tab_model, tab_sweep, tab_registry, tab_table = st.tabs(
 # --------------------------------------------------------------------------- #
 with tab_loop:
     story = (
-        "**The story, top to bottom:** the world drifts away from what the champion "
-        "was trained on, the champion's error climbs past its threshold, a challenger "
-        "is trained and judged on a window neither model has seen, and it takes over."
+        "**Top to bottom:** the weather moves away from what the champion was trained "
+        "on, its error crosses the bar, a challenger is trained and examined on a week "
+        "neither has seen, and it takes over if it wins."
     )
     if profile_key == "synthetic":
         story += " The shaded band is everything after the engineered regime shift."
     elif profile_key == "scheduled":
         story += (
-            " Each point is one **scheduled run** appended over calendar time: the live "
-            "loop accruing its own history, one cron fire at a time."
+            " Each point is one **scheduled run** of the live loop."
         )
     else:  # one of the cities
         story += CITY_STORY.get(profile_key, "")
@@ -650,13 +641,9 @@ with tab_dist:
         stats, train_start, train_end = band
         st.markdown("#### What changed in the world")
         st.markdown(
-            f"Each weather ingredient, averaged over every {CFG.monitor_days}-day monitoring "
-            "window. The band is where that same average sat while the first model was trained "
-            f"({train_start:%Y-%m-%d} to {train_end:%Y-%m-%d}) — the middle 80% of it, so one "
-            "freak fortnight cannot widen it to cover everything. A line leaving its band is the "
-            "model being asked about weather it was never shown, which is the case for retraining "
-            "before any statistic is computed. Temperature is where it bites: Kraków's spends the "
-            "whole winter below anything the first model saw."
+            f"Each weather input in its own units, averaged over every {CFG.monitor_days}-day "
+            "window. The band is the middle 80% of that average while the first model was "
+            f"trained ({train_start:%Y-%m-%d} to {train_end:%Y-%m-%d})."
         )
         st.plotly_chart(
             theme.factor_small_multiples(
@@ -745,9 +732,8 @@ with tab_model:
 """
         )
         st.caption(
-            "Ridge on six weather features plus the hour of day, kept simple on purpose: "
-            "a small model decays visibly when the relationship shifts, where a larger one "
-            "would absorb some of the drift and hide it."
+            "Ridge on six weather features plus the hour of day, simple on purpose: the "
+            "subject is the loop around the model."
         )
     with param_col:
         st.markdown(
@@ -829,27 +815,21 @@ with tab_model:
                 delta_color="off",
             )
             st.caption(
-                "**Trust the first when they disagree.** The second compares one median against "
-                "another, so where both are dominated by the same seasonal swing it largely "
-                "measures the season, and every week before the first promotion is a model "
-                "compared against itself. The first holds the window fixed, compares the two "
-                "models in it, and counts only the weeks a retrained model was in service."
+                "**Trust the first when they disagree.** It compares the two models inside "
+                "each week a retrained model was serving. The second also counts every week "
+                "before the first promotion, when the model is compared with itself."
             )
             if across < -0.05:
                 st.warning(
-                    "Negative across the replay: retraining cost more than it returned here. "
-                    "Retraining a city whose world barely moves fits noise, and that is a "
-                    "finding rather than a fault."
+                    "Negative across the replay: retraining raised the error here."
                 )
 
         alpha = bench.get("alpha")
         if alpha and alpha.get("curve"):
             st.markdown("#### Choosing alpha")
             st.markdown(
-                f"Forward-chaining {alpha['n_splits']}-fold CV over the training window. "
-                f"`TimeSeriesSplit` never lets a fold train on rows that follow the ones it "
-                f"scores; a random split would leak badly on autocorrelated hourly data and "
-                f"make every alpha look fine."
+                f"Forward-chaining {alpha['n_splits']}-fold cross-validation over the training "
+                f"window: no fold trains on rows that follow the ones it scores."
             )
             curve = pd.DataFrame(alpha["curve"], columns=["alpha", "cv_rmse"])
             fig = theme.base_figure(None, "CV RMSE", height=280)
@@ -890,32 +870,25 @@ with tab_model:
     if importance:
         st.markdown("#### What moves the prediction")
         st.markdown(
-            "How far the model's answer shifts when each ingredient moves by one of its own "
-            f"standard deviations, for v{serving_version} over the most recent window. This is "
-            "the comparable version of the coefficients below: those are per °C, per hPa, per "
-            "W/m², so the biggest of them is usually just the feature with the smallest units."
+            "How far the prediction moves, in µg/m³, when each input moves by one of its own "
+            f"standard deviations, for v{serving_version} over the most recent window."
         )
         st.plotly_chart(theme.importance_bars(*importance), width="stretch")
         guide("importance")
         st.caption(
-            "Boundary layer height, the depth of air pollution is diluted into, would very "
-            "likely top this list and is missing. Open-Meteo does not archive it at a seven-day "
-            "lead, so shortwave radiation stands in for it."
+            "Boundary layer height is missing: Open-Meteo does not archive it at a "
+            "seven-day lead, so shortwave radiation stands in for it."
         )
 
     st.markdown("#### Coefficient evolution, a direct picture of concept drift")
     st.markdown(
-        "The Ridge is one slope per weather feature and an intercept, in real "
-        "units: PM2.5 per °C, per m/s wind, per %RH, per mm, per hPa, per W/m². "
-        "Concept drift *is* these slopes changing, so watch them move each time "
-        "the champion is retrained. The temperature slope in particular crosses "
-        "zero as the summer relationship gives way to autumn."
+        "One slope per weather input, in its own units (PM2.5 per °C, per m/s, per %RH, "
+        "per mm, per hPa, per W/m²), for each registered model. Concept drift is these "
+        "slopes changing between retrains."
     )
     st.caption(
-        "One panel per feature, because these are per-unit slopes in units that "
-        "are not comparable: on a shared axis the large-unit features flatten "
-        "the rest against zero. The two cyclical hour terms are fitted but not "
-        "drawn, because they encode the daily cycle, which does not invert."
+        "One panel per input because the units are not comparable. The two hour-of-day "
+        "terms are fitted but not drawn."
     )
     if versions.empty or versions["coef_temperature"].isna().all():
         st.info("No coefficient tags found. Re-run `scripts/run_simulation.py --fresh`.")
@@ -965,9 +938,8 @@ with tab_model:
         )
         guide("residuals")
     st.caption(
-        "Pick an early-summer run and a deep-autumn run to compare: pre-drift the "
-        "cloud hugs the diagonal and residuals sit around zero; post-drift (before a "
-        "retrain) the fit leans off the line and the residuals bias away from zero."
+        "Compare an early run with a late one: before drift the points sit on the diagonal "
+        "and residuals around zero."
     )
 
 # --------------------------------------------------------------------------- #
@@ -977,21 +949,17 @@ with tab_sweep:
     sweep_path = REPO_ROOT / "outputs" / "sweep.csv"
     if not IS_SYNTHETIC:
         st.info(
-            "The knob sweep is a **synthetic-only** diagnostic. It dials concept "
-            "drift and covariate drift independently to prove the two detectors are "
-            "separable. Real data has no such knobs. Switch to the Synthetic profile "
-            "in the sidebar to see it."
+            "The knob sweep runs on the simulated city only, where the cause of drift is "
+            "known. Switch to the Synthetic profile in the sidebar to see it."
         )
     elif not sweep_path.exists():
         st.info("Run `python scripts/sweep_knobs.py` to generate this.")
     else:
         sweep = pd.read_csv(sweep_path)
         st.markdown(
-            "Each knob moves **its own** detector and leaves the other flat, which is "
-            "why two signals are worth having. `feature_shift` changes the world's "
-            "feature distributions (PSI sees it, with no model and no labels); "
-            "`drift_strength` changes the relationship being learned (only the "
-            "champion's error sees it)."
+            "Each knob should move its own alarm only. `feature_shift` changes the weather "
+            "(the PSI check sees it); `drift_strength` changes how weather becomes pollution "
+            "(only the champion's error sees it)."
         )
         left, right = st.columns(2)
         for column, name, driven, guide_key in (
