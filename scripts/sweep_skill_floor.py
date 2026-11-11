@@ -143,6 +143,11 @@ def run_arm(profile: Profile, source: OpenMeteoSource, floor: float | None) -> d
         # construction and the pairing is what makes an interval meaningful.
         "_rmse": [float(v) for v in retro.champion_rmse],
         "_as_of": [str(d) for d in retro.as_of],
+        # Week by week, whether anything fired and what the model's skill was:
+        # what scripts/held_out_cities.py reads to say whether the first alarm
+        # goes deaf in a city.
+        "_fired": [value == "True" for value in runs["tags.retrain_triggered"]],
+        "_skill": [float(v) for v in skill],
         "city": profile.label,
         "floor": "off" if floor is None else f"{floor:+.2f}",
         "runs": len(df),
