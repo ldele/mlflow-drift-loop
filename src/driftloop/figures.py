@@ -255,6 +255,39 @@ def _held_out_premium(rows: list[dict[str, str]], summary: dict, figures: dict[s
     figures["heldout.spearman"] = summary["spearman"]
 
 
+# The loop against retraining on a calendar (scripts/calendar_baseline.py), keyed
+# under ``calendar.``. The six use their usual slugs and the nine their plain ones.
+CALENDAR_DIR = "calendar"
+_CALENDAR_ARMS = {"shipped": "shipped", "weekly_exam": "exam", "weekly_refit": "refit"}
+
+
+def _calendar_slug(name: str) -> str:
+    return CITY_SLUGS.get(name) or _city_slug(name)
+
+
+def _calendar(arms: list[dict[str, str]], comparisons: list[dict[str, str]], scores: dict,
+              figures: dict[str, float]) -> None:
+    """Each arm's cost, each comparison with its interval, and the registered verdicts."""
+    for row in arms:
+        key = f"calendar.{_calendar_slug(row['city'])}.{_CALENDAR_ARMS[row['arm']]}"
+        figures[f"{key}.runs"] = int(row["runs"])
+        figures[f"{key}.retrains"] = int(row["retrains"])
+        figures[f"{key}.promotions"] = int(row["promotions"])
+    for row in comparisons:
+        pair = f"{_CALENDAR_ARMS[row['x']]}_vs_{_CALENDAR_ARMS[row['y']]}"
+        key = f"calendar.{_calendar_slug(row['city'])}.{pair}"
+        figures[f"{key}.differing"] = int(row["differing"])
+        # Fewer differing weeks than the registered minimum carries no interval.
+        if row["acted"]:
+            _put(figures, key, float(row["acted"]), float(row["acted_lo"]), float(row["acted_hi"]))
+    for name, verdict in scores["verdicts"].items():
+        x, y = name.split("_vs_")
+        pair = f"calendar.{_CALENDAR_ARMS[x]}_vs_{_CALENDAR_ARMS[y]}"
+        figures[f"{pair}.better"] = verdict["better"]
+        figures[f"{pair}.worse"] = verdict["worse"]
+    figures["calendar.p4.half_or_more"] = scores["p4_cities_half_or_more"]
+
+
 def _loop(outputs: Path) -> dict[str, float]:
     """Every figure one loop's outputs hold, under its bare key."""
     figures: dict[str, float] = {}
@@ -285,6 +318,12 @@ def collect(outputs: Path) -> dict[str, float]:
     _held_out_premium(
         _rows(outputs / HELD_OUT_DIR / "premium.csv"),
         json.loads((outputs / HELD_OUT_DIR / "premium.json").read_text(encoding="utf-8")),
+        figures,
+    )
+    _calendar(
+        _rows(outputs / CALENDAR_DIR / "arms.csv"),
+        _rows(outputs / CALENDAR_DIR / "comparisons.csv"),
+        json.loads((outputs / CALENDAR_DIR / "scores.json").read_text(encoding="utf-8")),
         figures,
     )
     return {

@@ -343,6 +343,77 @@ The limits are those of the alarm test above, plus one: the predictor was chosen
 had seen the point estimates. Each city carries about 2 to 11 independent observations, so a city
 where retraining is worth a few percent will usually read as nothing measurable.
 
+## The loop against retraining on a calendar
+
+Run on 2026-11-15 with `python scripts/calendar_baseline.py`. The arms, how each city is read,
+the rule across cities and four predictions were fixed in
+[the registration](registrations/2026-11-15-calendar-retraining-baseline.md), committed as
+`a989c6a` before either weekly arm had been run anywhere.
+
+Every result above compares the loop with its first model never retrained. That shows retraining
+is worth something, but not that the loop's machinery is: the alarms that decide when to retrain,
+and the exam that decides whether to ship. This test puts the loop beside two calendars, on all
+fifteen cities, each starting from the same first model:
+
+- **weekly exam:** a challenger every week, which sits the usual exam;
+- **weekly refit:** a challenger every week, always shipped.
+
+Each cell compares two arms on the weeks where their forecast errors differ, as the five-fix
+table does, and a positive value means the first-named arm forecast better. An arm wins or loses
+overall only when three or more cities clear zero its way and none the other. Before any
+comparison was read, all fifteen shipped arms reproduced the published figures, and both weekly
+arms trained on every run.
+
+| | models trained, shipped → weekly | weekly refit against shipped | weekly exam against weekly refit |
+|---|---|---|---|
+| Delhi | 8<!--fig:calendar.delhi.shipped.retrains--> → 39<!--fig:calendar.delhi.refit.retrains--> | +1.9% [−11.5, +7.7]<!--fig:calendar.delhi.refit_vs_shipped--> | −0.2% [−3.7, +2.4]<!--fig:calendar.delhi.exam_vs_refit--> |
+| Santiago | 13<!--fig:calendar.santiago.shipped.retrains--> → 21<!--fig:calendar.santiago.refit.retrains--> | +5.5% [−0.1, +7.1]<!--fig:calendar.santiago.refit_vs_shipped--> | **−0.6% [−3.8, −0.2]**<!--fig:calendar.santiago.exam_vs_refit--> |
+| Kraków | 21<!--fig:calendar.krakow.shipped.retrains--> → 48<!--fig:calendar.krakow.refit.retrains--> | −0.2% [−18.0, +2.5]<!--fig:calendar.krakow.refit_vs_shipped--> | +0.5% [−2.0, +5.4]<!--fig:calendar.krakow.exam_vs_refit--> |
+| Johannesburg | 12<!--fig:calendar.joburg.shipped.retrains--> → 19<!--fig:calendar.joburg.refit.retrains--> | +0.7% [−0.1, +1.8]<!--fig:calendar.joburg.refit_vs_shipped--> | −0.7% [−1.8, +0.1]<!--fig:calendar.joburg.exam_vs_refit--> |
+| Melbourne | 9<!--fig:calendar.melbourne.shipped.retrains--> → 30<!--fig:calendar.melbourne.refit.retrains--> | +1.2% [−0.6, +2.1]<!--fig:calendar.melbourne.refit_vs_shipped--> | −0.5% [−1.1, +0.8]<!--fig:calendar.melbourne.exam_vs_refit--> |
+| Los Angeles | 7<!--fig:calendar.la.shipped.retrains--> → 36<!--fig:calendar.la.refit.retrains--> | +0.8% [−0.6, +6.6]<!--fig:calendar.la.refit_vs_shipped--> | −0.5% [−0.7, +1.9]<!--fig:calendar.la.exam_vs_refit--> |
+| Tokyo | 7<!--fig:calendar.tokyo.shipped.retrains--> → 47<!--fig:calendar.tokyo.refit.retrains--> | +1.3% [−0.1, +2.7]<!--fig:calendar.tokyo.refit_vs_shipped--> | −1.0% [−1.3, +0.1]<!--fig:calendar.tokyo.exam_vs_refit--> |
+| Shanghai | 8<!--fig:calendar.shanghai.shipped.retrains--> → 47<!--fig:calendar.shanghai.refit.retrains--> | +2.3% [−1.8, +5.2]<!--fig:calendar.shanghai.refit_vs_shipped--> | +0.2% [−0.9, +3.1]<!--fig:calendar.shanghai.exam_vs_refit--> |
+| São Paulo | 10<!--fig:calendar.sao_paulo.shipped.retrains--> → 31<!--fig:calendar.sao_paulo.refit.retrains--> | −0.5% [−2.8, +5.7]<!--fig:calendar.sao_paulo.refit_vs_shipped--> | −0.2% [−2.0, +2.7]<!--fig:calendar.sao_paulo.exam_vs_refit--> |
+| Mexico City | 2<!--fig:calendar.mexico_city.shipped.retrains--> → 31<!--fig:calendar.mexico_city.refit.retrains--> | +1.7% [−2.1, +6.1]<!--fig:calendar.mexico_city.refit_vs_shipped--> | −0.3% [−1.4, +2.8]<!--fig:calendar.mexico_city.exam_vs_refit--> |
+| Cairo | 15<!--fig:calendar.cairo.shipped.retrains--> → 34<!--fig:calendar.cairo.refit.retrains--> | +1.2% [−1.1, +4.3]<!--fig:calendar.cairo.refit_vs_shipped--> | **−1.1% [−2.3, −0.2]**<!--fig:calendar.cairo.exam_vs_refit--> |
+| Dhaka | 13<!--fig:calendar.dhaka.shipped.retrains--> → 43<!--fig:calendar.dhaka.refit.retrains--> | **+2.5% [+1.2, +8.2]**<!--fig:calendar.dhaka.refit_vs_shipped--> | **−2.1% [−2.6, −0.9]**<!--fig:calendar.dhaka.exam_vs_refit--> |
+| Karachi | 3<!--fig:calendar.karachi.shipped.retrains--> → 38<!--fig:calendar.karachi.refit.retrains--> | −2.7% [−14.2, +8.8]<!--fig:calendar.karachi.refit_vs_shipped--> | −1.1% [−2.8, +2.8]<!--fig:calendar.karachi.exam_vs_refit--> |
+| Buenos Aires | 7<!--fig:calendar.buenos_aires.shipped.retrains--> → 35<!--fig:calendar.buenos_aires.refit.retrains--> | **+3.1% [+0.9, +13.5]**<!--fig:calendar.buenos_aires.refit_vs_shipped--> | **−1.0% [−1.7, −0.3]**<!--fig:calendar.buenos_aires.exam_vs_refit--> |
+| Istanbul | 15<!--fig:calendar.istanbul.shipped.retrains--> → 44<!--fig:calendar.istanbul.refit.retrains--> | **+4.8% [+1.7, +7.3]**<!--fig:calendar.istanbul.refit_vs_shipped--> | +0.6% [−1.8, +2.6]<!--fig:calendar.istanbul.exam_vs_refit--> |
+
+The first six are the cities every setting was chosen on, the other nine the held-out cities.
+Bold where the interval excludes zero.
+
+| # | predicted | what happened |
+|---|---|---|
+| P1 | sitting the exam every week does not beat the shipped loop | held: 1<!--fig:calendar.exam_vs_shipped.better--> city better, 0<!--fig:calendar.exam_vs_shipped.worse--> worse |
+| P2 | the shipped loop does not beat a blind weekly refit | held, and the other way: the refit is **better** in 3<!--fig:calendar.refit_vs_shipped.better--> cities, worse in 0<!--fig:calendar.refit_vs_shipped.worse--> |
+| P3 | under a weekly calendar the exam does no measurable harm | **failed**: worse in 4<!--fig:calendar.exam_vs_refit.worse--> cities, better in 0<!--fig:calendar.exam_vs_refit.better--> |
+| P4 | the exam turns most weekly challengers away | held: it promoted in half its runs or more in 0<!--fig:calendar.p4.half_or_more--> cities |
+
+**Retraining pays, and the loop's alarms and exam are not shown to be why.** Training a new model
+every week and shipping it without an exam was measurably worse than the loop in no city, and
+measurably better in Dhaka, Buenos Aires and Istanbul. Under the outcome table written beforehand, the case
+for the machinery is no longer accuracy. What it still buys is cost: the shipped loop trains 2 to
+21 models per city where the calendar trains 19 to 48.
+
+**Under a calendar the exam costs a little.** Where it turned a weekly challenger away, the model
+it kept did slightly worse than the challenger would have, by 0.6 to 2.1 points in four cities.
+The registration reads this as the exam picking lucky winners. A second reading fits as well: a
+rejected challenger leaves an older model serving, and on a weekly cadence the older model is the
+one more likely to be out of date. This run cannot tell the two apart.
+
+**What this says about measuring a loop.** The comparison every earlier section uses, against
+the first model never retrained, cannot tell a loop's decisions from the act of retraining. A
+calendar is the baseline that can, and on its first run it found no gain that belongs to the
+decisions.
+
+The limits are the registration's. The gains are 2 to 5 points, every verdict comes from the nine,
+and on the six alone no comparison clears zero in two cities. The weekly refit leaves out the most
+recent week, as every challenger does. One cadence was tested. Whether to ship a calendar is an
+open decision, and this section does not take it.
+
 ## The analysis of the first loop
 
 The full analysis of the loop as it ran until 2026-11-10 is in
@@ -480,6 +551,11 @@ the published grid is left exactly as it was.
 
 ### Of the loop
 
+- **Its decisions are not shown to beat a calendar.** A model trained every week and shipped
+  without an exam was better than the loop in 3<!--fig:calendar.refit_vs_shipped.better--> of
+  fifteen cities and worse in none
+  ([above](#the-loop-against-retraining-on-a-calendar)). The alarms and the exam save compute,
+  and are not shown to add accuracy.
 - **The first retrain alarm still ratchets.** The second is a backstop and not a repair: the
   longest silences fall from 30<!--fig:rebaseline.krakow.shipped.silence--> weeks to
   22<!--fig:rebaseline.krakow.fixed.silence--> in Kraków and from 35<!--fig:rebaseline.la.shipped.silence--> to

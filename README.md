@@ -50,14 +50,23 @@ the same first model never retrained, week by week, with a 95% interval
    the year before did not say which, against a
    [prediction written first](docs/registrations/2026-11-11-premium-on-held-out-cities.md).
 
-2. **A default setting doubled the first headline.** This page once led with
+2. **A weekly calendar matches the loop's own decisions, and in three cities beats them.**
+   Training a model every week and shipping it without an exam was measurably better than the
+   loop in 3<!--fig:calendar.refit_vs_shipped.better--> of fifteen cities and worse in
+   none, by at most Istanbul's +4.8% [+1.7, +7.3]<!--fig:calendar.istanbul.refit_vs_shipped-->.
+   So the gains above belong to retraining, and the alarms and the exam are not shown to add to
+   them. What the loop still saves is compute: 2 to 21 models per city where the calendar trains
+   19 to 48. Tested against a
+   [prediction written first](docs/registrations/2026-11-15-calendar-retraining-baseline.md).
+
+3. **A default setting doubled the first headline.** This page once led with
    Delhi at +49.4% [+33.7, +61.8]<!--fig:first.delhi.acted--> and with retraining costing
    Los Angeles −13.4% [−36.9, −3.8]<!--fig:first.la.acted-->. The model's regularisation was
    a library default, and 21.6<!--fig:first.ablation.delhi.alpha_points--> of Delhi's points
    were that default. The loop now chooses the setting at every fit.
    [HISTORY.md](docs/HISTORY.md) keeps every earlier figure and what corrected it.
 
-3. **The retrain alarm goes deaf, and a second one bounds the silence.** The alarm
+4. **The retrain alarm goes deaf, and a second one bounds the silence.** The alarm
    compares the model with its own error at training time, so every promotion
    raises the bar. Left alone it was silent for
    30<!--fig:rebaseline.krakow.shipped.silence--> weeks in Kraków and
@@ -67,12 +76,12 @@ the same first model never retrained, week by week, with a 95% interval
    cities the study had never used it shortened the silence in all five where it
    fired. It is not shown to make the forecasts better.
 
-4. **No rule about when to retrain, or how hard to judge, made the forecasts
+5. **No rule about when to retrain, or how hard to judge, made the forecasts
    better.** Five fixes were replayed on two differently set loops. None shows a
    gain in two cities on the loop that ships, and a harm seen on the first loop
    did not repeat.
 
-5. **A seven-day exam vouches for a model for about a month.** Across
+6. **A seven-day exam vouches for a model for about a month.** Across
    28<!--fig:gate.short.n--> promotions that served under twenty weeks the exam promised
    +12.7%<!--fig:gate.short.exam--> and the winners delivered
    **+8.0% [+5.1, +11.0]**<!--fig:gate.short.delivered-->. The 2<!--fig:gate.long.n--> that served
@@ -195,6 +204,7 @@ python scripts/ablate_model.py              # the same loop under a model that c
 python scripts/rebaseline.py                # the first loop against the loop as it ships
 python scripts/held_out_cities.py           # the second alarm on nine cities outside the six
 python scripts/held_out_premium.py          # what retraining is worth on the same nine
+python scripts/calendar_baseline.py         # the loop against retraining every week, on all fifteen
 ```
 
 ## Where things are

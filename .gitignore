@@ -63,6 +63,17 @@ outputs/held_out/*
 !outputs/held_out/premium.csv
 !outputs/held_out/premium.json
 
+# The loop against retraining on a calendar, on all fifteen cities
+# (scripts/calendar_baseline.py): each arm, each comparison, the per-window errors
+# behind both, and the registered score. Committed because the docs quote them and
+# the run takes 45 replays to repeat.
+!outputs/calendar/
+outputs/calendar/*
+!outputs/calendar/arms.csv
+!outputs/calendar/comparisons.csv
+!outputs/calendar/series.json
+!outputs/calendar/scores.json
+
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and
 # published. The glob covers cities added later without another edit here.

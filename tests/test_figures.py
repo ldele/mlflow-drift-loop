@@ -141,3 +141,16 @@ def test_the_held_out_premium_is_keyed_with_its_interval_and_its_score(committed
     assert committed["heldout.threshold"] == pytest.approx(min(paying), abs=1e-4)
     assert 0 <= committed["heldout.p1.correct"] <= 9
     assert 0 <= committed["heldout.p1.chance"] <= 1
+
+
+def test_the_calendar_test_is_keyed_for_all_fifteen_cities(committed):
+    cities = ("delhi", "santiago", "krakow", "joburg", "melbourne", "la", "tokyo", "shanghai",
+              "sao_paulo", "mexico_city", "cairo", "dhaka", "karachi", "buenos_aires", "istanbul")
+    for city in cities:
+        for key in ("shipped.retrains", "refit.retrains", "refit_vs_shipped.differing",
+                    "exam_vs_refit.differing"):
+            assert f"calendar.{city}.{key}" in committed, f"calendar.{city}.{key}"
+        # A weekly arm trains on every run: the registered mechanism check.
+        assert committed[f"calendar.{city}.refit.retrains"] == committed[f"calendar.{city}.refit.runs"]
+    for pair in ("exam_vs_shipped", "refit_vs_shipped", "exam_vs_refit"):
+        assert committed[f"calendar.{pair}.better"] + committed[f"calendar.{pair}.worse"] <= 15

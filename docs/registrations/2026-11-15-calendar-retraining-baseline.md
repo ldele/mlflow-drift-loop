@@ -173,3 +173,36 @@ owner's call, recorded in `docs/DECISIONS.md`.
 7. **Cost is counted, not priced.** A weekly arm trains about 30 to 47 models per city against
    the shipped loop's 6 to 21. The table reports the count. Whether that compute is worth a given
    accuracy gain is not this test's question.
+
+## Addenda
+
+**2026-11-16, after every result had been seen.** Nothing above was edited. This file was
+committed as `a989c6a` before the script was run on any city, and run on 2026-11-15 with
+`python scripts/calendar_baseline.py`. Outputs are in `outputs/calendar/`: `arms.csv`,
+`comparisons.csv`, `series.json` and `scores.json`.
+
+Every control passed, so nothing is void. All fifteen shipped arms reproduced what was
+published, both weekly arms trained a challenger on every run, and the weekly refit promoted on
+every run.
+
+| | comparison | verdict | better | worse |
+|---|---|---|---|---|
+| P1 | weekly exam against shipped | not detectable: **held** | 1 | 0 |
+| P2 | weekly refit against shipped | **better**: held | 3 | 0 |
+| P3 | weekly exam against weekly refit | **worse**: **failed** | 0 | 4 |
+| P4 | weekly exam promoted in half its runs or more | 0 cities: held | | |
+
+P2 held in the form the outcome table lists second: the weekly refit is better than the shipped
+loop, in Dhaka, Buenos Aires and Istanbul, by 2 to 5 points, with no city the other way. All three
+are among the nine. On the six alone no comparison reaches a verdict under the two-city rule.
+
+One thing the registration did not anticipate. Its explanation for a P3 failure, that "the exam
+picks lucky challengers often enough to do harm", is one reading. Under a weekly calendar a rejected
+challenger leaves an older model serving, so the cost the exam shows here may come from the models
+it keeps rather than the ones it lets through. The four harms are 0.6 to 2.1 points, and this run
+cannot tell the two readings apart. The failure is scored as registered.
+
+A correction to limit 7: the shipped loop trained 2 to 21 models per city, not 6 to 21. Mexico
+City trained 2.
+
+Results are in `docs/evaluation.md`, "The loop against retraining on a calendar".

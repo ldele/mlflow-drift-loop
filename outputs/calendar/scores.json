@@ -1,0 +1,34 @@
+{
+ "controls_ok": true,
+ "void": false,
+ "verdicts": {
+  "weekly_exam_vs_shipped": {
+   "verdict": "not detectable",
+   "better": 1,
+   "worse": 0,
+   "cities": 15,
+   "six_two_city_rule": "not detectable"
+  },
+  "weekly_refit_vs_shipped": {
+   "verdict": "better",
+   "better": 3,
+   "worse": 0,
+   "cities": 15,
+   "six_two_city_rule": "not detectable"
+  },
+  "weekly_exam_vs_weekly_refit": {
+   "verdict": "worse",
+   "better": 0,
+   "worse": 4,
+   "cities": 15,
+   "six_two_city_rule": "not detectable"
+  }
+ },
+ "p4_cities_half_or_more": 0,
+ "predictions": {
+  "P1": "held",
+  "P2": "held",
+  "P3": "failed",
+  "P4": "held"
+ }
+}
