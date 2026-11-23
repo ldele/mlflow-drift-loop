@@ -61,14 +61,28 @@ the same first model never retrained, week by week, with a 95% interval
    19 to 48. Tested against a
    [prediction written first](docs/registrations/2026-11-15-calendar-retraining-baseline.md).
 
-3. **A default setting doubled the first headline.** This page once led with
+3. **Most of a week's error is out of any retrain's reach.** Each week's error was split
+   three ways: what a same-day weather forecast would have removed, what a model refitted
+   around that week would have removed, and what neither removes. Neither removes the largest
+   part in 13<!--fig:split.p1.count--> of fifteen cities, a mean
+   58% [51, 65]<!--fig:split.mean.unexplained--> of the error. The relation between weather and
+   pollution moving is a mean 33% [25, 40]<!--fig:split.mean.relation-->, but a refit on the 180
+   days before each week, as the loop does it, recovers a median 11%<!--fig:split.reach.median-->
+   of that. A better weather forecast is the smallest part, 9% [5, 13]<!--fig:split.mean.weather-->.
+   This fits finding 2: with so little a retrain can reach, there is little for the loop's timing
+   to win. The relation part ranks the cities as retraining's gain does (rank correlation
+   0.49<!--fig:split.p3.rho-->), the check that the split measures what retraining fixes. Three
+   of four [predictions written first](docs/registrations/2026-11-23-why-a-forecast-was-wrong.md)
+   held. The fourth had the weather and the relation the wrong way round.
+
+4. **A default setting doubled the first headline.** This page once led with
    Delhi at +49.4% [+33.7, +61.8]<!--fig:first.delhi.acted--> and with retraining costing
    Los Angeles −13.4% [−36.9, −3.8]<!--fig:first.la.acted-->. The model's regularisation was
    a library default, and 21.6<!--fig:first.ablation.delhi.alpha_points--> of Delhi's points
    were that default. The loop now chooses the setting at every fit.
    [HISTORY.md](docs/HISTORY.md) keeps every earlier figure and what corrected it.
 
-4. **The retrain alarm goes deaf, and a second one bounds the silence.** The alarm
+5. **The retrain alarm goes deaf, and a second one bounds the silence.** The alarm
    compares the model with its own error at training time, so every promotion
    raises the bar. Left alone it was silent for
    30<!--fig:rebaseline.krakow.shipped.silence--> weeks in Kraków and
@@ -78,12 +92,12 @@ the same first model never retrained, week by week, with a 95% interval
    cities the study had never used it shortened the silence in all five where it
    fired. It is not shown to make the forecasts better.
 
-5. **No rule about when to retrain, or how hard to judge, made the forecasts
+6. **No rule about when to retrain, or how hard to judge, made the forecasts
    better.** Five fixes were replayed on two differently set loops. None shows a
    gain in two cities on the loop that ships, and a harm seen on the first loop
    did not repeat.
 
-6. **A seven-day exam vouches for a model for about a month.** Across
+7. **A seven-day exam vouches for a model for about a month.** Across
    28<!--fig:gate.short.n--> promotions that served under twenty weeks the exam promised
    +12.7%<!--fig:gate.short.exam--> and the winners delivered
    **+8.0% [+5.1, +11.0]**<!--fig:gate.short.delivered-->. The 2<!--fig:gate.long.n--> that served
@@ -156,8 +170,9 @@ show in either run. The workings are in
 - **Every figure on these pages is checked.** Each carries a key into
   `outputs/figures.json`, in a comment that does not render, and CI fails when a
   page disagrees with the outputs.
-- **Predictions come before results.** The re-run of the fixes and the held-out
-  test each have a registration under [docs/registrations](docs/registrations).
+- **Predictions come before results.** The re-run of the fixes, both held-out
+  tests, the calendar test and the split of each week's error each have a
+  registration under [docs/registrations](docs/registrations).
 - **A corrected figure keeps its predecessor.** [HISTORY.md](docs/HISTORY.md) is
   the trail, and [DECISIONS.md](docs/DECISIONS.md) records what was decided on
   the evidence and when.
@@ -224,7 +239,8 @@ tests/            no-leak guards, drift maths, the loop's rules, published figur
   inputs, what the drift index computes, the window layout, the guards against
   grading a model on data it has seen.
 - **[evaluation.md](docs/evaluation.md)** — whether it works: the current results,
-  the re-run of the fixes, the held-out test, and the limitations.
+  the re-run of the fixes, the held-out test, the calendar test, why each week's
+  forecast was wrong, and the limitations.
 - **[evaluation-first-loop.md](docs/evaluation-first-loop.md)** — the full analysis
   of the loop as it first shipped, kept as the reasoning that led to the change.
 - **[DECISIONS.md](docs/DECISIONS.md)** and **[HISTORY.md](docs/HISTORY.md)** — what
