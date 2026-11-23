@@ -167,3 +167,40 @@ properly penalised model decays less, so a retrain has less to recover.
   sweeps were re-run the same day with predictions written first
   ([evaluation.md](evaluation.md#the-five-fixes-and-the-model-ablation-on-the-loop-as-it-ships));
   under a tuned tree Delhi's premium is +13.4% [+8.0, +27.0]<!--fig:ablation.delhi.gbm_tuned-->.
+
+---
+
+## D6. The loop stays as it ships after the calendar test and the split
+
+**Status:** unchanged, decided by the owner on 2026-11-23.
+**Affects:** nothing in `config.SHIPPED`. Further work on the method moves to the sibling
+project `mldrift-eval`.
+
+**What it is.** Two registered studies ended on the same line: any change to the loop is the
+owner's call, recorded here. One replayed the loop beside retraining on a calendar
+([registration](registrations/2026-11-15-calendar-retraining-baseline.md)). The other split each
+week's error into what a better weather forecast, an up-to-date model, and neither would have
+removed ([registration](registrations/2026-11-23-why-a-forecast-was-wrong.md)).
+
+**Evidence.**
+
+- **The calendar.** A model trained every week and shipped without an exam beat the loop in
+  3<!--fig:calendar.refit_vs_shipped.better--> of fifteen cities and lost in none, over the
+  weeks the two forecasts differed. Counted over every week the gain is at most
+  2.0%<!--fig:calendar.istanbul.refit_vs_shipped.all_weeks--> and clears zero in no city
+  ([evaluation.md](evaluation.md#the-loop-against-retraining-on-a-calendar)).
+- **The split.** Neither fix removes a mean 58% [51, 65]<!--fig:split.mean.unexplained--> of a
+  week's error. Of the part an up-to-date model would remove, a refit on the 180 days before
+  each week recovers a median 11%<!--fig:split.reach.median-->
+  ([evaluation.md](evaluation.md#why-a-forecast-was-wrong)).
+
+**Decision.** No change. The alarms and the exam stay for what they save in training, not for
+accuracy: the loop trains 2 to 21 models per city where a weekly calendar trains 19 to 48. The
+split's failed second prediction makes the alarms worth another look against a weekly refit,
+but with so little of the relation part in a refit's reach, no rule about when to retrain can
+win much on this target. The split is published week by week on the site and the dashboard, as
+its third prediction holding allows.
+
+**What would change it.** A target with more for a retrain to reach, where a refit on recent
+labels recovers most of the relation part. That is a different dataset, which is why the work
+continues in `mldrift-eval` rather than here.

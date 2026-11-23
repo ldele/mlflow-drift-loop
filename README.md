@@ -41,7 +41,7 @@ because they disagree with one another. Each percentage compares the loop with
 the same first model never retrained, week by week, with a 95% interval
 ([how the intervals are built](docs/evaluation-first-loop.md#what-the-intervals-cost-this-page)).
 
-1. **Retraining pays where the air changes, and nowhere else.** Four cities gain,
+1. **Retraining pays in some cities, and the season does not say which.** Four cities gain,
    led by Delhi at **+22.8% [+11.8, +36.4]**<!--fig:delhi.acted-->. Los Angeles, the
    control, and Kraków show nothing measurable. Under a tree model tuned the same
    way Delhi still reads +13.4% [+8.0, +27.0]<!--fig:ablation.delhi.gbm_tuned-->, so the

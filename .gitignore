@@ -106,6 +106,12 @@ site/*_hourly.csv
 /SESSION.md
 HANDOFF.md
 
+# An outside review from September 2026, candid in the same way and dated to the
+# loop as it stood then. It was meant to stay untracked and was swept into
+# 772fe7b by accident; untracked with `git rm --cached` on 2026-11-23, and still
+# in the history behind that commit.
+/REVIEW-2026-09.md
+
 # Cross-project working notes: the practices this project taught, kept as a
 # personal record rather than a published document. It is self-critical about
 # work that is on display in the README, and the canonical copy now travels with
