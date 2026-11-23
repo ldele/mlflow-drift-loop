@@ -404,6 +404,29 @@ The registration reads this as the exam picking lucky winners. A second reading 
 rejected challenger leaves an older model serving, and on a weekly cadence the older model is the
 one more likely to be out of date. This run cannot tell the two apart.
 
+**Counted over every week, none of the seven clears zero.** Every comparison above counts only
+the weeks where the two forecasts differ, as the registration set. In the other weeks both arms
+served the very same model: the first week, and each week after the arm that retrains less
+shipped a new one, since the weekly arm trained that same model too. Counted over every week,
+those ties included, each figure moves toward zero and every interval reaches it.
+
+| City | Comparison | Weeks that differ | Over those weeks | Over every week |
+|---|---|---|---|---|
+| Dhaka | weekly refit against shipped | 34<!--fig:calendar.dhaka.refit_vs_shipped.differing--> of 43<!--fig:calendar.dhaka.shipped.runs--> | +2.5% [+1.2, +8.2]<!--fig:calendar.dhaka.refit_vs_shipped--> | +1.6% [0.0, +5.1]<!--fig:calendar.dhaka.refit_vs_shipped.all_weeks--> |
+| Buenos Aires | weekly refit against shipped | 30<!--fig:calendar.buenos_aires.refit_vs_shipped.differing--> of 35<!--fig:calendar.buenos_aires.shipped.runs--> | +3.1% [+0.9, +13.5]<!--fig:calendar.buenos_aires.refit_vs_shipped--> | +1.6% [0.0, +10.0]<!--fig:calendar.buenos_aires.refit_vs_shipped.all_weeks--> |
+| Istanbul | weekly refit against shipped | 34<!--fig:calendar.istanbul.refit_vs_shipped.differing--> of 44<!--fig:calendar.istanbul.shipped.runs--> | +4.8% [+1.7, +7.3]<!--fig:calendar.istanbul.refit_vs_shipped--> | +2.0% [0.0, +4.9]<!--fig:calendar.istanbul.refit_vs_shipped.all_weeks--> |
+| Santiago | weekly exam against weekly refit | 12<!--fig:calendar.santiago.exam_vs_refit.differing--> of 21<!--fig:calendar.santiago.shipped.runs--> | −0.6% [−3.8, −0.2]<!--fig:calendar.santiago.exam_vs_refit--> | 0.0% [−0.3, 0.0]<!--fig:calendar.santiago.exam_vs_refit.all_weeks--> |
+| Cairo | weekly exam against weekly refit | 25<!--fig:calendar.cairo.exam_vs_refit.differing--> of 34<!--fig:calendar.cairo.shipped.runs--> | −1.1% [−2.3, −0.2]<!--fig:calendar.cairo.exam_vs_refit--> | −0.3% [−1.1, 0.0]<!--fig:calendar.cairo.exam_vs_refit.all_weeks--> |
+| Dhaka | weekly exam against weekly refit | 25<!--fig:calendar.dhaka.exam_vs_refit.differing--> of 43<!--fig:calendar.dhaka.shipped.runs--> | −2.1% [−2.6, −0.9]<!--fig:calendar.dhaka.exam_vs_refit--> | 0.0% [−0.9, 0.0]<!--fig:calendar.dhaka.exam_vs_refit.all_weeks--> |
+| Buenos Aires | weekly exam against weekly refit | 25<!--fig:calendar.buenos_aires.exam_vs_refit.differing--> of 35<!--fig:calendar.buenos_aires.shipped.runs--> | −1.0% [−1.7, −0.3]<!--fig:calendar.buenos_aires.exam_vs_refit--> | −0.3% [−1.2, 0.0]<!--fig:calendar.buenos_aires.exam_vs_refit.all_weeks--> |
+
+A tie week is exactly no difference, so in some resampled years the typical week is a tie and the
+interval stops at 0.0. The registered figure answers which arm forecast better in the weeks they
+differed. This one answers how much that is worth over the whole year: at most
+2.0%<!--fig:calendar.istanbul.refit_vs_shipped.all_weeks--> in any of the seven, and not
+distinguishable from zero. The registration lists it as reported, not scored, so
+the verdicts above stand.
+
 **What this says about measuring a loop.** The comparison every earlier section uses, against
 the first model never retrained, cannot tell a loop's decisions from the act of retraining. A
 calendar is the baseline that can, and on its first run it found no gain that belongs to the
@@ -553,9 +576,11 @@ the published grid is left exactly as it was.
 
 - **Its decisions are not shown to beat a calendar.** A model trained every week and shipped
   without an exam was better than the loop in 3<!--fig:calendar.refit_vs_shipped.better--> of
-  fifteen cities and worse in none
-  ([above](#the-loop-against-retraining-on-a-calendar)). The alarms and the exam save compute,
-  and are not shown to add accuracy.
+  fifteen cities and worse in none, over the weeks the two forecasts differed
+  ([above](#the-loop-against-retraining-on-a-calendar)). Counted over every week, the gain is at
+  most 2.0%<!--fig:calendar.istanbul.refit_vs_shipped.all_weeks--> in any city and clears zero
+  in none. The alarms and the exam save compute, and are not shown to
+  add accuracy.
 - **The first retrain alarm still ratchets.** The second is a backstop and not a repair: the
   longest silences fall from 30<!--fig:rebaseline.krakow.shipped.silence--> weeks to
   22<!--fig:rebaseline.krakow.fixed.silence--> in Kraków and from 35<!--fig:rebaseline.la.shipped.silence--> to

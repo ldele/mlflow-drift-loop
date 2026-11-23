@@ -280,6 +280,10 @@ def _calendar(arms: list[dict[str, str]], comparisons: list[dict[str, str]], sco
         # Fewer differing weeks than the registered minimum carries no interval.
         if row["acted"]:
             _put(figures, key, float(row["acted"]), float(row["acted_lo"]), float(row["acted_hi"]))
+        # The same comparison over every week, ties included: reported, not scored.
+        if row["all_weeks"]:
+            _put(figures, f"{key}.all_weeks", float(row["all_weeks"]),
+                 float(row["all_weeks_lo"]), float(row["all_weeks_hi"]))
     for name, verdict in scores["verdicts"].items():
         x, y = name.split("_vs_")
         pair = f"calendar.{_CALENDAR_ARMS[x]}_vs_{_CALENDAR_ARMS[y]}"

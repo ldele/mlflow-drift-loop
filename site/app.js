@@ -1305,6 +1305,21 @@ function renderCalendar(cal) {
   const sizes = examWorse.map((c) => Math.abs(c.exam_vs_refit.value));
   const allNine = refitBetter.length && refitBetter.every((c) => c.group !== "six");
   const none = (n) => (n === 0 ? "none" : `${n}`);
+  // The same comparisons over every week, ties included. Reported beside the
+  // registered counts rather than instead of them, as the registration says.
+  const allWeeks = [
+    ...refitBetter.map((c) => c.refit_vs_shipped.all_weeks),
+    ...examWorse.map((c) => c.exam_vs_refit.all_weeks),
+  ].filter(Boolean);
+  const stillClear = allWeeks.filter((a) => a.lo > 0 || a.hi < 0).length;
+  const range = (xs) => {
+    const sorted = xs.map((a) => a.value).sort((a, b) => Math.abs(a) - Math.abs(b));
+    const lo = sorted[0], hi = sorted[sorted.length - 1];
+    return pct(lo, 1) === pct(hi, 1) ? pct(lo, 1)
+      : `${pct(lo, 1).replace("%", "")} to ${pct(hi, 1)}`;
+  };
+  const refitAll = refitBetter.map((c) => c.refit_vs_shipped.all_weeks).filter(Boolean);
+  const examAll = examWorse.map((c) => c.exam_vs_refit.all_weeks).filter(Boolean);
 
   let note =
     `A new model every week with no exam forecast better than the loop in ${refit.better} of ` +
@@ -1317,7 +1332,15 @@ function renderCalendar(cal) {
       ? ` (${andList(examWorse.map((c) => c.city))}, by ` +
         `${Math.min(...sizes).toFixed(1)} to ${Math.max(...sizes).toFixed(1)}%)`
       : ``) +
-    ` and better in ${none(exam.better)}. The loop trains ` +
+    ` and better in ${none(exam.better)}. ` +
+    (allWeeks.length
+      ? `Both counts use only the weeks the two forecasts differ. Over every week, including ` +
+        `those where both served the same model, ` +
+        [refitAll.length ? `the gains shrink to ${range(refitAll)}` : ``,
+          examAll.length ? `the losses to ${range(examAll)}` : ``].filter(Boolean).join(", ") +
+        (stillClear ? `, and ${stillClear} still clear zero. ` : `, and none clears zero. `)
+      : ``) +
+    `The loop trains ` +
     `${span(cities.map((c) => c.trained.shipped))} models per city, the weekly calendar ` +
     `${span(cities.map((c) => c.trained.weekly_refit))}. `;
   note += refit.verdict === "worse"

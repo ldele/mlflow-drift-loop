@@ -216,6 +216,10 @@ def test_the_calendar_test_publishes_each_dot_with_its_interval_and_reading() ->
             missing = [f for f in ("value", "lo", "hi") if comparison.get(f) is None]
             assert not missing, f"{city['city']}/{key} is missing {missing}"
             assert comparison["reading"] in ("better", "worse", "not shown")
+            # The note quotes the every-week figure beside the registered one.
+            every = comparison.get("all_weeks") or {}
+            missing = [f for f in ("value", "lo", "hi") if every.get(f) is None]
+            assert not missing, f"{city['city']}/{key} all-weeks is missing {missing}"
 
 
 def test_the_committed_calendar_test_still_matches_the_loop_it_describes() -> None:

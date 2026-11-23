@@ -838,14 +838,18 @@ def calendar_block(profiles: list[dict]) -> dict | None:
         if rows.empty:
             return None
         row = rows.iloc[0]
+        # The same comparison over every week, ties included: reported beside the
+        # registered figure, not scored.
+        all_weeks = {"value": float(row["all_weeks"]), "lo": float(row["all_weeks_lo"]),
+                     "hi": float(row["all_weeks_hi"]), "weeks": int(row["weeks"])}
         # Fewer differing weeks than the registered minimum carries no interval.
         if pd.isna(row["acted"]):
-            return {"value": None, "lo": None, "hi": None,
-                    "reading": row["reading"], "differing": int(row["differing"])}
+            return {"value": None, "lo": None, "hi": None, "reading": row["reading"],
+                    "differing": int(row["differing"]), "all_weeks": all_weeks}
         return {
             "value": float(row["acted"]), "lo": float(row["acted_lo"]),
             "hi": float(row["acted_hi"]), "reading": row["reading"],
-            "differing": int(row["differing"]),
+            "differing": int(row["differing"]), "all_weeks": all_weeks,
         }
 
     cities = []
