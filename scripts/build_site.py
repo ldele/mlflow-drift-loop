@@ -27,7 +27,7 @@ from mlflow.tracking import MlflowClient
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from driftloop import guides, heartbeat, retrospect, tracking  # noqa: E402
+from driftloop import guides, heartbeat, retrospect, split, tracking  # noqa: E402
 from driftloop.config import DRIFT_FEATURES, FEATURES, PROFILES  # noqa: E402
 
 OUT = REPO_ROOT / "site"
@@ -874,6 +874,97 @@ def calendar_block(profiles: list[dict]) -> dict | None:
     }
 
 
+def split_block(profiles: list[dict]) -> dict | None:
+    """Why each week's forecast was wrong, from scripts/split_error.py.
+
+    Each week's error is split three ways: what a same-day weather forecast
+    would have removed, what a model refitted through the week would have
+    removed (the relation moving), and what neither removes. Fifteen cities
+    across the page, and week by week for the six it shows. The registration
+    allowed the weekly display once its third prediction held: the relation part
+    ranks the cities as retraining's gain does.
+
+    The counts, verdicts and intervals are the script's, copied rather than
+    recomputed. Only the weekly parts are derived here, by ``driftloop.split``
+    with the registered formula. A committed snapshot, checked like the calendar
+    test: each of the six's replay has to reproduce the premium this build just
+    measured for it, or the page draws nothing and says why.
+    """
+    root = REPO_ROOT / "outputs" / "split"
+    tables = split.load(root)
+    scores_path, described_path = root / "scores.json", root / "described.json"
+    if tables is None or not (scores_path.exists() and described_path.exists()):
+        return None
+    weeks, cities = tables
+    scores = json.loads(scores_path.read_text(encoding="utf-8"))
+    described = json.loads(described_path.read_text(encoding="utf-8"))
+
+    published = {p["label"]: (p.get("stats") or {}).get("retrain_acted") for p in profiles}
+    stale = []
+    for _, row in cities[cities["group"] == "six"].iterrows():
+        live = published.get(row["city"])
+        if live is None:
+            continue
+        snapshot, page = round(float(row["replay_premium"]), 1), round(float(live), 1)
+        if abs(snapshot - page) > 0.1:
+            stale.append({"city": row["city"], "snapshot": snapshot, "published": page})
+
+    def _share(row, part: str) -> dict:
+        return {key: round(100 * float(row[f"{part}{suffix}"]), 2)
+                for key, suffix in (("value", ""), ("lo", "_lo"), ("hi", "_hi"))}
+
+    per_city = [{
+        "city": row["city"],
+        "group": row["group"],
+        "premium": round(float(row["premium"]), 2),
+        "weeks": int(row["weeks"]),
+        "largest": row["largest"],
+        "reach": round(100 * float(row["reach"]), 1),
+        "retrain_weeks": int(row["retrain_weeks"]),
+        "retrain_weeks_relation": int(row["retrain_weeks_relation"]),
+        **{part: _share(row, part) for part in split.PARTS},
+    } for _, row in cities.iterrows()]
+
+    by_week = {}
+    for profile in profiles:
+        rows = split.city_weeks(weeks, profile["label"])
+        if rows.empty:
+            continue
+        by_week[profile["label"]] = {
+            "week_end": _dates(rows["week_end"]),
+            "retrained": [bool(v) for v in rows["retrained"]],
+            "largest": list(rows["largest"]),
+            **{col: [round(float(v), 2) for v in rows[col]] for col in (*split.PARTS, "error")},
+        }
+
+    p1, p2, p3, p4 = (scores[k] for k in ("P1", "P2", "P3", "P4"))
+    return {
+        "cities": per_city,
+        "weeks": by_week,
+        "void": bool(scores["void"]),
+        "stale": stale,
+        "entering": scores["entering"],
+        "two_thirds": scores["two_thirds"],
+        "verdicts": {
+            "unexplained_largest": {"count": p1["unexplained_largest"], "verdict": p1["verdict"]},
+            "relation_smallest": {"count": p2["relation_smallest"], "verdict": p2["verdict"]},
+            "ranks_premium": {"rho": round(p3["rho"], 3), "p": round(p3["p"], 4),
+                              "verdict": p3["verdict"]},
+            "retrains_not_relation": {
+                "weeks": p4["retrain_weeks"], "relation": p4["relation_largest"],
+                "share": round(100 * p4["share"], 1),
+                "by_city": [round(100 * v, 1) for v in p4["city_bootstrap"]],
+                "verdict": p4["verdict"],
+            },
+        },
+        # Reported beside the verdicts and deciding nothing.
+        "means": {part: {k: round(100 * described["means"][part][k], 1)
+                         for k in ("point", "lo", "hi")} for part in split.PARTS},
+        "reach_median": round(100 * described["reach"]["median"], 1),
+        "other_weeks_relation": round(100 * described["other_weeks"]["share"], 1),
+    }
+
+
 def guides_block() -> dict[str, dict]:
     """How to read each chart, filled in with the thresholds the loop is running.
 
@@ -1020,6 +1111,7 @@ def build() -> Path:
         ),
         "ablation": ablation_block(profiles),
         "calendar": calendar_block(profiles),
+        "split": split_block(profiles),
         "rebaseline_check": rebaseline_check(profiles),
         "schedule": schedule_block(),
         "profiles": profiles,

@@ -42,7 +42,7 @@ from datetime import timedelta
 # dashboard does not mean rewriting its reading.
 SITE_ONLY = frozenset({
     "forecast", "map", "pooled", "ablation", "calendar_refit", "calendar_exam", "compare_city",
-    "compare_value",
+    "compare_value", "split_cities", "split_premium",
 })
 DASHBOARD_ONLY = frozenset({
     "distributions", "alpha_sweep", "fit_scatter", "residuals",
@@ -444,6 +444,77 @@ GUIDES: dict[str, Guide] = {
             ("a dot right of zero, its bar clear of it",
              "the exam stopped models that would have done harm"),
             ("the bar crosses zero", "the exam made no measurable difference there"),
+        ),
+    ),
+    "split_city": Guide(
+        shows=(
+            "Each bar is one week's forecast error in {city}, split three ways: what a same-day "
+            "weather forecast would have removed, what a model refitted around that week would "
+            "have removed, and what neither removes. A triangle marks a week that ended in a "
+            "retrain."
+        ),
+        data=(
+            "Every week of {city}'s replay, {period}. Each part is averaged over both orders, so "
+            "the three add up to the bar."
+        ),
+        units=(
+            "Squared error per hour, in (µg/m³)², so one large miss counts for more than several "
+            "small ones. A part below zero made that week worse."
+        ),
+        read=(
+            ("mostly \"neither\"", "the cause was outside what the model sees"),
+            ("mostly \"relation moving\"",
+             "the way weather turns into pollution had shifted, and an up-to-date model would "
+             "have done better"),
+            ("a triangle over a bar that is mostly \"neither\"",
+             "the alarm fired on a week a retrain could not fix"),
+        ),
+    ),
+    "split_cities": Guide(
+        shows=(
+            "Each city's forecast error over its whole replay, split into the same three parts. "
+            "Each bar adds up to all of that city's error."
+        ),
+        data=(
+            "Fifteen cities: the six on this page and nine it does not show, each over its own "
+            "weeks within {span}. Shares of the squared error summed over every hour, so a "
+            "smoggy week weighs more than a clean one."
+        ),
+        units=(
+            "Percent of the city's squared error. A part left of zero means same-day weather "
+            "made the forecast slightly worse there."
+        ),
+        read=(
+            ("a long \"neither\" bar",
+             "most of that city's error is beyond any retrain on these inputs"),
+            ("a long \"relation moving\" bar",
+             "a model kept up to date would have removed much of the error, if a retrain could "
+             "learn it in time"),
+            ("a short \"weather forecast\" bar",
+             "a better week-ahead forecast would have bought little"),
+        ),
+    ),
+    "split_premium": Guide(
+        shows=(
+            "Each dot is a city: how much of its error was the relation moving, against what "
+            "retraining was worth there."
+        ),
+        data=(
+            "The same fifteen cities, within {span}. Retraining's worth is the gain of the "
+            "loop's retrained models over its first model never retrained, in a typical week "
+            "a retrained model served."
+        ),
+        units=(
+            "Across: percent of the city's squared error. Up: percent less error than the model "
+            "never retrained."
+        ),
+        read=(
+            ("dots rising from left to right",
+             "the split ranks cities as retraining's gain does, the check that it measures what "
+             "retraining fixes"),
+            ("a dot well above the others at the same share",
+             "retraining paid more there than the relation part accounts for"),
+            ("no pattern", "the relation part would not be shown to measure what retraining fixes"),
         ),
     ),
     "control_covariate": Guide(

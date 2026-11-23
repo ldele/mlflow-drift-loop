@@ -119,6 +119,21 @@
         <p class="why" id="calendar-note"></p>
       </section>
 
+      <!-- The calendar test says when retraining is worth it. This says why a
+           forecast missed, which is what decides whether a retrain could have
+           helped at all. Its weekly view sits with each city's charts above. -->
+      <section id="split" hidden>
+        <h2 class="method-h">Why was a forecast wrong?</h2>
+        <p class="method-sub">
+          The loop retrains when its error grows, but error can grow for reasons a retrain cannot
+          touch. So each week's error is split three ways: what a same-day weather forecast would
+          have removed, what a model refitted around that week would have removed, and what
+          neither removes. Fifteen cities: these six, and nine this page does not show.
+        </p>
+        <div class="charts" id="split-charts"></div>
+        <p class="why" id="split-note"></p>
+      </section>
+
       <!-- The cities show the loop acting. They cannot show it acts for the
            right reason, because the real world has no control condition. This
            section is that control, and it sits here because it answers the

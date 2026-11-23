@@ -248,6 +248,8 @@ function legendHTML(chips) {
   return chips.map((c) => {
     let sw;
     if (c.kind === "star") sw = `<span class="swatch" style="color:${c.color};font-size:13px;line-height:1">★</span>`;
+    else if (c.kind === "tri") sw = `<span class="swatch" style="color:${c.color};font-size:10px;line-height:1">▼</span>`;
+    else if (c.kind === "ring") sw = `<span class="swatch dot" style="background:none;border:2px solid ${c.color};box-sizing:border-box"></span>`;
     else if (c.kind === "dot") sw = `<span class="swatch dot" style="background:${c.color}"></span>`;
     else if (c.kind === "dash") sw = `<span class="swatch dash" style="color:${c.color}"></span>`;
     else sw = `<span class="swatch" style="background:${c.color}"></span>`;
@@ -856,6 +858,43 @@ function render() {
     "seen. A star marks a rival that won by enough to take over.",
     chips3, traces, lay, { guide: "holdout" });
 
+  // 6b. Why each week missed. The alarm and the exam above say when the loop
+  // acted; this says whether a retrain could have helped at all. Drawn only
+  // where the committed split still describes this replay.
+  const SW = splitUsable(DATA.split) ? DATA.split.weeks?.[p.label] : null;
+  if (SW?.week_end?.length) {
+    const sc = splitColors(pal);
+    lay = plotBase(pal, "squared error per hour", { height: 300 });
+    lay.barmode = "relative";
+    lay.bargap = 0.2;
+    lay.yaxis.tickformat = "~s";
+    traces = SPLIT_PARTS.map((part) => ({
+      type: "bar", name: SPLIT_LABEL[part], x: SW.week_end, y: SW[part],
+      marker: { color: sc[part], line: { color: pal.surface, width: 1 } },
+      hovertemplate: "%{y:,.0f}<extra>" + SPLIT_LABEL[part] + "</extra>",
+    }));
+    // A triangle just above each week that ended in a retrain, so it sits over
+    // the bar it marks rather than inside it.
+    const tops = SW.week_end.map((_, i) => SPLIT_PARTS.reduce((s, k) => s + Math.max(0, SW[k][i]), 0));
+    const lift = 0.05 * Math.max(...tops);
+    const fired = SW.retrained.map((r, i) => (r ? i : -1)).filter((i) => i >= 0);
+    const chipsSplit = SPLIT_PARTS.map((part) => ({ label: SPLIT_LABEL[part], color: sc[part] }));
+    if (fired.length) {
+      traces.push({
+        type: "scatter", mode: "markers", name: "ended in a retrain", cliponaxis: false,
+        x: fired.map((i) => SW.week_end[i]), y: fired.map((i) => tops[i] + lift),
+        marker: { symbol: "triangle-down", size: 9, color: pal.ink2 },
+        hovertemplate: "ended in a retrain<extra></extra>",
+      });
+      chipsSplit.push({ label: "ended in a retrain", color: pal.ink2, kind: "tri" });
+    }
+    chartCard(jobs,
+      "Why each week's forecast was wrong",
+      "Each week's error, split into what a better weather forecast would have removed, what a " +
+      "model brought up to date would have removed, and what neither removes.",
+      chipsSplit, traces, lay, { wide: true, guide: "split_city" });
+  }
+
   // 7. What the model leans on. Answers the question the coefficient chart
   // cannot: the slopes are per original unit, so a slope per hPa and a slope
   // per W/m² are not comparable, and the biggest number there is usually just
@@ -922,6 +961,7 @@ function render() {
   renderPooled();
   renderGate();
   renderCalendar(DATA.calendar);
+  renderSplit(DATA.split);
   renderControl(DATA.sweep);
   renderAblation(DATA.ablation);
 
@@ -1348,6 +1388,150 @@ function renderCalendar(cal) {
     : `So whatever retraining is worth here, the alarms and the exam are not shown to add to ` +
       `it. What they save is training.`;
   noteEl.innerHTML = note;
+
+  plotAll(jobs);
+}
+
+/* ---------- why a forecast was wrong ---------- */
+
+// The three parts of a week's error, in the registered order, each on its own
+// categorical slot so a part is the same colour on every chart that shows it.
+const SPLIT_PARTS = ["weather", "relation", "unexplained"];
+const SPLIT_LABEL = { weather: "weather forecast", relation: "relation moving", unexplained: "neither" };
+const splitColors = (pal) => ({ weather: pal.series[0], relation: pal.series[1], unexplained: pal.series[2] });
+// A void run or a stale snapshot draws nothing, on the city charts as below.
+const splitUsable = (s) => Boolean(s?.cities?.length && !s.void && !s.stale?.length);
+
+function renderSplit(s) {
+  const section = document.getElementById("split");
+  section.hidden = !s?.cities?.length;
+  if (section.hidden) return;
+
+  const host = document.getElementById("split-charts");
+  const noteEl = document.getElementById("split-note");
+  host.innerHTML = "";
+  if (!splitUsable(s)) {
+    noteEl.innerHTML = s.void
+      ? `<strong>This analysis is void, so its charts are not being drawn.</strong> A control ` +
+        `failed when it ran (<code>outputs/split/scores.json</code>).`
+      : `<strong>This analysis is out of date, so its charts are not being drawn.</strong> ` +
+        s.stale.map((x) => `The ${x.city} replay reports ${pct(x.snapshot, 1)} where the rest ` +
+          `of this page now measures ${pct(x.published, 1)}`).join("; ") +
+        `. The loop has changed since it last ran (<code>scripts/split_error.py</code>).`;
+    return;
+  }
+
+  const pal = P();
+  const sc = splitColors(pal);
+  const jobs = [];
+  const cities = s.cities;
+  const nSix = cities.filter((c) => c.group === "six").length;
+  const fmt = (v) => `${v < 0 ? "−" : ""}${Math.abs(v).toFixed(0)}%`;
+
+  // 1. Each city's error in three parts, as shares that add up to all of it.
+  let lay = plotBase(pal, "", { hovermode: "closest", height: 22 * cities.length + 70 });
+  lay.barmode = "relative";
+  lay.bargap = 0.3;
+  lay.margin = { l: 96, r: 16, t: 8, b: 44 };
+  lay.xaxis.title = { text: "% of the city's squared error", font: { color: pal.muted, size: 11 } };
+  lay.xaxis.showgrid = true;
+  lay.xaxis.gridcolor = pal.grid;
+  lay.xaxis.ticksuffix = "%";
+  Object.assign(lay.yaxis, {
+    type: "category", categoryorder: "array", categoryarray: cities.map((c) => c.city),
+    autorange: "reversed", showgrid: false, nticks: 0,
+    tickfont: { color: pal.ink2, size: 11 }, title: { text: "" },
+  });
+  // Where the six this page shows end and the nine it does not begin, named in
+  // the caption rather than on the canvas, as on the calendar charts.
+  lay.shapes.push({
+    type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: nSix - 0.5, y1: nSix - 0.5,
+    line: { color: pal.axis, width: 1, dash: "dot" }, layer: "below",
+  });
+  const shareTraces = SPLIT_PARTS.map((part) => ({
+    type: "bar", orientation: "h", name: SPLIT_LABEL[part],
+    y: cities.map((c) => c.city), x: cities.map((c) => c[part].value),
+    marker: { color: sc[part], line: { color: pal.surface, width: 1.5 } },
+    customdata: cities.map((c) => [c[part].lo, c[part].hi]),
+    hovertemplate: "%{y}, " + SPLIT_LABEL[part] + ": %{x:.0f}% [%{customdata[0]:.0f}, " +
+      "%{customdata[1]:.0f}]<extra></extra>",
+  }));
+  const chips = SPLIT_PARTS.map((part) => ({ label: SPLIT_LABEL[part], color: sc[part] }));
+  chartCard(jobs,
+    "Where each city's error comes from",
+    "Each bar is one city's forecast error over its replay, split into the three parts. Below " +
+    "the dotted line are the nine cities not on this page.",
+    chips, shareTraces, lay, { container: "split-charts", guide: "split_cities" });
+
+  // 2. The check that the split measures what retraining fixes: its relation
+  // part against what retraining was worth, city by city.
+  lay = plotBase(pal, "% less error than never retraining", { hovermode: "closest", height: 22 * cities.length + 70 });
+  lay.margin = { l: 56, r: 16, t: 8, b: 44 };
+  lay.xaxis.title = { text: "relation moving, % of the city's squared error", font: { color: pal.muted, size: 11 } };
+  lay.xaxis.ticksuffix = "%";
+  lay.xaxis.showgrid = true;
+  lay.xaxis.gridcolor = pal.grid;
+  lay.yaxis.ticksuffix = "%";
+  lay.shapes.push({
+    type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: 0, y1: 0,
+    line: { color: pal.muted, width: 1 }, layer: "below",
+  });
+  // Named on the canvas only where the dot stands apart; the rest on hover.
+  const named = cities.filter((c) => Math.abs(c.premium) >= 20 || c.relation.value >= 50);
+  const xMax = Math.max(...cities.map((c) => c.relation.value));
+  // A label leans away from a named neighbour at about its height, and in from
+  // the right edge, so two names never print over each other on a phone.
+  const side = (c) => {
+    if (c.relation.value > 0.8 * xMax) return "top left";
+    const near = named.find((o) => o !== c && Math.abs(o.premium - c.premium) < 4 &&
+      Math.abs(o.relation.value - c.relation.value) < 10);
+    if (!near) return "top center";
+    return near.relation.value > c.relation.value ? "top left" : "top right";
+  };
+  const dot = (list, filled, name) => ({
+    type: "scatter", mode: "markers+text", name,
+    x: list.map((c) => c.relation.value), y: list.map((c) => c.premium),
+    text: list.map((c) => (named.includes(c) ? c.city : "")),
+    textposition: list.map(side), textfont: { color: pal.ink2, size: 10.5 },
+    marker: {
+      size: 10, color: filled ? sc.relation : pal.surface,
+      line: { color: sc.relation, width: filled ? 1.5 : 2 },
+    },
+    customdata: list.map((c) => c.city),
+    hovertemplate: "%{customdata}: %{x:.0f}% of the error, retraining worth %{y:+.1f}%<extra></extra>",
+  });
+  const six = cities.filter((c) => c.group === "six");
+  const nine = cities.filter((c) => c.group !== "six");
+  chartCard(jobs,
+    "Where the relation moves more, retraining paid more",
+    "Each dot is a city: its relation part against what retraining was worth there. Filled dots " +
+    "are the six on this page, hollow ones the nine it does not show.",
+    [
+      { label: "the six on this page", color: sc.relation, kind: "dot" },
+      { label: "the nine held-out cities", color: sc.relation, kind: "ring" },
+    ],
+    [dot(nine, false, "the nine"), dot(six, true, "the six")], lay,
+    { container: "split-charts", guide: "split_premium" });
+
+  // Stated from the data, so the prose cannot outlive the result it describes.
+  const v = s.verdicts;
+  const weatherSmallest = cities.filter((c) =>
+    c.weather.value < c.relation.value && c.weather.value < c.unexplained.value).length;
+  const m = s.means;
+  noteEl.innerHTML =
+    `In ${v.unexplained_largest.count} of ${cities.length} cities the largest part is what ` +
+    `neither fix removes, a mean ${fmt(m.unexplained.point)} of the error: the model sees six ` +
+    `weather inputs and the hour, never the recent air or the emissions. The weather forecast is ` +
+    `the smallest part in ${weatherSmallest}, a mean ${fmt(m.weather.point)}, against ` +
+    `${fmt(m.relation.point)} for the relation moving. That part is measured with a refit that ` +
+    `has seen the week, so it is a ceiling: a refit on the 180 days before each week recovers a ` +
+    `median ${fmt(s.reach_median)} of it. The relation part ranks the cities as retraining's ` +
+    `gain does (rank correlation ${v.ranks_premium.rho.toFixed(2)}, ` +
+    `p = ${v.ranks_premium.p.toFixed(3)}). Of the weeks the loop retrained, ` +
+    `${fmt(v.retrains_not_relation.share)} were mostly the relation moving, against ` +
+    `${fmt(s.other_weeks_relation)} of the weeks it did not. With the calendar test above, ` +
+    `retraining here looks limited less by when the alarm fires than by what a refit on past ` +
+    `data can learn.`;
 
   plotAll(jobs);
 }

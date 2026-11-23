@@ -345,3 +345,32 @@ def test_a_model_off_by_the_tag_rounding_stays_inside_the_slack() -> None:
     # And a model off by more than rounding is caught.
     wrong = fitted + 0.01
     assert abs(se._sse(frame[TARGET], fitted) - se._sse(frame[TARGET], wrong)) > se.tag_slack(frame, wrong)
+
+
+def test_the_pages_split_each_week_with_the_registered_formula() -> None:
+    from driftloop import split
+
+    rng = np.random.default_rng(0)
+    a, b, c, d = rng.uniform(0, 100, (4, 20))
+    for mine, registered in zip(split.parts(a, b, c, d), se.parts(a, b, c, d), strict=True):
+        np.testing.assert_allclose(mine, registered)
+    assert split.PARTS == se.PARTS
+
+
+def test_a_citys_weeks_are_drawn_per_hour_and_in_order() -> None:
+    from driftloop import split
+
+    weeks = pd.DataFrame([
+        {"city": "x", "week_end": "2026-01-12", "hours": 84, "retrained": "True",
+         "A": 84.0, "B": 84.0, "C": 42.0, "D": 42.0, "largest": "relation"},
+        {"city": "x", "week_end": "2026-01-05", "hours": 168, "retrained": False,
+         "A": 336.0, "B": 168.0, "C": 336.0, "D": 168.0, "largest": "weather"},
+        {"city": "y", "week_end": "2026-01-05", "hours": 168, "retrained": False,
+         "A": 1.0, "B": 1.0, "C": 1.0, "D": 1.0, "largest": "unexplained"},
+    ])
+    out = split.city_weeks(weeks, "x")
+    assert list(out["week_end"].dt.day) == [5, 12]
+    assert list(out["retrained"]) == [False, True]
+    assert out.loc[0, "weather"] == 1.0 and out.loc[0, "relation"] == 0.0
+    assert out.loc[1, "relation"] == 0.5 and out.loc[1, "unexplained"] == 0.5
+    np.testing.assert_allclose(out[list(split.PARTS)].sum(axis=1), out["error"])

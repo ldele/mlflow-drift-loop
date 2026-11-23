@@ -40,6 +40,7 @@ from driftloop import guides  # noqa: E402
 from driftloop.drift import PSI_SIGNIFICANT, PSI_STABLE  # noqa: E402
 from driftloop.model import build_pipeline, train as train_model  # noqa: E402
 from driftloop import retrospect  # noqa: E402
+from driftloop import split as error_split  # noqa: E402
 
 st.set_page_config(page_title="Drift loop", page_icon="~", layout="wide")
 
@@ -140,6 +141,25 @@ def load_calendar(city: str) -> dict | None:
         "comparisons": {f"{r['x']}_vs_{r['y']}": r.to_dict() for _, r in comps.iterrows()},
         "verdicts": json.loads(scores_path.read_text(encoding="utf-8"))["verdicts"],
     }
+
+
+@st.cache_data(ttl=60)
+def load_split(city: str) -> dict | None:
+    """One city's split of each week's error, from ``scripts/split_error.py``.
+
+    Read from the committed ``outputs/split/``: the city's row of shares and
+    intervals, and its weeks as ``driftloop.split.city_weeks`` draws them.
+    ``None`` where those files are not built or the city was not one of the
+    fifteen.
+    """
+    tables = error_split.load(REPO_ROOT / "outputs" / "split")
+    if tables is None:
+        return None
+    weeks, cities = tables
+    row = cities[cities["city"] == city]
+    if row.empty:
+        return None
+    return {"city": row.iloc[0].to_dict(), "weeks": error_split.city_weeks(weeks, city)}
 
 
 def _none(n: int) -> str:
@@ -906,6 +926,47 @@ with tab_model:
                     f"{_none(refit['better'])} and lost in {_none(refit['worse'])}, and the exam "
                     f"cost accuracy in {_none(exam['worse'])} and helped in "
                     f"{_none(exam['better'])}. The published site charts all of them."
+                )
+
+        # Why each week missed, which says whether a retrain could have helped at
+        # all. The same committed snapshot the site reads, held to the same check.
+        sp = load_split(PROFILE.label)
+        if sp and "when_it_acted" in value:
+            row = sp["city"]
+            snapshot = round(float(row["replay_premium"]), 1)
+            if abs(snapshot - round(value["when_it_acted"], 1)) > 0.1:
+                st.warning(
+                    f"The split of each week's error is out of date for {PROFILE.label}: it "
+                    f"reports {snapshot:+.1f}% where this replay measures "
+                    f"{value['when_it_acted']:+.1f}%. Re-run `scripts/split_error.py --split`."
+                )
+            else:
+                st.markdown("##### Why was each week's forecast wrong?")
+                st.markdown(
+                    "Each week's error, split three ways: what a same-day weather forecast would "
+                    "have removed, what a model refitted around that week would have removed, and "
+                    "what neither removes. Each figure is a share of this city's squared error "
+                    "over the replay, with its 95% interval."
+                )
+                for col, (part, label) in zip(st.columns(3), theme.SPLIT_LABEL.items(),
+                                              strict=True):
+                    col.metric(
+                        label.capitalize(),
+                        f"{100 * row[part]:.0f}%",
+                        f"95% CI [{100 * row[f'{part}_lo']:.0f}, {100 * row[f'{part}_hi']:.0f}]",
+                        delta_color="off",
+                    )
+                st.plotly_chart(theme.split_weeks(sp["weeks"]), width="stretch")
+                guide("split_city")
+                reach = 100 * float(row["reach"])
+                reached = (f"recovers {reach:.0f}% of it here" if reach >= 0
+                           else "recovers none of it here: it made the forecast worse")
+                st.caption(
+                    f"**The relation part is a ceiling.** It comes from a refit that has seen "
+                    f"the week; a refit on the 180 days before each week {reached}. Of the "
+                    f"{int(row['retrain_weeks'])} weeks the loop retrained, "
+                    f"{_none(int(row['retrain_weeks_relation']))} were mostly the relation "
+                    f"moving. The published site compares all fifteen cities."
                 )
 
         alpha = bench.get("alpha")

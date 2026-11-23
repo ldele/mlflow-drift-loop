@@ -64,7 +64,9 @@ def base_figure(title: str | None, y_title: str, height: int = 340) -> go.Figure
         title=dict(
             text=title, font=dict(size=15, color=INK), x=0, xanchor="left",
             y=1.0, yanchor="top", pad=dict(t=10, l=4),
-        ) if title else None,
+        # An empty title rather than none: given no title at all, the chart
+        # renders the word "undefined" where the title would go.
+        ) if title else dict(text=""),
         paper_bgcolor=SURFACE,
         plot_bgcolor=SURFACE,
         font=dict(family=FONT, size=12, color=INK_SECONDARY),
@@ -482,3 +484,37 @@ def residual_series(timestamp, residual, color: str) -> go.Figure:
 def _normalize(counts: list[int]) -> list[float]:
     total = sum(counts) or 1
     return [c / total for c in counts]
+
+
+# The three parts of a week's error, each on its own categorical slot in the
+# registered order, the same slots the published site gives them.
+SPLIT_COLOR = {"weather": SERIES[0], "relation": SERIES[1], "unexplained": SERIES[2]}
+SPLIT_LABEL = {"weather": "weather forecast", "relation": "relation moving", "unexplained": "neither"}
+
+
+def split_weeks(weeks: pd.DataFrame) -> go.Figure:
+    """Each week's forecast error in three parts, stacked, with retrain weeks marked.
+
+    ``weeks`` is ``driftloop.split.city_weeks``: per-hour parts in squared µg/m³.
+    Stacked relative to zero, so a part that made a week worse sits below the
+    axis instead of shortening the bar it belongs to.
+    """
+    fig = base_figure(None, "squared error per hour", height=320)
+    fig.update_layout(barmode="relative", bargap=0.2)
+    for part, label in SPLIT_LABEL.items():
+        fig.add_bar(
+            x=weeks["week_end"], y=weeks[part], name=label,
+            marker=dict(color=SPLIT_COLOR[part], line=dict(color=SURFACE, width=1)),
+            hovertemplate="%{y:,.0f}<extra>" + label + "</extra>",
+        )
+    tops = weeks[list(SPLIT_LABEL)].clip(lower=0).sum(axis=1)
+    fired = weeks["retrained"].astype(bool)
+    if fired.any():
+        fig.add_scatter(
+            x=weeks.loc[fired, "week_end"], y=tops[fired] + 0.05 * tops.max(),
+            mode="markers", name="ended in a retrain", cliponaxis=False,
+            marker=dict(symbol="triangle-down", size=9, color=INK_SECONDARY),
+            hovertemplate="ended in a retrain<extra></extra>",
+        )
+    fig.update_yaxes(tickformat="~s")
+    return fig
