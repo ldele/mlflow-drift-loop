@@ -6,8 +6,9 @@
 #
 # The live/scheduled history comes from the committed mlflow_scheduled.db. The
 # city runs rebuild from the committed data_cache parquet (no re-fetch), so the
-# published charts always match the raw data we've stored. The weekly cron picks
-# up each new live cycle.
+# published charts always match the raw data we've stored. A weekly cron used to
+# pick up each new live cycle; it went with the live run on 2026-11-23 (D6), so
+# the page now rebuilds on a push or by hand.
 
 name: pages
 
@@ -15,8 +16,6 @@ on:
   push:
     branches: [master]
   workflow_dispatch: {}
-  schedule:
-    - cron: "0 7 * * 1" # Mondays 07:00 UTC, after the drift-loop cycle runs
 
 permissions:
   contents: read

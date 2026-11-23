@@ -121,6 +121,8 @@ def test_the_script_fails_on_a_stale_store_and_warns_when_asked(store, monkeypat
     # profile's config is frozen, so the reader is redirected rather than the name.
     monkeypatch.setattr(check_heartbeat.tracking, "tracking_uri", lambda _db: uri)
     monkeypatch.setattr(check_heartbeat.heartbeat, "last_logged", lambda _name: last_logged(store))
+    # Judged as while the loop ran; the switched-off case is the next test.
+    monkeypatch.setattr(check_heartbeat.heartbeat, "SWITCHED_OFF", None)
     monkeypatch.setattr(sys, "argv", ["check_heartbeat.py"])
     assert check_heartbeat.main() == 0
 
@@ -131,6 +133,37 @@ def test_the_script_fails_on_a_stale_store_and_warns_when_asked(store, monkeypat
     monkeypatch.setattr(sys, "argv", ["check_heartbeat.py", "--warn-only"])
     assert check_heartbeat.main() == 0
     assert "skipped" in capsys.readouterr().out
+
+
+def test_a_switched_off_loop_is_reported_off_not_stale(monkeypatch, capsys):
+    """After the switch-off a silence is the decision, so a run by hand says so."""
+    import check_heartbeat
+
+    monkeypatch.setattr(check_heartbeat.heartbeat, "SWITCHED_OFF", "2026-11-23")
+    monkeypatch.setattr(sys, "argv", ["check_heartbeat.py"])
+    assert check_heartbeat.main() == 0
+    assert "switched off on 2026-11-23" in capsys.readouterr().out
+
+
+def test_the_workflows_run_on_a_schedule_exactly_while_the_loop_is_on():
+    """The constant and the workflow files cannot disagree.
+
+    Switched off with a cron left in, the daily check would file a stale store
+    every day and the weekly job would quietly restart the loop. Switched on
+    with the crons removed, nothing would run and the page would call it off.
+    """
+    import yaml
+
+    workflows = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    for name in ("drift-loop.yml", "heartbeat.yml", "pages.yml"):
+        spec = yaml.safe_load((workflows / name).read_text(encoding="utf-8"))
+        triggers = spec.get("on", spec.get(True))
+        assert "workflow_dispatch" in triggers, f"{name} must still run by hand"
+        scheduled = "schedule" in triggers
+        if heartbeat.SWITCHED_OFF:
+            assert not scheduled, f"{name} still runs on a schedule after the switch-off"
+        elif name != "pages.yml":
+            assert scheduled, f"{name} has no schedule while the loop is on"
 
 
 def test_the_site_publishes_the_limit_the_job_fails_on():
@@ -162,7 +195,8 @@ def test_the_daily_check_and_the_weekly_job_file_on_one_thread():
     daily_text = (workflows / "heartbeat.yml").read_text(encoding="utf-8")
 
     triggers = daily.get("on", daily.get(True))
-    assert triggers["schedule"][0]["cron"].split()[2:] == ["*", "*", "*"], "must run every day"
+    if not heartbeat.SWITCHED_OFF:
+        assert triggers["schedule"][0]["cron"].split()[2:] == ["*", "*", "*"], "must run every day"
     assert daily["permissions"]["contents"] == "read", "the daily check must not be able to write"
     assert "scripts/check_heartbeat.py" in daily_text
     for text in (daily_text, weekly):

@@ -94,7 +94,7 @@ STORY = {
     "synthetic": "A simulated city with a dial for how far the data shifts, to show the alarms "
     "fire when something has changed and only then.",
     "scheduled": "Not a city. This is the Kraków data with one check added by a scheduled job "
-    "every Monday, to show the loop keeps running with nobody starting it.",
+    "every Monday until 2026-11-23, to show the loop keeps running with nobody starting it.",
 }
 
 # Human-readable position of the served champion in the benchmark table, so a
@@ -1015,6 +1015,9 @@ def schedule_block() -> dict | None:
         # the one the weekly job fails on, read from the code, not retyped.
         "logged_at_utc": logged.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "max_silence_days": heartbeat.MAX_SILENCE_DAYS,
+        # Once the weekly run is switched off, its silence is the decision and
+        # the page says so instead of aging the heartbeat.
+        "switched_off": heartbeat.SWITCHED_OFF,
         "champion_version": (
             runs["tags.champion_version"].iloc[-1] if "tags.champion_version" in runs else None
         ),

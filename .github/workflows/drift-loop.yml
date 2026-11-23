@@ -1,4 +1,9 @@
-# The drift loop, on a schedule.
+# The drift loop, on a schedule until 2026-11-23.
+#
+# SWITCHED OFF on 2026-11-23 (docs/DECISIONS.md, D6): the schedule below is
+# removed and the work moved to the sibling project mldrift-eval. "Run workflow"
+# still runs one cycle by hand. To switch it back on, restore the cron line and
+# set heartbeat.SWITCHED_OFF to None; tests/test_heartbeat.py holds the two together.
 #
 # Every Monday this runs ONE incremental cycle (scripts/run_scheduled.py): the
 # first run bootstraps a champion, each later run monitors the latest window and
@@ -28,9 +33,7 @@
 name: drift-loop
 
 on:
-  schedule:
-    - cron: "0 6 * * 1" # Mondays 06:00 UTC
-  workflow_dispatch: {} # manual "Run workflow" button
+  workflow_dispatch: {} # manual "Run workflow" button; the Monday cron is off (D6)
 
 permissions:
   contents: write # to commit the persisted MLflow state back

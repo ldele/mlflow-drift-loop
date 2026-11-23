@@ -18,6 +18,10 @@ cycle, in a daily workflow of its own (``heartbeat.yml``) for the job that never
 starts, and in the reader's browser on the site's schedule card. A fourth
 alarm lives off GitHub: after a cycle passes this check, the weekly job pings an
 outside dead-man's switch, which alerts when the pings stop.
+
+The weekly run was switched off on 2026-11-23 (``docs/DECISIONS.md``, D6), and
+``SWITCHED_OFF`` records it. A silence after that date is the decision, not an
+outage, so the check stands down and the site says the job was switched off.
 """
 
 from __future__ import annotations
@@ -31,6 +35,12 @@ from mlflow.tracking import MlflowClient
 # A weekly job, plus one day of slack for a queued or slow runner, in calendar
 # days. Past this, at least one Monday has gone by without a cycle.
 MAX_SILENCE_DAYS = 8
+
+# The day the weekly live run was switched off, or None while it runs. Once set,
+# no workflow runs on a schedule (tests/test_heartbeat.py holds the workflow
+# files to it), scripts/check_heartbeat.py stands down, and the site's schedule
+# card says the job was switched off instead of counting a silence.
+SWITCHED_OFF: str | None = "2026-11-23"
 
 # Both kinds of run the loop logs. The bootstrap counts: a deployment that has
 # only just registered its first champion is alive, not silent.

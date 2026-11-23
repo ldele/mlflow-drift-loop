@@ -11,7 +11,7 @@ doing the job.
 It is also a measured account of how well such a loop works, including where it
 does not. The test bed is a hard forecasting job: how dirty a city's air will be
 a week from now, from nothing but the weather forecast. Six cities are replayed
-week by week through a year, and one runs live every Monday.
+week by week through a year, and one ran live every Monday until 2026-11-23.
 
 **[See it running →](https://ldele.github.io/mlflow-drift-loop/)**
 

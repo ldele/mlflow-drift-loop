@@ -11,7 +11,9 @@ Either way the failure is filed as an issue.
 the cycle runs: a stale store at that point is what the runner's catch-up is
 about to repair, so it is worth saying but not worth stopping the repair for.
 
-Exit status: 0 when fresh (or with ``--warn-only``), 1 when stale.
+Exit status: 0 when fresh (or with ``--warn-only``), 1 when stale. Since the
+weekly run was switched off (``heartbeat.SWITCHED_OFF``), it says so and exits 0:
+a silence after that date is the decision, not an outage.
 """
 
 from __future__ import annotations
@@ -32,6 +34,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--warn-only", action="store_true", help="report staleness but exit 0")
     args = parser.parse_args()
+
+    if heartbeat.SWITCHED_OFF:
+        print(f"The weekly live run was switched off on {heartbeat.SWITCHED_OFF} "
+              "(docs/DECISIONS.md, D6), so there is no schedule to check.")
+        return 0
 
     # Point at the store without tracking.setup(), which would create the
     # experiment: an empty store has to read as empty.

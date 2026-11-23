@@ -312,8 +312,9 @@ absolute paths. The rebuild also shows the replay is deterministic.
 - **Per version, to the registry:** the coefficients as tags, and the `champion`
   alias, moved on promotion.
 - **Per city, to the repository:** the hourly data under `data_cache/`, so every
-  chart matches a fixed dataset. The weekly Action commits its tracking store
-  back so each cycle continues from the last.
+  chart matches a fixed dataset. The weekly Action committed its tracking store
+  back so each cycle continued from the last, until it was switched off on
+  2026-11-23 ([D6](DECISIONS.md)).
 
 ---
 

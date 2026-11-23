@@ -1,4 +1,7 @@
-# The live loop's heartbeat, checked every day from outside the weekly job.
+# The live loop's heartbeat, checked every day from outside the weekly job,
+# until the weekly job was switched off on 2026-11-23 (docs/DECISIONS.md, D6).
+# With no cycle to watch the daily schedule is removed, and a run by hand says
+# the loop is off rather than filing a stale store.
 #
 # drift-loop.yml checks its own store after each cycle, but a check inside a job
 # cannot fire when that job never starts: a dropped cron, a workflow broken at
@@ -23,9 +26,7 @@
 name: heartbeat
 
 on:
-  schedule:
-    - cron: "0 9 * * *" # daily 09:00 UTC, well after Monday's 06:00 cycle
-  workflow_dispatch: {}
+  workflow_dispatch: {} # the daily cron is off with the weekly job (D6)
 
 permissions:
   contents: read

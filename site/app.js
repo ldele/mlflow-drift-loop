@@ -1858,10 +1858,17 @@ function renderSchedule(s) {
   card.hidden = !s;
   if (!s) return;
   const plural = s.cycles === 1 ? "cycle has" : "cycles have";
+  // Switched off, the silence is the decision: say when, and age nothing.
+  const lead = s.switched_off
+    ? `The same code ran one cycle every Monday on live Kraków data, committing its records to ` +
+      `the repository, until the job was switched off on ${s.switched_off}. ${s.cycles} ` +
+      `${s.cycles === 1 ? "cycle was" : "cycles were"} recorded, covering ${s.first} to ` +
+      `${s.last}, the last logged on ${s.logged_at}.`
+    : `The same code also runs one cycle every Monday on live Kraków data and commits its ` +
+      `records to the repository. ${s.cycles} ${plural} been recorded, covering ${s.first} to ` +
+      `${s.last}. ${scheduleHeartbeat(s)}`;
   document.getElementById("schedule-desc").innerHTML =
-    `The same code also runs one cycle every Monday on live Kraków data and commits its ` +
-    `records to the repository. ${s.cycles} ${plural} been recorded, covering ${s.first} to ` +
-    `${s.last}. ${scheduleHeartbeat(s)} ${scheduleOutcome(s)} ` +
+    `${lead} ${scheduleOutcome(s)} ` +
     `<span class="gloss">The Mondays the job failed are in ` +
     `<a href="https://github.com/ldele/mlflow-drift-loop/actions/workflows/drift-loop.yml">its run log</a>.</span>`;
 }

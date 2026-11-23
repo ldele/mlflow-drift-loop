@@ -172,9 +172,11 @@ properly penalised model decays less, so a retrain has less to recover.
 
 ## D6. The loop stays as it ships after the calendar test and the split
 
-**Status:** unchanged, decided by the owner on 2026-11-23.
-**Affects:** nothing in `config.SHIPPED`. Further work on the method moves to the sibling
-project `mldrift-eval`.
+**Status:** unchanged, decided by the owner on 2026-11-23. The weekly live run was switched
+off the same day.
+**Affects:** nothing in `config.SHIPPED`. The three workflows' schedules are removed and
+`heartbeat.SWITCHED_OFF` records the date; each workflow still runs by hand. Further work on
+the method moves to the sibling project `mldrift-eval`.
 
 **What it is.** Two registered studies ended on the same line: any change to the loop is the
 owner's call, recorded here. One replayed the loop beside retraining on a calendar
@@ -204,3 +206,10 @@ its third prediction holding allows.
 **What would change it.** A target with more for a retrain to reach, where a refit on recent
 labels recovers most of the relation part. That is a different dataset, which is why the work
 continues in `mldrift-eval` rather than here.
+
+**The live run.** It ran a cycle every Monday on live Kraków data to show the loop keeps going
+with nobody starting it. With the loop no longer being developed, a weekly job that commits to
+the repository, and a daily check that files an issue when it stops, are upkeep with nothing
+left to show. The site's schedule card now says the job was switched off instead of counting
+the silence. Switching it back on means restoring the crons and setting `SWITCHED_OFF` to
+`None`, and `tests/test_heartbeat.py` fails if only one of the two is done.

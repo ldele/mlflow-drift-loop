@@ -17,10 +17,11 @@
         <div>
           <div class="title-row">
             <h1>Air quality drift watch</h1>
-            <!-- "live" overstated it: the page is a snapshot rebuilt on a
-                 weekly schedule, and each city's replay ends where its data
-                 span ends, which can be weeks before today. Say the true thing. -->
-            <span class="live"><span class="dot"></span> rebuilt weekly</span>
+            <!-- "live" overstated it: the page is a snapshot, and each city's
+                 replay ends where its data span ends, which can be weeks before
+                 today. It was rebuilt weekly until the live run was switched off
+                 on 2026-11-23 (D6); now it rebuilds on each change. Say the true thing. -->
+            <span class="live"><span class="dot"></span> rebuilt on each change</span>
           </div>
           <p class="lede">
             Models go stale as the world they were trained on moves on. This loop checks its
@@ -28,7 +29,7 @@
             if it beats the one in service. The example: forecasting <strong>PM2.5</strong>, fine
             airborne soot, <strong>a week ahead</strong> from the weather forecast alone. Six
             cities are replayed week by week through a year of recorded data, 2025 into 2026.
-            One, Kraków, also runs live every Monday.
+            One, Kraków, also ran live every Monday until 2026-11-23.
           </p>
           <p class="built" id="built"></p>
         </div>
@@ -210,7 +211,7 @@
         </section>
 
         <section class="card method-card" id="schedule-card" hidden>
-          <div class="card-head"><h3>The same loop, running on a schedule</h3></div>
+          <div class="card-head"><h3>The same loop, run on a schedule</h3></div>
           <p class="desc" id="schedule-desc"></p>
         </section>
 
@@ -238,7 +239,7 @@
         <div class="data-links" id="data-links"></div>
         <p class="foot-note">
           Hover a chart for values, drag to zoom, click a legend entry to hide a line. The page
-          rebuilds weekly from the loop's own records. Code on
+          rebuilds from the loop's own records on each change. Code on
           <a href="https://github.com/ldele/mlflow-drift-loop">GitHub</a>.
         </p>
       </footer>
