@@ -921,6 +921,7 @@ function render() {
   // them with everything else rather than leaving a section in the old palette.
   renderPooled();
   renderGate();
+  renderCalendar(DATA.calendar);
   renderControl(DATA.sweep);
   renderAblation(DATA.ablation);
 
@@ -1178,6 +1179,152 @@ function renderGate() {
       `with ${harmed(long)} worse off: too few to measure.`;
   }
   document.getElementById("gate-note").innerHTML = note;
+
+  plotAll(jobs);
+}
+
+/* ---------- the loop against retraining on a calendar ---------- */
+
+/* Two forest plots rather than one figure with two panels: each is a city list
+ * with its own scale (the refit comparison runs from −18% to +14%, the exam one
+ * from −4% to +6%), and as two cards the grid stacks them on a phone instead of
+ * squeezing both into one row.
+ *
+ * Each city's reading ("better", "worse", "not shown") is the script's, under
+ * the rule registered before the run, so a dot is coloured by that and not by
+ * re-deciding here whether its interval clears zero. */
+const andList = (xs) => (xs.length < 2 ? xs.join("")
+  : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+function renderCalendar(cal) {
+  const section = document.getElementById("calendar");
+  section.hidden = !cal?.cities?.length;
+  if (section.hidden) return;
+
+  const host = document.getElementById("calendar-charts");
+  const noteEl = document.getElementById("calendar-note");
+  host.innerHTML = "";
+
+  // A committed snapshot, checked like the ablation: where the loop it replayed
+  // is no longer the loop this page measures, draw nothing and say so.
+  if (cal.stale?.length || cal.void) {
+    noteEl.innerHTML = cal.void
+      ? `<strong>This test is void, so its charts are not being drawn.</strong> A control failed ` +
+        `when it ran (<code>outputs/calendar/scores.json</code>).`
+      : `<strong>This test is out of date, so its charts are not being drawn.</strong> ` +
+        cal.stale.map((s) => `The ${s.city} replay reports ${pct(s.snapshot, 1)} where the rest ` +
+          `of this page now measures ${pct(s.published, 1)}`).join("; ") +
+        `. The loop has changed since it last ran (<code>scripts/calendar_baseline.py</code>).`;
+    return;
+  }
+
+  const pal = P();
+  const jobs = [];
+  const cities = cal.cities;
+  const nSix = cities.filter((c) => c.group === "six").length;
+  const shown = pal.series[0];
+
+  // Returns the traces and layout; the chartCard calls stay at the call site so
+  // each names its reading as a literal, which is what the tests can see.
+  function forest(key, xTitle) {
+    const rows = cities.filter((c) => c[key] && c[key].value != null);
+    const trace = (list, color, name) => ({
+      type: "scatter", mode: "markers", name, showlegend: false,
+      x: list.map((c) => c[key].value), y: list.map((c) => c.city),
+      marker: { color, size: 9, line: { color: pal.surface, width: 1.5 } },
+      error_x: {
+        type: "data", symmetric: false, color, thickness: 2, width: 0,
+        array: list.map((c) => c[key].hi - c[key].value),
+        arrayminus: list.map((c) => c[key].value - c[key].lo),
+      },
+      customdata: list.map((c) => [c[key].lo, c[key].hi, c[key].differing]),
+      hovertemplate: "%{y}: %{x:+.1f}% [%{customdata[0]:+.1f}, %{customdata[1]:+.1f}]" +
+        "<br>over the %{customdata[2]} weeks the forecasts differ<extra></extra>",
+    });
+    const clear = rows.filter((c) => c[key].reading !== "not shown");
+    const covers = rows.filter((c) => c[key].reading === "not shown");
+
+    const lay = plotBase(pal, "", { hovermode: "closest", height: 22 * cities.length + 70 });
+    lay.margin = { l: 96, r: 16, t: 8, b: 44 };
+    lay.xaxis.title = { text: xTitle, font: { color: pal.muted, size: 11 } };
+    lay.xaxis.showgrid = true;
+    lay.xaxis.gridcolor = pal.grid;
+    Object.assign(lay.yaxis, {
+      type: "category", categoryorder: "array", categoryarray: cities.map((c) => c.city),
+      autorange: "reversed", showgrid: false, nticks: 0,
+      tickfont: { color: pal.ink2, size: 11 }, title: { text: "" },
+    });
+    lay.shapes.push({
+      type: "line", xref: "x", x0: 0, x1: 0, yref: "paper", y0: 0, y1: 1,
+      line: { color: pal.muted, width: 1 }, layer: "below",
+    });
+    // Where the six this page shows end and the nine it does not begin. Named
+    // in the caption rather than on the canvas: on a phone a label here sits on
+    // top of the first held-out city's interval.
+    lay.shapes.push({
+      type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: nSix - 0.5, y1: nSix - 0.5,
+      line: { color: pal.axis, width: 1, dash: "dot" }, layer: "below",
+    });
+
+    return {
+      traces: [trace(covers, pal.muted, "covers zero"), trace(clear, shown, "clears zero")],
+      lay,
+    };
+  }
+
+  const chips = [
+    { label: "interval clears zero", color: shown, kind: "dot" },
+    { label: "covers zero", color: pal.muted, kind: "dot" },
+  ];
+  const refitPlot = forest("refit_vs_shipped", "% less error than the loop");
+  chartCard(jobs,
+    "A new model every week, shipped without an exam",
+    "Each dot is how much less forecast error the weekly refit had than the loop in a typical " +
+    "week, with its 95% interval. Right of zero, the refit forecast better; below the dotted " +
+    "line are the nine cities not on this page.",
+    chips, refitPlot.traces, refitPlot.lay,
+    { container: "calendar-charts", guide: "calendar_refit" });
+  const examPlot = forest("exam_vs_refit", "% less error with the exam");
+  chartCard(jobs,
+    "The same weekly models, with and without the exam",
+    "Each dot compares the weekly arm that sits the exam with the one that ships every model. " +
+    "Left of zero, the exam made the forecasts worse; below the dotted line are the nine cities " +
+    "not on this page.",
+    chips, examPlot.traces, examPlot.lay,
+    { container: "calendar-charts", guide: "calendar_exam" });
+
+  // Stated from the data, so the prose cannot outlive the result it describes.
+  const named = (key, reading) => cities.filter((c) => c[key]?.reading === reading);
+  const refit = cal.verdicts.refit_vs_shipped, exam = cal.verdicts.exam_vs_refit;
+  const refitBetter = named("refit_vs_shipped", "better");
+  const examWorse = named("exam_vs_refit", "worse");
+  const span = (xs) => {
+    const lo = Math.min(...xs), hi = Math.max(...xs);
+    return lo === hi ? `${lo}` : `${lo} to ${hi}`;
+  };
+  const sizes = examWorse.map((c) => Math.abs(c.exam_vs_refit.value));
+  const allNine = refitBetter.length && refitBetter.every((c) => c.group !== "six");
+  const none = (n) => (n === 0 ? "none" : `${n}`);
+
+  let note =
+    `A new model every week with no exam forecast better than the loop in ${refit.better} of ` +
+    `${cities.length} cities` +
+    (refitBetter.length ? ` (${andList(refitBetter.map((c) => c.city))})` : ``) +
+    (allNine ? `, all among the nine,` : ``) +
+    ` and worse in ${none(refit.worse)}. With the exam, the weekly models did worse in ` +
+    `${none(exam.worse)}` +
+    (examWorse.length
+      ? ` (${andList(examWorse.map((c) => c.city))}, by ` +
+        `${Math.min(...sizes).toFixed(1)} to ${Math.max(...sizes).toFixed(1)}%)`
+      : ``) +
+    ` and better in ${none(exam.better)}. The loop trains ` +
+    `${span(cities.map((c) => c.trained.shipped))} models per city, the weekly calendar ` +
+    `${span(cities.map((c) => c.trained.weekly_refit))}. `;
+  note += refit.verdict === "worse"
+    ? `Here the loop's alarms and exam beat retraining on a calendar.`
+    : `So whatever retraining is worth here, the alarms and the exam are not shown to add to ` +
+      `it. What they save is training.`;
+  noteEl.innerHTML = note;
 
   plotAll(jobs);
 }

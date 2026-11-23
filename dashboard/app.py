@@ -117,6 +117,36 @@ def load_run_meta(meta_filename: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+@st.cache_data(ttl=60)
+def load_calendar(city: str) -> dict | None:
+    """One city's arms and comparisons from the calendar test, with the verdicts.
+
+    Read from the committed ``outputs/calendar/`` written by
+    ``scripts/calendar_baseline.py``. ``None`` where those files are not built or
+    the city was not one of the fifteen.
+    """
+    root = REPO_ROOT / "outputs" / "calendar"
+    arms_path, comps_path, scores_path = (
+        root / "arms.csv", root / "comparisons.csv", root / "scores.json")
+    if not (arms_path.exists() and comps_path.exists() and scores_path.exists()):
+        return None
+    arms = pd.read_csv(arms_path)
+    comps = pd.read_csv(comps_path)
+    arms, comps = arms[arms["city"] == city], comps[comps["city"] == city]
+    if arms.empty:
+        return None
+    return {
+        "arms": {r["arm"]: r.to_dict() for _, r in arms.iterrows()},
+        "comparisons": {f"{r['x']}_vs_{r['y']}": r.to_dict() for _, r in comps.iterrows()},
+        "verdicts": json.loads(scores_path.read_text(encoding="utf-8"))["verdicts"],
+    }
+
+
+def _none(n: int) -> str:
+    """A count in prose, where zero reads as "none"."""
+    return "none" if n == 0 else str(n)
+
+
 def _resolve_artifact(db_filename: str, run_id: str, rel: str) -> Path:
     """Locate a run artifact.
 
@@ -822,6 +852,60 @@ with tab_model:
             if across < -0.05:
                 st.warning(
                     "Negative across the replay: retraining raised the error here."
+                )
+
+        # The comparison above is against a model never retrained, so it cannot
+        # tell the loop's alarms and exam from the act of retraining. Two
+        # calendars can. A committed snapshot, so its shipped arm has to match
+        # this replay's figure first, as the site checks too.
+        cal = load_calendar(PROFILE.label)
+        if cal and "when_it_acted" in value and "shipped" in cal["arms"]:
+            shipped = cal["arms"]["shipped"]
+            snapshot = round(float(shipped["premium"]), 1)
+            if abs(snapshot - round(value["when_it_acted"], 1)) > 0.1:
+                st.warning(
+                    f"The calendar test is out of date for {PROFILE.label}: it reports "
+                    f"{snapshot:+.1f}% where this replay measures "
+                    f"{value['when_it_acted']:+.1f}%. Re-run `scripts/calendar_baseline.py`."
+                )
+            else:
+                st.markdown("##### Would retraining every week have done as well?")
+                st.markdown(
+                    "The loop beside two calendars that train a new model every week. One ships "
+                    "it only if it passes the same exam, the other always ships it. Each figure "
+                    "is the gap in forecast error in a typical week, over the weeks the two "
+                    "forecasts differ."
+                )
+                for col, key, label in zip(
+                    st.columns(2),
+                    ("weekly_refit_vs_shipped", "weekly_exam_vs_weekly_refit"),
+                    ("Weekly refit against the loop", "Weekly, exam against no exam"),
+                    strict=True,
+                ):
+                    row = cal["comparisons"].get(key)
+                    if row is None or pd.isna(row["acted"]):
+                        col.metric(label, "—", "too few weeks differ", delta_color="off")
+                        continue
+                    verdict = (
+                        " · not distinguishable from zero" if row["reading"] == "not shown" else ""
+                    )
+                    col.metric(
+                        label,
+                        f"{row['acted']:+.1f}%",
+                        f"95% CI [{row['acted_lo']:+.1f}, {row['acted_hi']:+.1f}]{verdict}",
+                        delta_color="off",
+                    )
+                refit = cal["verdicts"]["weekly_refit_vs_shipped"]
+                exam = cal["verdicts"]["weekly_exam_vs_weekly_refit"]
+                weekly = cal["arms"].get("weekly_refit", {})
+                st.caption(
+                    f"**Positive means the first-named forecast better.** Here the loop trained "
+                    f"{int(shipped['retrains'])} models in {int(shipped['runs'])} weeks, the "
+                    f"weekly calendar {int(weekly.get('retrains', shipped['runs']))}. Across all "
+                    f"{refit['cities']} cities tested, the weekly refit beat the loop in "
+                    f"{_none(refit['better'])} and lost in {_none(refit['worse'])}, and the exam "
+                    f"cost accuracy in {_none(exam['worse'])} and helped in "
+                    f"{_none(exam['better'])}. The published site charts all of them."
                 )
 
         alpha = bench.get("alpha")

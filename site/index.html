@@ -103,6 +103,22 @@
         <p class="why" id="gate-note"></p>
       </section>
 
+      <!-- Every other section compares the loop with a model never retrained.
+           That shows retraining pays, not that the alarms and the exam are why.
+           A calendar can tell the two apart, so it sits beside the exam it
+           judges. -->
+      <section id="calendar" hidden>
+        <h2 class="method-h">Would retraining every week have done as well?</h2>
+        <p class="method-sub">
+          The loop retrains only when an alarm fires, and ships only a model that passes the exam.
+          Here it is replayed beside two calendars: a new model every week that sits the same
+          exam, and a new model every week shipped with no exam. Fifteen cities: these six, and
+          nine this page does not show.
+        </p>
+        <div class="charts" id="calendar-charts"></div>
+        <p class="why" id="calendar-note"></p>
+      </section>
+
       <!-- The cities show the loop acting. They cannot show it acts for the
            right reason, because the real world has no control condition. This
            section is that control, and it sits here because it answers the

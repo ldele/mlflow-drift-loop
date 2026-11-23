@@ -790,6 +790,86 @@ def ablation_block(profiles: list[dict]) -> dict | None:
     return {"cities": cities} if cities else None
 
 
+CALENDAR_PAIRS = {
+    "refit_vs_shipped": ("weekly_refit", "shipped"),
+    "exam_vs_refit": ("weekly_exam", "weekly_refit"),
+    "exam_vs_shipped": ("weekly_exam", "shipped"),
+}
+
+
+def calendar_block(profiles: list[dict]) -> dict | None:
+    """The loop against retraining on a calendar, from scripts/calendar_baseline.py.
+
+    Every other result on the page compares the loop with its first model never
+    retrained. That shows retraining is worth something, not that the loop's
+    alarms and exam are. Two calendars separate the two: a challenger every week
+    that sits the usual exam, and one shipped with no exam at all.
+
+    Fifteen cities, the six this page shows and nine it does not. Each city's
+    reading and the verdicts across cities are the script's, under the rule its
+    registration fixed before any arm ran, so they are copied here rather than
+    recomputed.
+
+    A committed snapshot, like the ablation, and checked the same way: the
+    shipped arm in each of the six has to reproduce the premium this build just
+    measured for that city, or the page draws nothing and says why.
+    """
+    root = REPO_ROOT / "outputs" / "calendar"
+    arms_path, comps_path, scores_path = (
+        root / "arms.csv", root / "comparisons.csv", root / "scores.json")
+    if not (arms_path.exists() and comps_path.exists() and scores_path.exists()):
+        return None
+    arms = pd.read_csv(arms_path)
+    comps = pd.read_csv(comps_path)
+    scores = json.loads(scores_path.read_text(encoding="utf-8"))
+
+    published = {p["label"]: (p.get("stats") or {}).get("retrain_acted") for p in profiles}
+    stale = []
+    for _, row in arms[(arms["arm"] == "shipped") & (arms["group"] == "six")].iterrows():
+        live = published.get(row["city"])
+        if live is None:
+            continue
+        snapshot, page = round(float(row["premium"]), 1), round(float(live), 1)
+        if abs(snapshot - page) > 0.1:
+            stale.append({"city": row["city"], "snapshot": snapshot, "published": page})
+
+    def _comparison(city: str, x: str, y: str) -> dict | None:
+        rows = comps[(comps["city"] == city) & (comps["x"] == x) & (comps["y"] == y)]
+        if rows.empty:
+            return None
+        row = rows.iloc[0]
+        # Fewer differing weeks than the registered minimum carries no interval.
+        if pd.isna(row["acted"]):
+            return {"value": None, "lo": None, "hi": None,
+                    "reading": row["reading"], "differing": int(row["differing"])}
+        return {
+            "value": float(row["acted"]), "lo": float(row["acted_lo"]),
+            "hi": float(row["acted_hi"]), "reading": row["reading"],
+            "differing": int(row["differing"]),
+        }
+
+    cities = []
+    for (group, city), rows in arms.groupby(["group", "city"], sort=False):
+        by_arm = {r["arm"]: r for _, r in rows.iterrows()}
+        cities.append({
+            "city": city,
+            "group": group,
+            "runs": int(by_arm["shipped"]["runs"]),
+            "trained": {arm: int(r["retrains"]) for arm, r in by_arm.items()},
+            "promoted": {arm: int(r["promotions"]) for arm, r in by_arm.items()},
+            **{key: _comparison(city, x, y) for key, (x, y) in CALENDAR_PAIRS.items()},
+        })
+    verdicts = {
+        key: scores["verdicts"][f"{x}_vs_{y}"] for key, (x, y) in CALENDAR_PAIRS.items()
+    }
+    return {
+        "cities": cities,
+        "verdicts": verdicts,
+        "void": bool(scores["void"]),
+        "stale": stale,
+    }
+
+
 def guides_block() -> dict[str, dict]:
     """How to read each chart, filled in with the thresholds the loop is running.
 
@@ -935,6 +1015,7 @@ def build() -> Path:
             (min(len(p["as_of"]) for p in profiles), max(len(p["as_of"]) for p in profiles)),
         ),
         "ablation": ablation_block(profiles),
+        "calendar": calendar_block(profiles),
         "rebaseline_check": rebaseline_check(profiles),
         "schedule": schedule_block(),
         "profiles": profiles,

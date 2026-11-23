@@ -188,6 +188,51 @@ def test_the_committed_ablation_still_matches_the_loop_it_describes() -> None:
         if c.get("reproduces_published") and not c["reproduces_published"]["passed"]
     ]
     assert not stale, "re-run scripts/ablate_model.py -- " + "; ".join(stale)
+
+
+def _calendar() -> dict:
+    import json
+
+    payload = SITE / "data.json"
+    if not payload.is_file():
+        pytest.skip("site/data.json not built")
+    calendar = json.loads(payload.read_text(encoding="utf-8")).get("calendar")
+    if not calendar:
+        pytest.skip("outputs/calendar/ not built")
+    return calendar
+
+
+def test_the_calendar_test_publishes_each_dot_with_its_interval_and_reading() -> None:
+    """Every city on the two calendar charts carries its range and its verdict.
+
+    The colour of a dot is the registered reading, so a comparison published
+    without one would be drawn as "covers zero" whatever its interval says.
+    """
+    calendar = _calendar()
+    assert len(calendar["cities"]) == 15
+    for city in calendar["cities"]:
+        for key in ("refit_vs_shipped", "exam_vs_refit"):
+            comparison = city[key]
+            missing = [f for f in ("value", "lo", "hi") if comparison.get(f) is None]
+            assert not missing, f"{city['city']}/{key} is missing {missing}"
+            assert comparison["reading"] in ("better", "worse", "not shown")
+
+
+def test_the_committed_calendar_test_still_matches_the_loop_it_describes() -> None:
+    """The calendar snapshot has not gone stale against the rest of the page.
+
+    Like the ablation, it is committed and read rather than re-run weekly, and
+    ``build_site`` checks its shipped arm against the premium this build measured
+    for each of the six. The page draws nothing where they disagree; this fails
+    the build first.
+    """
+    stale = [
+        f"{s['city']}: calendar says {s['snapshot']:+.1f}%, the page says {s['published']:+.1f}%"
+        for s in _calendar()["stale"]
+    ]
+    assert not stale, "re-run scripts/calendar_baseline.py -- " + "; ".join(stale)
+
+
 def test_every_chart_carries_a_reading() -> None:
     """No chart ships without a "How to read this" panel behind it.
 

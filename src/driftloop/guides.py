@@ -41,7 +41,8 @@ from datetime import timedelta
 # is the union, not the intersection, so moving a chart between the site and the
 # dashboard does not mean rewriting its reading.
 SITE_ONLY = frozenset({
-    "forecast", "map", "pooled", "ablation", "compare_city", "compare_value",
+    "forecast", "map", "pooled", "ablation", "calendar_refit", "calendar_exam", "compare_city",
+    "compare_value",
 })
 DASHBOARD_ONLY = frozenset({
     "distributions", "alpha_sweep", "fit_scatter", "residuals",
@@ -398,6 +399,51 @@ GUIDES: dict[str, Guide] = {
             ("points under the diagonal", "the exam promised more than the model delivered"),
             ("the long-serving points are lowest",
              "an exam passed once does not vouch for a model months later"),
+        ),
+    ),
+    "calendar_refit": Guide(
+        shows=(
+            "Each city's loop beside a calendar that trains a new model every week and ships it "
+            "with no exam. A dot is how much less forecast error the weekly model had in a typical "
+            "week, with its 95% interval."
+        ),
+        data=(
+            "Fifteen cities: the six on this page and nine it does not show, each replayed over "
+            "its own weeks within {span}. Only weeks where the two forecasts differ count, and the "
+            "typical week is the median one."
+        ),
+        units=(
+            "Percent less RMSE than the loop. A bar that crosses zero means no measurable "
+            "difference."
+        ),
+        read=(
+            ("a dot right of zero, its bar clear of it",
+             "retraining every week beat the loop's own timing and exam there"),
+            ("a dot left of zero, its bar clear of it",
+             "the loop's alarms and exam beat the calendar there"),
+            ("the bar crosses zero", "no measurable difference in that city"),
+        ),
+    ),
+    "calendar_exam": Guide(
+        shows=(
+            "The two calendars against each other. Both train a new model every week. One ships "
+            "it only if it passes the exam, the other always ships it. A dot is the difference in "
+            "forecast error in a typical week, with its 95% interval."
+        ),
+        data=(
+            "The same fifteen cities and weeks, within {span}. Only weeks where the two forecasts "
+            "differ count, and the typical week is the median one."
+        ),
+        units=(
+            "Percent less RMSE with the exam than without it. A bar that crosses zero means no "
+            "measurable difference."
+        ),
+        read=(
+            ("a dot left of zero, its bar clear of it",
+             "the exam cost accuracy: it let lucky models through, or the model it kept was stale"),
+            ("a dot right of zero, its bar clear of it",
+             "the exam stopped models that would have done harm"),
+            ("the bar crosses zero", "the exam made no measurable difference there"),
         ),
     ),
     "control_covariate": Guide(
