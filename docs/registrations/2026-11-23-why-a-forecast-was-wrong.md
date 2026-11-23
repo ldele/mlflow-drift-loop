@@ -201,3 +201,37 @@ owner's call, recorded in `docs/DECISIONS.md`.
    the question out of sample.
 
 ## Addenda
+
+**2026-11-23, the gate's coverage, before any week is split.** Nothing above was edited. The
+same-day weather was fetched with `python scripts/split_error.py --gate`, through a new switch on
+the source, `day0_from_forecast_archive`. ERA5 stays the default at lead 0, so nothing the loop
+reads has changed. The result is in `outputs/split/gate.json`.
+
+Every city's same-day weather covers 100% of the hours of its week-ahead data, so all fifteen pass
+this half of the gate. The other half, reproducing the published premium, needs the replays and
+is checked by the split before any week is split.
+
+A check that the files hold what the design says, made on the inputs alone: across the fifteen
+cities the same-day temperature differs from the week-ahead one by 1.0 to 3.0 °C on average, with
+a correlation of 0.83 to 0.96, and the target is identical in every hour. No model has been scored
+on these files and no week has been split.
+
+The files, in `data_cache/`, with the first 16 hex digits of each one's SHA-256 as fetched:
+
+| City | Hours | Covered | File | SHA-256 |
+|---|---|---|---|---|
+| Delhi | 10,584 | 100% | `openmeteo_28p6139_77p209_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `12a4e80121601112` |
+| Santiago | 6,576 | 100% | `openmeteo_-33p4489_-70p6693_2025-10-15_2026-07-15_lead0d_forecast.parquet` | `04b8461777bc4c93` |
+| Kraków | 10,584 | 100% | `openmeteo_50p0647_19p945_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `44938120ababb1e0` |
+| Johannesburg | 6,168 | 100% | `openmeteo_-26p2041_28p0473_2025-11-01_2026-07-15_lead0d_forecast.parquet` | `550bab12eb4dcbe9` |
+| Melbourne | 7,632 | 100% | `openmeteo_-37p8136_144p9631_2025-09-01_2026-07-15_lead0d_forecast.parquet` | `fb4741f88e50e77b` |
+| Los Angeles | 7,752 | 100% | `openmeteo_34p0522_-118p2437_2025-09-01_2026-07-20_lead0d_forecast.parquet` | `73518e4a0182ec56` |
+| Tokyo | 10,584 | 100% | `openmeteo_35p6762_139p6503_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `ee9428d339f879d9` |
+| Shanghai | 10,584 | 100% | `openmeteo_31p2304_121p4737_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `96a42c3d64a57759` |
+| São Paulo | 10,584 | 100% | `openmeteo_-23p5505_-46p6333_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `f76e0b8508f498d5` |
+| Mexico City | 10,584 | 100% | `openmeteo_19p4326_-99p1332_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `02c1bb4fd6f83de8` |
+| Cairo | 10,584 | 100% | `openmeteo_30p0444_31p2357_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `2005d6ef60526fad` |
+| Dhaka | 10,584 | 100% | `openmeteo_23p8103_90p4125_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `b901afdef5288f3c` |
+| Karachi | 10,584 | 100% | `openmeteo_24p8607_67p0011_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `784faf9ebff0ed07` |
+| Buenos Aires | 10,584 | 100% | `openmeteo_-34p6037_-58p3816_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `9c9a6bbfe26a65e5` |
+| Istanbul | 10,584 | 100% | `openmeteo_41p0082_28p9784_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `f128240937eea832` |

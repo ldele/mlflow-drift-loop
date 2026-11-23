@@ -106,11 +106,35 @@ def test_nowcast_mode_reads_the_analysis_instead(tmp_path, monkeypatch):
     assert list(df.columns) == COLUMNS
 
 
+def test_same_day_mode_reads_the_forecast_archive_unsuffixed(tmp_path, monkeypatch):
+    """At lead 0 the same-day forecast comes from the archive the lead-N features use."""
+    calls = _install(monkeypatch, 0)
+    cfg = OpenMeteoConfig(forecast_lead_days=0, day0_from_forecast_archive=True)
+    df = OpenMeteoSource(cfg, cache_dir=tmp_path).timeline()
+
+    url, params = next(c for c in calls if "air-quality" not in c[0])
+    assert "historical-forecast-api" in url
+    assert params["hourly"].split(",") == list(openmeteo.WEATHER_VARS)
+    assert list(df.columns) == COLUMNS
+
+
 def test_lead_is_part_of_the_cache_identity(tmp_path):
     """Same place, same span, different lead -> different data, different file."""
     a = OpenMeteoSource(OpenMeteoConfig(forecast_lead_days=0), cache_dir=tmp_path)
     b = OpenMeteoSource(OpenMeteoConfig(forecast_lead_days=7), cache_dir=tmp_path)
     assert a._cache_path() != b._cache_path()
+
+
+def test_the_archive_is_part_of_the_cache_identity_at_lead_zero(tmp_path):
+    """The analysis and the same-day forecast are different data, so different files.
+
+    The analysis keeps the file name it always had, so no existing cache moves.
+    """
+    analysis = OpenMeteoSource(OpenMeteoConfig(forecast_lead_days=0), cache_dir=tmp_path)
+    same_day = OpenMeteoSource(
+        OpenMeteoConfig(forecast_lead_days=0, day0_from_forecast_archive=True), cache_dir=tmp_path)
+    assert analysis._cache_path() != same_day._cache_path()
+    assert analysis._cache_path().name.endswith("_lead0d.parquet")
 
 
 def test_lead_beyond_the_archive_is_rejected(tmp_path, monkeypatch):

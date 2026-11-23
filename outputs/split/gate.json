@@ -1,0 +1,143 @@
+{
+ "min_coverage": 0.95,
+ "min_cities": 12,
+ "entering": 15,
+ "void": false,
+ "cities": [
+  {
+   "group": "six",
+   "city": "Delhi",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_28p6139_77p209_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "12a4e80121601112"
+  },
+  {
+   "group": "six",
+   "city": "Santiago",
+   "hours": 6576,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_-33p4489_-70p6693_2025-10-15_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "04b8461777bc4c93"
+  },
+  {
+   "group": "six",
+   "city": "Krak\u00f3w",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_50p0647_19p945_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "44938120ababb1e0"
+  },
+  {
+   "group": "six",
+   "city": "Johannesburg",
+   "hours": 6168,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_-26p2041_28p0473_2025-11-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "550bab12eb4dcbe9"
+  },
+  {
+   "group": "six",
+   "city": "Melbourne",
+   "hours": 7632,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_-37p8136_144p9631_2025-09-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "fb4741f88e50e77b"
+  },
+  {
+   "group": "six",
+   "city": "Los Angeles",
+   "hours": 7752,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_34p0522_-118p2437_2025-09-01_2026-07-20_lead0d_forecast.parquet",
+   "sha256": "73518e4a0182ec56"
+  },
+  {
+   "group": "nine",
+   "city": "Tokyo",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_35p6762_139p6503_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "ee9428d339f879d9"
+  },
+  {
+   "group": "nine",
+   "city": "Shanghai",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_31p2304_121p4737_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "96a42c3d64a57759"
+  },
+  {
+   "group": "nine",
+   "city": "S\u00e3o Paulo",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_-23p5505_-46p6333_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "f76e0b8508f498d5"
+  },
+  {
+   "group": "nine",
+   "city": "Mexico City",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_19p4326_-99p1332_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "02c1bb4fd6f83de8"
+  },
+  {
+   "group": "nine",
+   "city": "Cairo",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_30p0444_31p2357_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "2005d6ef60526fad"
+  },
+  {
+   "group": "nine",
+   "city": "Dhaka",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_23p8103_90p4125_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "b901afdef5288f3c"
+  },
+  {
+   "group": "nine",
+   "city": "Karachi",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_24p8607_67p0011_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "784faf9ebff0ed07"
+  },
+  {
+   "group": "nine",
+   "city": "Buenos Aires",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_-34p6037_-58p3816_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "9c9a6bbfe26a65e5"
+  },
+  {
+   "group": "nine",
+   "city": "Istanbul",
+   "hours": 10584,
+   "covered": 1.0,
+   "enters": true,
+   "file": "openmeteo_41p0082_28p9784_2025-05-01_2026-07-15_lead0d_forecast.parquet",
+   "sha256": "f128240937eea832"
+  }
+ ]
+}

@@ -74,6 +74,12 @@ outputs/calendar/*
 !outputs/calendar/series.json
 !outputs/calendar/scores.json
 
+# Why a forecast was wrong (scripts/split_error.py): the gate's coverage and the
+# hashes of the same-day weather files, which the registration's addendum pins.
+!outputs/split/
+outputs/split/*
+!outputs/split/gate.json
+
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and
 # published. The glob covers cities added later without another edit here.

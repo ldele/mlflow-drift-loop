@@ -262,6 +262,12 @@ class OpenMeteoConfig:
     horizon: pd.Timestamp = pd.Timestamp("2026-07-15")
     timezone: str = "GMT"
     forecast_lead_days: int = FORECAST_LEAD_DAYS
+    # Read only at lead 0. False takes the ERA5 analysis. True takes the forecast
+    # archive's same-day series instead: the latest run for each hour, from the
+    # same forecasting system as the lead-N features. A model trained on one
+    # system and scored on the other would count the gap between the two systems
+    # as forecast error.
+    day0_from_forecast_archive: bool = False
 
 
 # The monitored locations. Adding a city means adding a config here and a Profile

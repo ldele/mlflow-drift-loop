@@ -100,7 +100,9 @@ def _weather_request(cfg: OpenMeteoConfig) -> tuple[str, list[str], dict[str, st
     """
     lead = cfg.forecast_lead_days
     if lead <= 0:
-        return WEATHER_URL, list(WEATHER_VARS), dict(WEATHER_VARS)
+        # The plain variables on the forecast archive are its same-day series.
+        url = FORECAST_ARCHIVE_URL if cfg.day0_from_forecast_archive else WEATHER_URL
+        return url, list(WEATHER_VARS), dict(WEATHER_VARS)
     if lead > MAX_LEAD_DAYS:
         raise ValueError(
             f"forecast_lead_days={lead} exceeds Open-Meteo's previous-run archive "
@@ -165,6 +167,9 @@ class OpenMeteoSource:
             f"openmeteo_{cfg.latitude}_{cfg.longitude}_"
             f"{cfg.origin.date()}_{cfg.horizon.date()}_lead{cfg.forecast_lead_days}d"
         ).replace(".", "p")
+        # Same lead, different archive: the same-day forecast is not the analysis.
+        if cfg.forecast_lead_days <= 0 and cfg.day0_from_forecast_archive:
+            stem += "_forecast"
         return self.cache_dir / f"{stem}.parquet"
 
     def timeline(self, refresh: bool = False) -> pd.DataFrame:
