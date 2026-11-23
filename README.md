@@ -50,7 +50,7 @@ the same first model never retrained, week by week, with a 95% interval
    the year before did not say which, against a
    [prediction written first](docs/registrations/2026-11-11-premium-on-held-out-cities.md).
 
-2. **A weekly calendar matches the loop's own decisions, and in three cities beats them.**
+2. **A weekly calendar does at least as well as the loop's own decisions.**
    Training a model every week and shipping it without an exam was measurably better than the
    loop in 3<!--fig:calendar.refit_vs_shipped.better--> of fifteen cities and worse in
    none, by at most Istanbul's +4.8% [+1.7, +7.3]<!--fig:calendar.istanbul.refit_vs_shipped-->,
