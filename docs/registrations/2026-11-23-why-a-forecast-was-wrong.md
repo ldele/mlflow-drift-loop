@@ -235,3 +235,31 @@ The files, in `data_cache/`, with the first 16 hex digits of each one's SHA-256 
 | Karachi | 10,584 | 100% | `openmeteo_24p8607_67p0011_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `784faf9ebff0ed07` |
 | Buenos Aires | 10,584 | 100% | `openmeteo_-34p6037_-58p3816_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `9c9a6bbfe26a65e5` |
 | Istanbul | 10,584 | 100% | `openmeteo_41p0082_28p9784_2025-05-01_2026-07-15_lead0d_forecast.parquet` | `f128240937eea832` |
+
+**2026-11-23, what the code fixes that the text above left open, before any city is split.**
+Nothing above was edited. `scripts/split_error.py --split` implements this file. Four choices the
+text did not make are made there, and recorded here before the script is run on any city:
+
+- **The simulated city's replay.** The text fixes the dials, not the replay, and the simulated
+  city has none of its own. The champion trains on 1 April to 1 July 2025, the window
+  `scripts/sweep_knobs.py` uses. Runs are weekly from 15 July, the first date the loop allows
+  after a 14-day monitor window, to 23 December 2025, the last week inside the simulated year.
+  That is 24 weeks at each dial, on the shipped loop.
+- **What "to the precision of the coefficient tags" means.** The tags carry six decimals, so each
+  slope and the intercept can be off by 5e-7, and an hour's prediction by 5e-7 × (1 + the sum of
+  the inputs' absolute values). Surface pressure near 1000 hPa makes that about 1e-3 µg/m³. Summed
+  over a week, that bounds how far the squared error of a model rebuilt from its tags can sit from
+  the fitted model's (`tag_slack` in the script). Cell A against the logged error, and the twin
+  trained on week-ahead weather against cell A, pass when every gap is within that bound. A
+  fixed relative tolerance of 1e-4 was tried first and dropped: on the simulated city the gaps
+  came to 2.9e-5 and 5.9e-5, close enough to it that a clean-air city could have failed on
+  rounding alone.
+- **A changed input.** A city whose day-0 file no longer hashes to the value above does not enter.
+- **The week a retrain acted on.** For P4, a week counts when the run at its end has
+  `retrain_triggered` set, whichever alarm fired.
+
+Before this entry, the script was run on the simulated city only: in its tests, on a five-week
+replay, and as a dry run of the positive control on the full 24-week replay at both dials. In the
+dry run the relation share was 0.5% at dial 0 and 88.4% at dial 2.0, a difference of +87.9%
+[+75.1, +91.2]. The weather part was zero at both, and the largest gaps against the tags were 0.70
+and 0.73 of the rounding bound. No real city has been split.
