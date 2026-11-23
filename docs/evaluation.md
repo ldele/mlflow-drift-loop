@@ -437,6 +437,141 @@ and on the six alone no comparison clears zero in two cities. The weekly refit l
 recent week, as every challenger does. One cadence was tested. Whether to ship a calendar is an
 open decision, and this section does not take it.
 
+## Why a forecast was wrong
+
+Run on 2026-11-23 with `python scripts/split_error.py --split`. The split, the controls and four
+predictions were fixed in [the registration](registrations/2026-11-23-why-a-forecast-was-wrong.md),
+committed as `f9306b3` before any week was split.
+
+The loop retrains when its error grows, but an error can grow for reasons a retrain cannot
+touch. So each week's error is split three ways, by asking how much smaller it would have been
+with each of two things put right:
+
+- **the weather forecast:** the same model given the weather as forecast on the day itself,
+  rather than a week ahead;
+- **the relation moving:** a model refitted on the four weeks around that week, so it has
+  learned how weather turned into pollution at that time;
+- **neither:** what is left with both put right, which no retrain on these inputs can reach.
+
+The two are averaged over both orders, so the three parts add up to the week's whole error (the
+Shapley split). Each part below is a share of the city's squared error over the year. The error
+is summed over hours, so a smoggy week weighs more than a clean one. Each interval comes from
+resampling the city's weeks in blocks.
+
+Before any split was read:
+
+- the models rebuilt by the new code matched the loop's own logged errors in every city;
+- the weather part came out zero when both kinds of weather were the same;
+- on the simulated city, turning up the relation's drift raised its share from
+  0.5%<!--fig:split.positive.low--> to 88.4%<!--fig:split.positive.high-->.
+
+All fifteen cities entered.
+
+| | weather forecast | relation moving | neither | a real refit reaches | retrains on relation weeks |
+|---|---|---|---|---|---|
+| Delhi | −1% [−10, 8]<!--fig:split.delhi.weather--> | 57% [41, 69]<!--fig:split.delhi.relation--> | 44% [35, 58]<!--fig:split.delhi.unexplained--> | 11%<!--fig:split.delhi.reach--> | 7<!--fig:split.delhi.retrain_weeks_relation--> of 8<!--fig:split.delhi.retrain_weeks--> |
+| Santiago | 4% [−1, 7]<!--fig:split.santiago.weather--> | 60% [46, 67]<!--fig:split.santiago.relation--> | 36% [27, 54]<!--fig:split.santiago.unexplained--> | 10%<!--fig:split.santiago.reach--> | 8<!--fig:split.santiago.retrain_weeks_relation--> of 13<!--fig:split.santiago.retrain_weeks--> |
+| Kraków | 15% [9, 22]<!--fig:split.krakow.weather--> | 40% [21, 54]<!--fig:split.krakow.relation--> | 46% [35, 58]<!--fig:split.krakow.unexplained--> | 4%<!--fig:split.krakow.reach--> | 13<!--fig:split.krakow.retrain_weeks_relation--> of 21<!--fig:split.krakow.retrain_weeks--> |
+| Johannesburg | 14% [12, 19]<!--fig:split.joburg.weather--> | 35% [9, 40]<!--fig:split.joburg.relation--> | 51% [47, 73]<!--fig:split.joburg.unexplained--> | 21%<!--fig:split.joburg.reach--> | 3<!--fig:split.joburg.retrain_weeks_relation--> of 12<!--fig:split.joburg.retrain_weeks--> |
+| Melbourne | 11% [6, 17]<!--fig:split.melbourne.weather--> | 34% [2, 44]<!--fig:split.melbourne.relation--> | 54% [44, 86]<!--fig:split.melbourne.unexplained--> | 16%<!--fig:split.melbourne.reach--> | 2<!--fig:split.melbourne.retrain_weeks_relation--> of 9<!--fig:split.melbourne.retrain_weeks--> |
+| Los Angeles | 12% [2, 21]<!--fig:split.la.weather--> | 38% [29, 50]<!--fig:split.la.relation--> | 49% [39, 61]<!--fig:split.la.unexplained--> | 31%<!--fig:split.la.reach--> | 4<!--fig:split.la.retrain_weeks_relation--> of 7<!--fig:split.la.retrain_weeks--> |
+| Tokyo | 16% [10, 21]<!--fig:split.tokyo.weather--> | 16% [8, 27]<!--fig:split.tokyo.relation--> | 67% [58, 77]<!--fig:split.tokyo.unexplained--> | 10%<!--fig:split.tokyo.reach--> | 3<!--fig:split.tokyo.retrain_weeks_relation--> of 7<!--fig:split.tokyo.retrain_weeks--> |
+| Shanghai | 13% [7, 18]<!--fig:split.shanghai.weather--> | 21% [14, 29]<!--fig:split.shanghai.relation--> | 66% [61, 74]<!--fig:split.shanghai.unexplained--> | −10%<!--fig:split.shanghai.reach--> | 1<!--fig:split.shanghai.retrain_weeks_relation--> of 8<!--fig:split.shanghai.retrain_weeks--> |
+| São Paulo | 2% [−14, 8]<!--fig:split.sao_paulo.weather--> | 14% [7, 31]<!--fig:split.sao_paulo.relation--> | 84% [78, 89]<!--fig:split.sao_paulo.unexplained--> | −4%<!--fig:split.sao_paulo.reach--> | 0<!--fig:split.sao_paulo.retrain_weeks_relation--> of 10<!--fig:split.sao_paulo.retrain_weeks--> |
+| Mexico City | 9% [1, 15]<!--fig:split.mexico_city.weather--> | 22% [13, 36]<!--fig:split.mexico_city.relation--> | 68% [60, 77]<!--fig:split.mexico_city.unexplained--> | 11%<!--fig:split.mexico_city.reach--> | 0<!--fig:split.mexico_city.retrain_weeks_relation--> of 2<!--fig:split.mexico_city.retrain_weeks--> |
+| Cairo | −3% [−9, 6]<!--fig:split.cairo.weather--> | 34% [26, 41]<!--fig:split.cairo.relation--> | 69% [57, 79]<!--fig:split.cairo.unexplained--> | 11%<!--fig:split.cairo.reach--> | 7<!--fig:split.cairo.retrain_weeks_relation--> of 15<!--fig:split.cairo.retrain_weeks--> |
+| Dhaka | 8% [3, 12]<!--fig:split.dhaka.weather--> | 38% [30, 45]<!--fig:split.dhaka.relation--> | 54% [47, 62]<!--fig:split.dhaka.unexplained--> | 18%<!--fig:split.dhaka.reach--> | 4<!--fig:split.dhaka.retrain_weeks_relation--> of 13<!--fig:split.dhaka.retrain_weeks--> |
+| Karachi | 1% [−2, 5]<!--fig:split.karachi.weather--> | 28% [16, 34]<!--fig:split.karachi.relation--> | 71% [64, 83]<!--fig:split.karachi.unexplained--> | 7%<!--fig:split.karachi.reach--> | 2<!--fig:split.karachi.retrain_weeks_relation--> of 3<!--fig:split.karachi.retrain_weeks--> |
+| Buenos Aires | 19% [13, 23]<!--fig:split.buenos_aires.weather--> | 18% [4, 30]<!--fig:split.buenos_aires.relation--> | 63% [53, 74]<!--fig:split.buenos_aires.unexplained--> | 26%<!--fig:split.buenos_aires.reach--> | 1<!--fig:split.buenos_aires.retrain_weeks_relation--> of 7<!--fig:split.buenos_aires.retrain_weeks--> |
+| Istanbul | 19% [12, 26]<!--fig:split.istanbul.weather--> | 34% [24, 44]<!--fig:split.istanbul.relation--> | 48% [41, 53]<!--fig:split.istanbul.unexplained--> | 22%<!--fig:split.istanbul.reach--> | 5<!--fig:split.istanbul.retrain_weeks_relation--> of 15<!--fig:split.istanbul.retrain_weeks--> |
+
+The first six are the cities every setting was chosen on, the other nine the held-out cities.
+Each row adds up to 100% before rounding.
+
+- **A real refit reaches:** the share of the relation part that the loop's own kind of refit,
+  on the 180 days before the week, recovers. Where it is negative, the refit made the forecast
+  worse.
+- **Retrains on relation weeks:** of the weeks the loop retrained, how many had the relation as
+  their largest part.
+
+| # | predicted | what happened |
+|---|---|---|
+| P1 | what the model cannot see is the largest part | **held**: largest in 13<!--fig:split.p1.count--> cities, where 10<!--fig:split.two_thirds--> were needed |
+| P2 | the relation, the part retraining can fix, is the smallest | **failed**: smallest in 1<!--fig:split.p2.count--> city |
+| P3 | where the relation part is larger, retraining paid more | **held**: rank correlation 0.49<!--fig:split.p3.rho-->, one-sided p 0.032<!--fig:split.p3.p--> |
+| P4 | most weeks the loop retrained were not relation weeks | **held**: 60<!--fig:split.p4.relation--> of 150<!--fig:split.p4.weeks--> were, 40% [32.5, 48.0]<!--fig:split.p4.share--> |
+
+**Most of a week's error is beyond any retrain.** Neither fix explains a mean
+58% [51, 65]<!--fig:split.mean.unexplained--> of the error, and that part is the largest in 13 of
+the fifteen cities. The model sees six weather inputs and the hour of day. It never sees the
+recent air or the emissions.
+
+**The weather forecast is the smallest part, not the relation.** A same-day forecast removes a
+mean 9% [5, 13]<!--fig:split.mean.weather--> of the error. A model that has caught up with the
+relation removes 33% [25, 40]<!--fig:split.mean.relation-->. The weather part is the smallest of
+the three in 14<!--fig:split.window_28.smallest.weather--> cities. This ranking barely depends on
+the four-week window that separates the relation from the rest. At 14 and 56 days the mean
+relation share is 32%<!--fig:split.window_14.mean.relation--> and
+30%<!--fig:split.window_56.mean.relation-->, and the weather part stays the smallest in
+13<!--fig:split.window_14.smallest.weather--> and 15<!--fig:split.window_56.smallest.weather-->
+cities.
+
+**A refit on the past reaches little of the relation part.** The relation part is measured with
+a refit that has seen the week itself, so it is a ceiling. The loop's own kind of refit, on the
+180 days before the week, recovers a median of 11%<!--fig:split.reach.median--> of it, ranging
+from −10%<!--fig:split.reach.min--> to 31%<!--fig:split.reach.max--> across cities. Most of what
+a week needed was not in the months before it. That fits the calendar test, where a refit every
+week beat the loop in three cities and by at most
+2.0%<!--fig:calendar.istanbul.refit_vs_shipped.all_weeks--> over the whole year. This run cannot
+say whether a shorter window, or a model with more inputs, would reach more.
+
+**The relation part ranks the cities as retraining's gain does.** Delhi and Santiago, the two
+largest gains among the six, have the two largest relation shares,
+57%<!--fig:split.delhi.relation--> and 60%<!--fig:split.santiago.relation-->. The six and the nine
+each rank the same way on their own: 0.66<!--fig:split.p3.six.rho--> and
+0.62<!--fig:split.p3.nine.rho-->. Those groups are too small to test, but the correlation is not
+carried by the cities the loop was tuned on.
+
+**Most retrains were not relation weeks, but relation weeks drew more of them.**
+40%<!--fig:split.p4.share--> of the weeks the loop retrained had the relation as their largest
+part. Of the weeks it did not retrain, 22%<!--fig:split.other_weeks.share--> did
+(87<!--fig:split.other_weeks.relation--> of 393<!--fig:split.other_weeks-->). So a week the loop
+retrained was almost twice as likely as any other week to be a relation week. Even so, most of its
+retrains landed on weeks where neither fix was the main cause. P4 held
+by its count with little to spare: resampling whole cities puts the share at
+40% [28, 51]<!--fig:split.p4.by_city-->.
+
+**What this says about measuring a loop.** An alarm that watches the error alone cannot tell
+why the error rose. The split can, after the fact, and on its first run it ranked cities the way
+retraining's gains do. It also separates what moved from what a retrain can recover. The
+relation is about a third of the error, and a refit on past data recovers about a tenth of that.
+On this evidence, the loop's retraining is limited less by when it fires than by what a refit on
+past data can learn.
+
+Under the registration's outcome table:
+
+- the split may now be published week by week as the loop's reason for a miss (P3);
+- the alarms are worth another look, scored against the weekly refit (P2);
+- a "do not trust this forecast" path is worth building in plan item 4 (P4).
+
+None of these changes the loop. That is an open decision, and this section does not take it.
+
+The limits are the registration's:
+
+- **The target is CAMS model output,** made from CAMS's own analysed weather.
+- **Same-day weather is still a forecast,** hours ahead, so the weather part is a lower bound.
+- **The relation part is a ceiling** on what retraining could fix.
+- **One model class was used.**
+- **Each city holds about 2 to 10 independent observations.**
+
+Two more limits:
+
+- **Delhi's split depends on the order.** Its interaction is −18.1%<!--fig:split.delhi.interaction-->,
+  large enough that its weather part changes sign depending on which fix is taken first.
+- **The cross-city means were computed after the results.** They and their t intervals come from
+  `split_error.py --describe`, added after the run, and are descriptions: at fifteen cities the
+  registration's simulation found such intervals too narrow.
+
 ## The analysis of the first loop
 
 The full analysis of the loop as it ran until 2026-11-10 is in
@@ -581,6 +716,11 @@ the published grid is left exactly as it was.
   most 2.0%<!--fig:calendar.istanbul.refit_vs_shipped.all_weeks--> in any city and clears zero
   in none. The alarms and the exam save compute, and are not shown to
   add accuracy.
+- **Most of its error is beyond any retrain.** A mean
+  58% [51, 65]<!--fig:split.mean.unexplained--> of a week's error is explained neither by a
+  better weather forecast nor by a refit through the week. Of the part a refit could fix, the
+  loop's kind of refit recovers a median of 11%<!--fig:split.reach.median-->
+  ([above](#why-a-forecast-was-wrong)).
 - **The first retrain alarm still ratchets.** The second is a backstop and not a repair: the
   longest silences fall from 30<!--fig:rebaseline.krakow.shipped.silence--> weeks to
   22<!--fig:rebaseline.krakow.fixed.silence--> in Kraków and from 35<!--fig:rebaseline.la.shipped.silence--> to

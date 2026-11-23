@@ -263,3 +263,64 @@ replay, and as a dry run of the positive control on the full 24-week replay at b
 dry run the relation share was 0.5% at dial 0 and 88.4% at dial 2.0, a difference of +87.9%
 [+75.1, +91.2]. The weather part was zero at both, and the largest gaps against the tags were 0.70
 and 0.73 of the rounding bound. No real city has been split.
+
+**2026-11-23, after every result had been seen.** Nothing above was edited. The script was
+committed as `a95858f` before it was run on any real city, and was run that day with
+`python scripts/split_error.py --split --jobs 8`. The outputs are in `outputs/split/`:
+`weeks.csv` (the four cells of every week), `cities.csv` (each city's split), `scores.json` (the
+controls and the predictions) and `described.json` (the readings below the table).
+
+Every control passed, so nothing is void:
+
+- **Reproduction:** cell A matched the loop's logged error at every run, within
+  0.34<!--fig:split.reproduction.min--> to 0.81<!--fig:split.reproduction.max--> of the rounding
+  bound. The text asks this of the six, and it held in all fifteen.
+- **Inert weather:** the twin within 0.43<!--fig:split.inert.min--> to
+  0.88<!--fig:split.inert.max--> of the rounding bound.
+- **Positive control:** the simulated city's relation share was
+  0.5%<!--fig:split.positive.low--> at dial 0 and 88.4%<!--fig:split.positive.high--> at dial
+  2.0, a difference of +87.9% [+75.1, +91.2]<!--fig:split.positive.difference-->. The weather
+  part was zero at both.
+
+All 15<!--fig:split.entering--> cities entered. Coverage was 100% everywhere, every hash was
+unchanged, and every replay reproduced the city's published premium.
+
+| | Prediction | Result | Verdict |
+|---|---|---|---|
+| P1 | unexplained is the largest part | in 13<!--fig:split.p1.count--> cities, where 10<!--fig:split.two_thirds--> were needed | **held** |
+| P2 | the relation is the smallest part | in 1<!--fig:split.p2.count--> city | **failed** |
+| P3 | the relation share ranks cities as their premium does | rho 0.49<!--fig:split.p3.rho-->, one-sided p 0.032<!--fig:split.p3.p--> | **held** |
+| P4 | under half the retrain weeks are relation weeks | 60<!--fig:split.p4.relation--> of 150<!--fig:split.p4.weeks--> weeks, 40%<!--fig:split.p4.share--> | **held** |
+
+**P2 failed the other way from its reasoning.** The reasoning held that the weather forecast
+would outweigh the relation among the parts in reach. Instead the weather part is the smallest
+of the three in 14<!--fig:split.window_28.smallest.weather--> cities. The outcome table's row
+for a failed P2 applies as written: retraining has material the loop leaves unused. One thing
+the table did not anticipate comes from the reported reach. A real refit on the 180 days before
+each week recovers a median of 11%<!--fig:split.reach.median--> of the relation part, so most
+of that material is out of reach of the kind of retrain the loop does. The failure is scored as
+registered.
+
+**P4 held by its count with a thin margin.** Resampling whole cities, which decides nothing,
+puts the share at 40% [28, 51]<!--fig:split.p4.by_city-->.
+
+Two reported items, recorded so a reader knows which code came after the results:
+
+- **The mean share across cities, with a t interval,** is listed above as reported, but the
+  script as committed did not write it. `split_error.py --describe` was added after the run. It
+  reads only `weeks.csv` and `cities.csv` and writes `described.json`, which also holds the
+  other readings below the table. None of it decides anything.
+- **Each order on its own** differs from the averaged split by exactly half the interaction, by
+  the algebra of the two orders. Only the interaction is published. Delhi's is
+  −18.1%<!--fig:split.delhi.interaction-->, large enough that its weather part changes sign
+  with the order taken.
+
+What follows, under the outcome table:
+
+- P2 failing makes the alarms worth another look, scored against the weekly refit.
+- P3 holding allows the split to be published week by week as the loop's reason for a miss.
+- P4 holding is evidence for a "do not trust this forecast" path in item 4.
+
+None of these changes the loop.
+
+Results are in `docs/evaluation.md`, under "Why a forecast was wrong".

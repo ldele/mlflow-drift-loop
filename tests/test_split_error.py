@@ -221,6 +221,60 @@ def test_the_permutation_test_is_one_sided() -> None:
     assert rho == pytest.approx(-1.0) and p > 0.99
 
 
+def _described_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Four cities, the last kept out by the gate, and their weeks as weeks.csv holds them."""
+    shares = [(0.1, 0.3, 0.6), (0.3, 0.1, 0.6), (-0.1, 0.4, 0.7), (0.9, 0.05, 0.05)]
+    cities = pd.DataFrame([
+        {"group": "six" if i < 2 else "nine", "city": f"c{i}", "enters": i < 3,
+         "premium": float(i), "reach": 0.1 * i, "reproduction_error": 0.5, "inert_error": 0.4 + i / 10,
+         **{f"{part}{suffix}": s for part, s in zip(se.PARTS, row, strict=True)
+            for suffix in ("", "_14", "_56")}}
+        for i, row in enumerate(shares)
+    ])
+    weeks = pd.DataFrame([
+        {"group": "six", "city": "c0", "retrained": True, "largest": "relation"},
+        {"group": "six", "city": "c0", "retrained": False, "largest": "unexplained"},
+        {"group": "six", "city": "c1", "retrained": True, "largest": "unexplained"},
+        {"group": "nine", "city": "c2", "retrained": False, "largest": "relation"},
+        {"group": "nine", "city": "c3", "retrained": True, "largest": "relation"},
+        {"group": "synthetic", "city": "Synthetic, concept dial 2", "retrained": True,
+         "largest": "relation"},
+    ])
+    return weeks, cities
+
+
+def test_the_readings_beside_the_predictions_use_only_the_cities_that_entered() -> None:
+    weeks, cities = _described_tables()
+    out = se.describe(weeks, cities)
+    assert out["cities"] == 3
+    weather = out["means"]["weather"]
+    assert weather["point"] == pytest.approx(0.1)
+    # A 95% t interval on three values: mean ± t(0.975, 2) × sd / √3.
+    assert weather["hi"] - weather["point"] == pytest.approx(4.302653 * 0.2 / np.sqrt(3), rel=1e-5)
+    assert out["reach"]["median"] == pytest.approx(0.1)
+    assert out["windows"]["28"]["largest"] == {"weather": 0, "relation": 0, "unexplained": 3}
+    assert out["windows"]["28"]["smallest"] == {"weather": 2, "relation": 1, "unexplained": 0}
+    # Neither the gated-out city's weeks nor the simulated city's are read.
+    assert out["retrain_weeks"] == {"weeks": 2, "relation_largest": 1, "share": 0.5}
+    assert out["other_weeks"] == {"weeks": 2, "relation_largest": 1, "share": 0.5}
+    assert out["groups"]["six"]["cities"] == 2 and out["groups"]["nine"]["cities"] == 1
+    assert out["inert_error"] == {"min": pytest.approx(0.4), "max": pytest.approx(0.6)}
+
+
+def test_the_readings_count_the_same_retrain_weeks_as_p4() -> None:
+    weeks, cities = _described_tables()
+    entering = cities[cities["enters"]]
+    per_city = [list(weeks[(weeks.city == c) & weeks.retrained]["largest"]) for c in entering.city]
+    scored = se.score([
+        {"enters": True, "largest": "unexplained", "smallest": "weather",
+         "shares": {"relation": r}, "premium": p, "retrain_weeks": w}
+        for r, p, w in zip(entering["relation"], entering["premium"], per_city, strict=True)
+    ], controls_ok=True)
+    described = se.describe(weeks, cities)["retrain_weeks"]
+    assert described["weeks"] == scored["P4"]["retrain_weeks"]
+    assert described["relation_largest"] == scored["P4"]["relation_largest"]
+
+
 # --------------------------------------------------------------------------- #
 # The gate                                                                     #
 # --------------------------------------------------------------------------- #

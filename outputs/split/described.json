@@ -1,0 +1,110 @@
+{
+ "cities": 15,
+ "means": {
+  "weather": {
+   "point": 0.09356328596183673,
+   "lo": 0.05468033678902259,
+   "hi": 0.13244623513465087,
+   "median": 0.1117995235568481
+  },
+  "relation": {
+   "point": 0.3254591035173702,
+   "lo": 0.25111802861364424,
+   "hi": 0.3998001784210961,
+   "median": 0.3398737753693708
+  },
+  "unexplained": {
+   "point": 0.580977610520793,
+   "lo": 0.5093984761537416,
+   "hi": 0.6525567448878444,
+   "median": 0.5443063937201259
+  }
+ },
+ "windows": {
+  "28": {
+   "largest": {
+    "weather": 0,
+    "relation": 2,
+    "unexplained": 13
+   },
+   "smallest": {
+    "weather": 14,
+    "relation": 1,
+    "unexplained": 0
+   },
+   "means": {
+    "weather": 0.09356328596183673,
+    "relation": 0.3254591035173702,
+    "unexplained": 0.580977610520793
+   }
+  },
+  "14": {
+   "largest": {
+    "weather": 0,
+    "relation": 3,
+    "unexplained": 12
+   },
+   "smallest": {
+    "weather": 13,
+    "relation": 2,
+    "unexplained": 0
+   },
+   "means": {
+    "weather": 0.09639965038370366,
+    "relation": 0.3185011749425671,
+    "unexplained": 0.5850991746737293
+   }
+  },
+  "56": {
+   "largest": {
+    "weather": 0,
+    "relation": 2,
+    "unexplained": 13
+   },
+   "smallest": {
+    "weather": 15,
+    "relation": 0,
+    "unexplained": 0
+   },
+   "means": {
+    "weather": 0.09158891532973319,
+    "relation": 0.30123051964426983,
+    "unexplained": 0.6071805650259969
+   }
+  }
+ },
+ "reach": {
+  "mean": 0.12334358934252586,
+  "median": 0.1144013444757024,
+  "min": -0.0967158472162408,
+  "max": 0.3089383839201988
+ },
+ "retrain_weeks": {
+  "weeks": 150,
+  "relation_largest": 60,
+  "share": 0.4
+ },
+ "other_weeks": {
+  "weeks": 393,
+  "relation_largest": 87,
+  "share": 0.22137404580152673
+ },
+ "groups": {
+  "six": {
+   "cities": 6,
+   "rho": 0.6571428571428573
+  },
+  "nine": {
+   "cities": 9,
+   "rho": 0.6166666666666666
+  }
+ },
+ "reproduction_error": {
+  "min": 0.338164669745496,
+  "max": 0.805415388063365
+ },
+ "inert_error": {
+  "min": 0.4264884766758488,
+  "max": 0.8795714166741428
+ }
+}

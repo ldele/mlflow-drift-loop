@@ -292,6 +292,73 @@ def _calendar(arms: list[dict[str, str]], comparisons: list[dict[str, str]], sco
     figures["calendar.p4.half_or_more"] = scores["p4_cities_half_or_more"]
 
 
+# Why a forecast was wrong (scripts/split_error.py), keyed under ``split.`` with the
+# calendar test's slugs. Shares are written as percentages of the served error.
+SPLIT_DIR = "split"
+_SPLIT_PARTS = ("weather", "relation", "unexplained")
+
+
+def _split(cities: list[dict[str, str]], scores: dict, described: dict,
+           figures: dict[str, float]) -> None:
+    """Each city's three parts, the registered score, and what is reported beside it."""
+    for row in cities:
+        key = f"split.{_calendar_slug(row['city'])}"
+        figures[f"{key}.weeks"] = int(row["weeks"])
+        for part in _SPLIT_PARTS:
+            _put(figures, f"{key}.{part}", 100 * float(row[part]),
+                 100 * float(row[f"{part}_lo"]), 100 * float(row[f"{part}_hi"]))
+            for days in (14, 56):
+                figures[f"{key}.{part}_{days}"] = 100 * float(row[f"{part}_{days}"])
+        figures[f"{key}.interaction"] = 100 * float(row["interaction"])
+        figures[f"{key}.reach"] = 100 * float(row["reach"])
+        figures[f"{key}.retrain_weeks"] = int(row["retrain_weeks"])
+        figures[f"{key}.retrain_weeks_relation"] = int(row["retrain_weeks_relation"])
+
+    figures["split.entering"] = scores["entering"]
+    figures["split.two_thirds"] = scores["two_thirds"]
+    for name, count in (("p1", "unexplained_largest"), ("p2", "relation_smallest")):
+        block = scores[name.upper()]
+        figures[f"split.{name}.count"] = block[count]
+        _put(figures, f"split.{name}.share", 100 * block[count] / block["of"], *block["wilson"])
+    figures["split.p3.rho"] = scores["P3"]["rho"]
+    figures["split.p3.p"] = scores["P3"]["p"]
+    p4 = scores["P4"]
+    figures["split.p4.weeks"] = p4["retrain_weeks"]
+    figures["split.p4.relation"] = p4["relation_largest"]
+    _put(figures, "split.p4.share", 100 * p4["share"], *p4["wilson"])
+    # The same share with cities resampled, since a city's weeks are not independent.
+    _put(figures, "split.p4.by_city", 100 * p4["share"],
+         100 * p4["city_bootstrap"][0], 100 * p4["city_bootstrap"][1])
+
+    positive = scores["positive_control"]
+    figures["split.positive.low"] = 100 * positive["relation_low"]
+    figures["split.positive.high"] = 100 * positive["relation_high"]
+    _put(figures, "split.positive.difference", 100 * positive["difference"],
+         100 * positive["lo"], 100 * positive["hi"])
+    for control in ("reproduction", "inert"):
+        figures[f"split.{control}.min"] = described[f"{control}_error"]["min"]
+        figures[f"split.{control}.max"] = described[f"{control}_error"]["max"]
+
+    # Reported, not scored.
+    for part, block in described["means"].items():
+        _put(figures, f"split.mean.{part}", 100 * block["point"], 100 * block["lo"], 100 * block["hi"])
+        figures[f"split.median.{part}"] = 100 * block["median"]
+    for days, window in described["windows"].items():
+        for which in ("largest", "smallest"):
+            for part, count in window[which].items():
+                figures[f"split.window_{days}.{which}.{part}"] = count
+        for part, share in window["means"].items():
+            figures[f"split.window_{days}.mean.{part}"] = 100 * share
+    for name in ("mean", "median", "min", "max"):
+        figures[f"split.reach.{name}"] = 100 * described["reach"][name]
+    other = described["other_weeks"]
+    figures["split.other_weeks"] = other["weeks"]
+    figures["split.other_weeks.relation"] = other["relation_largest"]
+    figures["split.other_weeks.share"] = 100 * other["share"]
+    for group, block in described["groups"].items():
+        figures[f"split.p3.{group}.rho"] = block["rho"]
+
+
 def _loop(outputs: Path) -> dict[str, float]:
     """Every figure one loop's outputs hold, under its bare key."""
     figures: dict[str, float] = {}
@@ -328,6 +395,12 @@ def collect(outputs: Path) -> dict[str, float]:
         _rows(outputs / CALENDAR_DIR / "arms.csv"),
         _rows(outputs / CALENDAR_DIR / "comparisons.csv"),
         json.loads((outputs / CALENDAR_DIR / "scores.json").read_text(encoding="utf-8")),
+        figures,
+    )
+    _split(
+        _rows(outputs / SPLIT_DIR / "cities.csv"),
+        json.loads((outputs / SPLIT_DIR / "scores.json").read_text(encoding="utf-8")),
+        json.loads((outputs / SPLIT_DIR / "described.json").read_text(encoding="utf-8")),
         figures,
     )
     return {

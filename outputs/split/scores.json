@@ -1,0 +1,59 @@
+{
+ "controls": {
+  "reproduction": true,
+  "inert": true,
+  "positive": true
+ },
+ "positive_control": {
+  "relation_low": 0.004651383139604636,
+  "relation_high": 0.8838959328521353,
+  "difference": 0.8792445497125306,
+  "lo": 0.7512078111856354,
+  "hi": 0.9117199545017528,
+  "weather_low": -1.030497005199503e-05,
+  "weather_high": -2.7903101816187506e-06,
+  "passed": true,
+  "reproduction_error": 0.7019209665938174
+ },
+ "entering": 15,
+ "two_thirds": 10,
+ "void": false,
+ "P1": {
+  "unexplained_largest": 13,
+  "of": 15,
+  "wilson": [
+   62.11801716767764,
+   96.26387408969346
+  ],
+  "verdict": "held"
+ },
+ "P2": {
+  "relation_smallest": 1,
+  "of": 15,
+  "wilson": [
+   1.1866895493268554,
+   29.816529873780027
+  ],
+  "verdict": "failed"
+ },
+ "P3": {
+  "rho": 0.4892857142857142,
+  "p": 0.031996800319968,
+  "permutations": 10000,
+  "verdict": "held"
+ },
+ "P4": {
+  "retrain_weeks": 150,
+  "relation_largest": 60,
+  "share": 0.4,
+  "wilson": [
+   32.50432073625253,
+   47.995084151109005
+  ],
+  "city_bootstrap": [
+   0.2751677852348993,
+   0.5125039556962024
+  ],
+  "verdict": "held"
+ }
+}

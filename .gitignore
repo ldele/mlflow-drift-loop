@@ -75,10 +75,17 @@ outputs/calendar/*
 !outputs/calendar/scores.json
 
 # Why a forecast was wrong (scripts/split_error.py): the gate's coverage and the
-# hashes of the same-day weather files, which the registration's addendum pins.
+# hashes of the same-day weather files, which the registration's addendum pins;
+# then each week's four cells, each city's split, the registered score and the
+# readings reported beside it. Committed because the docs quote them and the run
+# takes fifteen replays to repeat.
 !outputs/split/
 outputs/split/*
 !outputs/split/gate.json
+!outputs/split/weeks.csv
+!outputs/split/cities.csv
+!outputs/split/scores.json
+!outputs/split/described.json
 
 # Static site: the shell (index.html, app.js) is committed; the data files
 # (data.json, one raw-data CSV per city) are generated at build time and

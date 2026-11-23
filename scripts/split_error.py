@@ -2,6 +2,7 @@
 
     python scripts/split_error.py --gate             # fetch day-0 weather, report coverage
     python scripts/split_error.py --split --jobs 4   # the split, its controls, the predictions
+    python scripts/split_error.py --describe         # the readings beside them, from the tables
 
 Every rule here is fixed by
 docs/registrations/2026-11-23-why-a-forecast-was-wrong.md, committed as
@@ -37,7 +38,8 @@ What ``--split`` does, in order:
    failed or fewer than 12 cities entered.
 
 Writes outputs/split/weeks.csv (one row per city and week), cities.csv (one row
-per city) and scores.json (the controls, the gate and the predictions).
+per city), scores.json (the controls, the gate and the predictions) and
+described.json (what the registration reports beside them and does not score).
 """
 
 from __future__ import annotations
@@ -493,6 +495,88 @@ def score(cities: list[dict], controls_ok: bool) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Reported, not scored                                                         #
+# --------------------------------------------------------------------------- #
+
+
+def _rank_correlation(x, y) -> float:
+    """Spearman's rho alone, nan where either side is constant."""
+    rx, ry = rankdata(x), rankdata(y)
+    if np.ptp(rx) == 0 or np.ptp(ry) == 0:
+        return float("nan")
+    return float(np.corrcoef(rx, ry)[0, 1])
+
+
+def describe(weeks: pd.DataFrame, cities: pd.DataFrame) -> dict:
+    """What is read beside the predictions and decides nothing, from the saved tables.
+
+    Over the cities that entered:
+
+    - the mean share of each part with a 95% t interval, which the registration's
+      simulation found narrow at fifteen units, so it is a description;
+    - the retraining reach across cities;
+    - how often each part is the largest and the smallest at each refit window;
+    - the weeks the loop did not retrain, read as P4 reads the weeks it did;
+    - P3's rank correlation within the six and within the nine;
+    - the range of both control gaps, as multiples of the tag slack.
+
+    Reads only ``weeks.csv`` and ``cities.csv``, so ``--describe`` repeats it
+    without a replay.
+    """
+    from scipy.stats import t as student
+
+    entering = cities[cities["enters"].astype(bool)]
+    n = len(entering)
+    out: dict = {"cities": n, "means": {}, "windows": {}}
+    for part in PARTS:
+        values = entering[part].to_numpy(dtype=float)
+        mean = float(values.mean())
+        half = (float(student.ppf(0.975, n - 1) * values.std(ddof=1) / math.sqrt(n))
+                if n > 1 else float("nan"))
+        out["means"][part] = {"point": mean, "lo": mean - half, "hi": mean + half,
+                              "median": float(np.median(values))}
+
+    reach = entering["reach"].to_numpy(dtype=float)
+    out["reach"] = {"mean": float(reach.mean()), "median": float(np.median(reach)),
+                    "min": float(reach.min()), "max": float(reach.max())}
+
+    for days, suffix in ((REFIT_DAYS, ""), *((d, f"_{d}") for d in SENSITIVITY_DAYS)):
+        shares = entering[[f"{part}{suffix}" for part in PARTS]].to_numpy(dtype=float)
+        largest = [PARTS[i] for i in shares.argmax(axis=1)]
+        smallest = [PARTS[i] for i in shares.argmin(axis=1)]
+        out["windows"][str(days)] = {
+            "largest": {part: largest.count(part) for part in PARTS},
+            "smallest": {part: smallest.count(part) for part in PARTS},
+            "means": {part: float(shares[:, i].mean()) for i, part in enumerate(PARTS)},
+        }
+
+    real = weeks[weeks["city"].isin(entering["city"])]
+    retrained = real["retrained"].astype(str) == "True"
+    for name, picked in (("retrain_weeks", real[retrained]), ("other_weeks", real[~retrained])):
+        k = int((picked["largest"] == "relation").sum())
+        out[name] = {"weeks": len(picked), "relation_largest": k,
+                     "share": k / len(picked) if len(picked) else float("nan")}
+
+    out["groups"] = {}
+    for group in ("six", "nine"):
+        rows = entering[entering["group"] == group]
+        out["groups"][group] = {"cities": len(rows),
+                                "rho": _rank_correlation(rows["relation"], rows["premium"])}
+
+    for control in ("reproduction_error", "inert_error"):
+        values = entering[control].to_numpy(dtype=float)
+        out[control] = {"min": float(values.min()), "max": float(values.max())}
+    return out
+
+
+def write_described() -> dict:
+    """``described.json`` from the tables ``--split`` wrote."""
+    described = describe(pd.read_csv(OUTPUTS / "weeks.csv"), pd.read_csv(OUTPUTS / "cities.csv"))
+    (OUTPUTS / "described.json").write_text(json.dumps(described, indent=1), encoding="utf-8")
+    return described
+
+
+# --------------------------------------------------------------------------- #
 # The positive control                                                         #
 # --------------------------------------------------------------------------- #
 
@@ -673,6 +757,7 @@ def split(jobs: int) -> int:
     pd.DataFrame(flat).to_csv(OUTPUTS / "cities.csv", index=False)
     (OUTPUTS / "scores.json").write_text(json.dumps(scores, indent=1, default=float),
                                          encoding="utf-8")
+    write_described()
 
     print("\n=== Controls ===")
     print("  " + ", ".join(f"{k} {'ok' if v else 'FAILED'}" for k, v in controls.items()))
@@ -690,13 +775,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--gate", action="store_true", help="fetch day-0 weather and report coverage")
     parser.add_argument("--split", action="store_true", help="the split, its controls, the predictions")
+    parser.add_argument("--describe", action="store_true",
+                        help="the readings reported beside the predictions, from the tables")
     parser.add_argument("--jobs", type=int, default=1, help="processes for scoring the weeks")
     args = parser.parse_args()
     if args.gate:
         return gate()
     if args.split:
         return split(args.jobs)
-    parser.error("pass --gate or --split")
+    if args.describe:
+        print(json.dumps(write_described(), indent=1))
+        print(f"wrote {OUTPUTS / 'described.json'}")
+        return 0
+    parser.error("pass --gate, --split or --describe")
     return 2
 
 

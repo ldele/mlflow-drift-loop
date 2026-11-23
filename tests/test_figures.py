@@ -154,3 +154,19 @@ def test_the_calendar_test_is_keyed_for_all_fifteen_cities(committed):
         assert committed[f"calendar.{city}.refit.retrains"] == committed[f"calendar.{city}.refit.runs"]
     for pair in ("exam_vs_shipped", "refit_vs_shipped", "exam_vs_refit"):
         assert committed[f"calendar.{pair}.better"] + committed[f"calendar.{pair}.worse"] <= 15
+
+
+def test_the_split_is_keyed_for_all_fifteen_cities(committed):
+    cities = ("delhi", "santiago", "krakow", "joburg", "melbourne", "la", "tokyo", "shanghai",
+              "sao_paulo", "mexico_city", "cairo", "dhaka", "karachi", "buenos_aires", "istanbul")
+    for city in cities:
+        parts = [committed[f"split.{city}.{part}"] for part in ("weather", "relation", "unexplained")]
+        # The three parts are shares of one error and add up to all of it.
+        assert sum(parts) == pytest.approx(100, abs=1e-3), city
+        for part in ("weather", "relation", "unexplained"):
+            assert committed[f"split.{city}.{part}.lo"] <= committed[f"split.{city}.{part}.hi"]
+        assert f"split.{city}.reach" in committed
+    assert committed["split.entering"] <= 15
+    assert committed["split.p4.relation"] <= committed["split.p4.weeks"]
+    for name in ("p1", "p2"):
+        assert 0 <= committed[f"split.{name}.count"] <= committed["split.entering"]
