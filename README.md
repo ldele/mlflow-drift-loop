@@ -53,8 +53,10 @@ the same first model never retrained, week by week, with a 95% interval
 2. **A weekly calendar matches the loop's own decisions, and in three cities beats them.**
    Training a model every week and shipping it without an exam was measurably better than the
    loop in 3<!--fig:calendar.refit_vs_shipped.better--> of fifteen cities and worse in
-   none, by at most Istanbul's +4.8% [+1.7, +7.3]<!--fig:calendar.istanbul.refit_vs_shipped-->.
-   So the gains above belong to retraining, and the alarms and the exam are not shown to add to
+   none, by at most Istanbul's +4.8% [+1.7, +7.3]<!--fig:calendar.istanbul.refit_vs_shipped-->,
+   counted over the weeks the two forecasts differ. Over every week, including those where both
+   served the same model, Istanbul reads +2.0% [0.0, +4.9]<!--fig:calendar.istanbul.refit_vs_shipped.all_weeks-->
+   and no city clears zero. So the gains above belong to retraining, and the alarms and the exam are not shown to add to
    them. What the loop still saves is compute: 2 to 21 models per city where the calendar trains
    19 to 48. Tested against a
    [prediction written first](docs/registrations/2026-11-15-calendar-retraining-baseline.md).
